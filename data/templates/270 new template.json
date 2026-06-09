@@ -1,0 +1,279 @@
+{
+    "taxpayerCode": "930113399037",
+    "taxpayerNameRu": "АШИХМИН АЛЕКСЕЙ МИХАЙЛОВИЧ",
+    "taxpayerNameKk": "АШИХМИН АЛЕКСЕЙ МИХАЙЛОВИЧ",
+    "taxpayerCategories": [],
+    "declarationTypes": [
+        "NEXT_PRIORITY"
+    ],
+    "periodType": "YEAR",
+    "periodValue": null,
+    "fnoYear": 2025,
+    "ogdCodeByLocation": "",
+    "ogdCodeByResidence": "",
+    "taxpayerType": "FL",
+    "revisionUid": "d5b18e94-3f27-4a65-9c88-2f6d4b9e1a73",
+    "currencyCode": "KZT",
+    "creatorCode": "930113399037",
+    "creatorType": "FL",
+    "creatorNameRu": "АШИХМИН АЛЕКСЕЙ МИХАЙЛОВИЧ",
+    "creatorNameKk": "АШИХМИН АЛЕКСЕЙ МИХАЙЛОВИЧ",
+    "noticeNumber": "",
+    "noticeDate": null,
+    "fnoContent": {
+        "commonInfo": {
+            "_4": "+7 (707) 878-71-33",
+            "_4_1": "alex.ah@list.ru",
+            "_5": "",
+            "_6": "",
+            "selectedApplications": [
+                "application_01",
+                "application_02",
+                "application_03",
+                "application_04",
+                "application_05",
+                "application_06",
+                "application_07"
+            ]
+        },
+        "application_01": {
+            "A": {
+                "_A": null,
+                "_A1": null,
+                "_01": null,
+                "_02": null,
+                "_A2": null,
+                "_A3": null,
+                "_A4": null,
+                "_A5": null
+            },
+            "B": {
+                "_B": null,
+                "_B1": null,
+                "_01": null,
+                "_02": null,
+                "_03": null,
+                "_04": null,
+                "_05": null,
+                "_06": null,
+                "_07": null,
+                "_08": null,
+                "_09": null,
+                "_B2": null,
+                "_B3": null,
+                "_B4": null,
+                "_B5": null,
+                "_B6": null,
+                "_B7": null
+            },
+            "_C": null,
+            "_D": null,
+            "E": {
+                "_E": null,
+                "_E1": null,
+                "_E2": null,
+                "_E3": null,
+                "_E4": null
+            },
+            "F": {
+                "F": null,
+                "_F1": null,
+                "_F2": null
+            },
+            "_G": null,
+            "_H": null,
+            "_I": null,
+            "_J": null,
+            "_K": null,
+            "_01": ""
+        },
+        "application_02": {
+            "_01": null,
+            "_02": null,
+            "_B1": {
+                "_B1": "",
+                "_B2": null,
+                "_B3": null,
+                "_B4": ""
+            },
+            "_B2": {
+                "_B1": "",
+                "_B2": null,
+                "_B3": ""
+            },
+            "_C": {
+                "_C1": null,
+                "_C2": "",
+                "_C3": ""
+            }
+        },
+        "application_03": {
+            "C": [
+                {
+                    "index": 0,
+                    "A": "Итого",
+                    "B": null,
+                    "_13B": "",
+                    "C": null,
+                    "_13C": ""
+                },
+                {
+                    "index": 1,
+                    "_C1": "1",
+                    "A": "Январь",
+                    "B": null,
+                    "_13B": "",
+                    "C": null,
+                    "_13C": "",
+                    "_C": 1
+                },
+                {
+                    "index": 2,
+                    "_C1": "2",
+                    "A": "Февраль",
+                    "B": null,
+                    "_13B": "",
+                    "C": null,
+                    "_13C": "",
+                    "_C": 2
+                },
+                {
+                    "index": 3,
+                    "_C1": "3",
+                    "A": "Март",
+                    "B": null,
+                    "_13B": "",
+                    "C": null,
+                    "_13C": "",
+                    "_C": 3
+                },
+                {
+                    "index": 4,
+                    "_C1": "4",
+                    "A": "Апрель",
+                    "B": null,
+                    "_13B": "",
+                    "C": null,
+                    "_13C": "",
+                    "_C": 4
+                },
+                {
+                    "index": 5,
+                    "_C1": "5",
+                    "A": "Май",
+                    "B": null,
+                    "_13B": "",
+                    "C": null,
+                    "_13C": "",
+                    "_C": 5
+                },
+                {
+                    "index": 6,
+                    "_C1": "6",
+                    "A": "Июнь",
+                    "B": null,
+                    "_13B": "",
+                    "C": null,
+                    "_13C": "",
+                    "_C": 6
+                },
+                {
+                    "index": 7,
+                    "_C1": "7",
+                    "A": "Июль",
+                    "B": null,
+                    "_13B": "",
+                    "C": null,
+                    "_13C": "",
+                    "_C": 7
+                },
+                {
+                    "index": 8,
+                    "_C1": "8",
+                    "A": "Август",
+                    "B": null,
+                    "_13B": "",
+                    "C": null,
+                    "_13C": "",
+                    "_C": 8
+                },
+                {
+                    "index": 9,
+                    "_C1": "9",
+                    "A": "Сентябрь",
+                    "B": null,
+                    "_13B": "",
+                    "C": null,
+                    "_13C": "",
+                    "_C": 9
+                },
+                {
+                    "index": 10,
+                    "_C1": "10",
+                    "A": "Октябрь",
+                    "B": null,
+                    "_13B": "",
+                    "C": null,
+                    "_13C": "",
+                    "_C": 10
+                },
+                {
+                    "index": 11,
+                    "_C1": "11",
+                    "A": "Ноябрь",
+                    "B": null,
+                    "_13B": "",
+                    "C": null,
+                    "_13C": "",
+                    "_C": 11
+                },
+                {
+                    "index": 12,
+                    "_C1": "12",
+                    "A": "Декабрь",
+                    "B": null,
+                    "_13B": "",
+                    "C": null,
+                    "_13C": "",
+                    "_C": 12
+                }
+            ],
+            "_1": "",
+            "_2": ""
+        },
+        "application_04": {
+            "B": [],
+            "C": [],
+            "D": [],
+            "E": []
+        },
+        "application_05": {
+            "B": [],
+            "C": []
+        },
+        "application_06": {
+            "B": []
+        },
+        "application_07": {
+            "G": []
+        },
+        "taxpayerResponsibility": {
+            "DisclosureOfInformation": false,
+            "isResponsible": false,
+            "fullNameOfHead": "АШИХМИН АЛЕКСЕЙ МИХАЙЛОВИЧ",
+            "declarationDate": "06.05.2026",
+            "fullNameOfAuthorizedPerson": "",
+            "fullNameOfEmployeeWhoAcceptedDeclaration": "",
+            "declarationReceiptDate": null,
+            "declarationIncomingNumber": "",
+            "postmarkDate": null
+        },
+        "type": "fno270"
+    },
+    "headTaxpayerCode": "930113399037",
+    "taxpayerRnn": "600820510575",
+    "taxpayerNameEn": "АШИХМИН АЛЕКСЕЙ МИХАЙЛОВИЧ",
+    "taxpayerNameQq": "АШИХМИН АЛЕКСЕЙ МИХАЙЛОВИЧ",
+    "creatorNameEn": "АШИХМИН АЛЕКСЕЙ МИХАЙЛОВИЧ",
+    "creatorNameQq": "АШИХМИН АЛЕКСЕЙ МИХАЙЛОВИЧ"
+}

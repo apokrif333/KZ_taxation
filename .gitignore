@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+
+# Local IDE state
+.idea/workspace.xml
+.idea/tasks.xml
+.idea/shelf/
+
+# Sensitive or bulky data
+postProcessed/
+data/raw/
+data/processed/
+data/output/
+
+# Keep templates/reference schemas explicitly versionable
+!data/templates/
+!data/templates/**
+!reference/
+!reference/**

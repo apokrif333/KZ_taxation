@@ -1,0 +1,32 @@
+[paths]
+raw_data = "data/raw"
+processed_data = "data/processed"
+output_data = "data/output"
+reference_data = "reference"
+form270_template = "data/templates/270 new template.json"
+
+[[clients]]
+client_id = "client_demo"
+tax_year = 2024
+
+[clients.taxpayer]
+taxpayerCode = "000000000000"
+taxpayerNameRu = "Фамилия Имя Отчество"
+taxpayerNameKk = "Фамилия Имя Отчество"
+
+[[clients.accounts]]
+broker = "ib"
+account_id = "U1717377"
+
+[[clients.accounts]]
+broker = "exante"
+account_id = "HXR2208.001"
+
+# Joint account example: one audit workbook, two account-level JSON drafts.
+[[clients.accounts]]
+broker = "freedom_en"
+account_id = "D1467068"
+
+[clients.accounts.joint_owners]
+owner_1 = "0.50"
+owner_2 = "0.50"

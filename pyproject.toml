@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kztax270"
+version = "0.1.0"
+description = "ETL pipeline for Kazakhstan Form 270 broker report audit workbooks and JSON drafts"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "pandas>=2.2",
+  "openpyxl>=3.1",
+  "lxml>=5.0",
+  "requests>=2.32",
+  "beautifulsoup4>=4.12",
+  "pdfplumber>=0.11",
+  "python-stdnum>=1.20",
+  "colorama>=0.4",
+]
+
+[project.optional-dependencies]
+legacy = [
+  "numpy>=1.26",
+  "financedatabase>=2.2",
+  "questionary>=2.0",
+  "pandasgui>=0.2",
+]
+dev = [
+  "pytest>=8.0",
+  "ruff>=0.6",
+  "mypy>=1.10",
+]
+
+[project.scripts]
+kztax270 = "kztax270.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 120
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["E501"]
