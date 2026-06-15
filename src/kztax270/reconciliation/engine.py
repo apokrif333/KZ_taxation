@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal
 from typing import Any, Mapping
 
@@ -153,6 +153,8 @@ class ReconciliationEngine:
                 for key, value in dataset.raw_totals.totals_by_metric_currency.items()
                 if key.startswith(metric.value)
             }
+            if not raw_by_key:
+                continue
             for key in sorted(set(raw_by_key) | set(canonical_by_key)):
                 year, currency, instrument_key = _parse_dimension_key(key)
                 canonical_key = key if key in canonical_by_key else _dimension_key(
@@ -180,7 +182,11 @@ class ReconciliationEngine:
                 )
 
         canonical_cash = _canonical_cash_by_key(dataset)
-        for key in sorted(set(dataset.raw_totals.cash_by_currency) | set(canonical_cash)):
+        raw_cash_years = _years_from_dimension_keys(dataset.raw_totals.cash_by_currency)
+        cash_keys = set(dataset.raw_totals.cash_by_currency)
+        if raw_cash_years:
+            cash_keys |= {key for key in canonical_cash if _parse_dimension_key(key)[0] in raw_cash_years}
+        for key in sorted(cash_keys):
             year, currency, _ = _parse_dimension_key(key)
             items.append(
                 self.compare_scalar(
@@ -194,7 +200,11 @@ class ReconciliationEngine:
             )
 
         canonical_positions = _canonical_positions_by_key(dataset)
-        for key in sorted(set(dataset.raw_totals.positions_by_key) | set(canonical_positions)):
+        raw_position_years = _years_from_dimension_keys(dataset.raw_totals.positions_by_key)
+        position_keys = set(dataset.raw_totals.positions_by_key)
+        if raw_position_years:
+            position_keys |= {key for key in canonical_positions if _parse_dimension_key(key)[0] in raw_position_years}
+        for key in sorted(position_keys):
             year, currency, instrument_key = _parse_dimension_key(key)
             items.append(
                 self.compare_scalar(
@@ -230,18 +240,18 @@ class ReconciliationEngine:
             )
 
         for row in dataset.tables.get("Unprocessed", []):
-            items.append(
-                self.compare_scalar(
-                    ReconciliationMetric.UNPROCESSED_ROWS,
-                    0,
-                    1,
-                    year=_year_from_record(row),
-                    currency=_str_or_none(row.get("currency")),
-                    instrument_key=_str_or_none(row.get("symbol") or row.get("isin")),
-                    source=_str_or_none(row.get("trade_id") or row.get("source_report")),
-                    details=f"{row.get('reason')}: {row.get('details')} See Unprocessed sheet.",
-                )
+            item = self.compare_scalar(
+                ReconciliationMetric.UNPROCESSED_ROWS,
+                0,
+                1,
+                year=_year_from_record(row),
+                currency=_str_or_none(row.get("currency")),
+                instrument_key=_str_or_none(row.get("symbol") or row.get("isin")),
+                source=_str_or_none(row.get("trade_id") or row.get("source_report")),
+                details=f"{row.get('reason')}: {row.get('details')} See Unprocessed sheet.",
             )
+            row_severity = _reconciliation_severity_from_row(row)
+            items.append(replace(item, severity=row_severity) if row_severity is not None else item)
         return items
 
 
@@ -367,6 +377,16 @@ def _str_or_none(value: Any) -> str | None:
     return str(value)
 
 
+def _reconciliation_severity_from_row(row: Mapping[str, Any]) -> ReconciliationSeverity | None:
+    severity = _str_or_none(row.get("severity"))
+    if severity is None:
+        return None
+    try:
+        return ReconciliationSeverity(severity.lower())
+    except ValueError:
+        return None
+
+
 def _year_from_record(record: Mapping[str, Any]) -> int | None:
     explicit_year = record.get("year")
     if explicit_year not in (None, ""):
@@ -389,6 +409,10 @@ def _dimension_key(
     instrument_key: str | None = None,
 ) -> str:
     return "|".join("" if value is None else str(value) for value in (metric, year, currency, instrument_key))
+
+
+def _years_from_dimension_keys(values: Mapping[str, object]) -> set[int | None]:
+    return {_parse_dimension_key(key)[0] for key in values}
 
 
 def _parse_dimension_key(key: str) -> tuple[int | None, str | None, str | None]:

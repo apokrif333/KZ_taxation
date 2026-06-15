@@ -196,6 +196,7 @@ CANONICAL_WORKBOOK_SHEETS: tuple[SheetDefinition, ...] = (
             "gross_amount_kzt",
             "withholding_tax_kzt",
             "net_amount_kzt",
+            "commission",
             "source_report",
         ),
         "Interest on broker cash balances.",
@@ -298,8 +299,8 @@ CANONICAL_REQUIRED_COLUMNS: dict[str, tuple[str, ...]] = {
 }
 
 YEARS_RESULTS_TABLE_COLUMNS: dict[str, tuple[str, ...]] = {
-    "Yearly Trades": ("year", "flag", "currency", "pnl", "pnl_kzt", "tax_kzt"),
-    "Yearly Corp Actions": ("year", "flag", "currency", "pnl", "pnl_kzt", "tax_kzt"),
+    "Yearly Trades": ("year", "flag", "currency", "pnl", "pnl_kzt", "withhold_kzt", "tax_kzt", "tax_kzt_withhold"),
+    "Yearly Bonds Redemption": ("year", "flag", "currency", "pnl", "pnl_kzt", "tax_kzt"),
     "Yearly FX Trades": ("year", "flag", "currency", "pnl", "pnl_kzt", "tax_kzt"),
     "Yearly Dividends": (
         "year",

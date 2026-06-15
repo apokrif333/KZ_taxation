@@ -87,20 +87,6 @@ class InteractiveBrokersLegacyAdapter(LegacyBrokerAdapter):
         return module.final_preparations(dfs)
 
 
-class FreedomLegacyAdapter(LegacyBrokerAdapter):
-    def __init__(self, broker_code: str = "freedom_en", raw_folder: str = "freedom_en") -> None:
-        super().__init__(broker_code=broker_code, legacy_module="legacy.CalcFreedom", raw_folder=raw_folder)
-
-    def run_legacy_pipeline(self, account_id: str) -> dict[str, Any]:
-        module = self._module()
-        total_dict = module.read_files(account_id)
-        dfs = module.prep_data(total_dict)
-        dfs = module.fifo_calc(dfs)
-        dfs = module.transfers_out(dfs, account_id)
-        dfs = module.add_currency(dfs)
-        return module.final_preparations(dfs)
-
-
 class ExanteLegacyAdapter(LegacyBrokerAdapter):
     def __init__(self) -> None:
         super().__init__(broker_code="exante", legacy_module="legacy.CalcExante", raw_folder="exante")

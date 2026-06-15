@@ -1518,6 +1518,7 @@ def _build_initial_fifo_lots(
     lots: list[tuple[tuple[str, str | None, str], str, FifoOpenLot]] = []
     for report in earliest_reports:
         year = _year_for_report(report)
+        prior_lot_dt = _report_start_datetime(report)
         for row in report.rows.get(IB_SECTION_MTM, []):
             asset_type = _string_or_none(row.get("Asset Category"))
             symbol = _strip_yield_suffix(_string_or_none(row.get("Symbol")))
@@ -1544,7 +1545,7 @@ def _build_initial_fifo_lots(
                 isin=isin,
                 currency=currency,
                 country=_string_or_none(country),
-                date_time=None,
+                date_time=prior_lot_dt,
                 raw_quantity=prior_quantity,
                 raw_amount=abs(quantity * prior_price * multiplier),
                 raw_commission=Decimal("0"),
@@ -1573,6 +1574,13 @@ def _earliest_reports(reports: Sequence[ParsedIbReport]) -> list[ParsedIbReport]
         return list(reports[:1])
     earliest = min(report_date for report_date, _ in dated)
     return [report for report_date, report in dated if report_date == earliest]
+
+
+def _report_start_datetime(report: ParsedIbReport) -> datetime | None:
+    report_date = report.period_start or report.period_end
+    if report_date is None:
+        return None
+    return datetime(report_date.year, report_date.month, report_date.day)
 
 
 def _instrument_currency_lookup(
@@ -1686,20 +1694,30 @@ def _build_fifo_and_positions(
         grouped_events[(instrument_key, isin, str(trade.get("currency") or ""))].append((trade_dt, 0, "trade", trade))
 
     for transfer in transfers:
-        if not (_is_outgoing_security_transfer(transfer) or _is_incoming_security_transfer(transfer)):
+        is_outgoing_transfer = _is_outgoing_security_transfer(transfer)
+        is_incoming_transfer = _is_incoming_security_transfer(transfer)
+        if not (is_outgoing_transfer or is_incoming_transfer):
             continue
-        transfer_dt = _transfer_datetime(transfer, end_of_day=_is_outgoing_security_transfer(transfer))
-        isin = _string_or_none(transfer.get("isin"))
-        instrument_key = _string_or_none(transfer.get("_instrument_identity_key")) or _instrument_identity_key_from_values(
-            isin=isin,
-            conid=_string_or_none(transfer.get("_conid")),
-            symbol=_string_or_none(transfer.get("symbol")),
-        )
+        transfer_dt = _transfer_datetime(transfer, end_of_day=is_outgoing_transfer)
+        if is_incoming_transfer and (transfer.get("_converted_identity_key") or transfer.get("_converted_isin") or transfer.get("_converted_symbol")):
+            isin = _string_or_none(transfer.get("_converted_isin") or transfer.get("isin"))
+            instrument_key = _string_or_none(transfer.get("_converted_identity_key")) or _instrument_identity_key_from_values(
+                isin=isin,
+                conid=_string_or_none(transfer.get("_conid")),
+                symbol=_string_or_none(transfer.get("_converted_symbol") or transfer.get("symbol")),
+            )
+        else:
+            isin = _string_or_none(transfer.get("isin"))
+            instrument_key = _string_or_none(transfer.get("_instrument_identity_key")) or _instrument_identity_key_from_values(
+                isin=isin,
+                conid=_string_or_none(transfer.get("_conid")),
+                symbol=_string_or_none(transfer.get("symbol")),
+            )
         currency = str(transfer.get("currency") or "")
         if transfer_dt is None or not instrument_key:
             transfer_rows.append(dict(transfer))
             continue
-        event_type = "transfer_out" if _is_outgoing_security_transfer(transfer) else "transfer_in"
+        event_type = "transfer_out" if is_outgoing_transfer else "transfer_in"
         event_order = 1 if event_type == "transfer_out" else -1
         grouped_events[(instrument_key, isin, currency)].append((transfer_dt, event_order, event_type, transfer))
 
@@ -1970,6 +1988,10 @@ def _open_incoming_transfer_lot(
     quantity = source_lot.quantity if source_lot is not None else abs(raw_quantity)
     multiplier = _decimal(transfer.get("_multiplier") or "1") or Decimal("1")
     price = source_lot.price if source_lot is not None else _decimal(transfer.get("price"))
+    converted_ratio = _decimal(transfer.get("_converted_ratio") or "1") or Decimal("1")
+    if transfer.get("_converted_isin") or transfer.get("_converted_symbol"):
+        quantity = quantity / converted_ratio
+        price = price * converted_ratio
     side = "long" if raw_quantity > 0 else "short"
     opening_lot_status = "transfer_in_fifo_source" if source_lot is not None else (
         _string_or_none(transfer.get("_transfer_cost_basis_status")) or "transfer_in"
@@ -1979,10 +2001,10 @@ def _open_incoming_transfer_lot(
     enter_dt = source_lot.enter_date if source_lot and source_lot.enter_date is not None else transfer_dt
     lot = FifoOpenLot(
         asset_type=str(transfer.get("asset_type") or ""),
-        symbol=str(transfer.get("symbol") or ""),
-        isin=_string_or_none(transfer.get("isin")),
+        symbol=str(transfer.get("_converted_symbol") or transfer.get("symbol") or ""),
+        isin=_string_or_none(transfer.get("_converted_isin") or transfer.get("isin")),
         currency=str(transfer.get("currency") or ""),
-        country=_string_or_none(transfer.get("country")),
+        country=_string_or_none(transfer.get("_converted_country") or transfer.get("country")),
         date_time=enter_dt,
         raw_quantity=raw_quantity,
         raw_amount=abs(price * quantity * multiplier),
@@ -2200,6 +2222,10 @@ def _broker_realized_pl(trade: Mapping[str, Any]) -> Decimal:
     return _decimal(trade.get("_broker_realized_pl"))
 
 
+def _broker_realized_pl_includes_commissions(trade: Mapping[str, Any]) -> bool:
+    return trade.get("_broker_realized_pl_includes_commissions") is not False
+
+
 def _opens_position(trade: Mapping[str, Any]) -> bool:
     code = _string_or_none(trade.get("_broker_code"))
     if not code:
@@ -2235,7 +2261,7 @@ def _append_position_snapshots(
     display_symbol = _instrument_symbol_for_year(symbol_history or {}, identity_key, snapshot_year)
     for position_type, sign in (("long", Decimal("1")), ("short", Decimal("-1"))):
         for lot in books[position_type]:
-            if lot.quantity == 0:
+            if abs(lot.quantity) <= Decimal("0.00000001"):
                 continue
             quantity = lot.quantity * sign
             has_pending_transfer_cost_basis = lot.opening_lot_status == "pending_transfer_out_fifo_cost_basis"
@@ -2284,26 +2310,45 @@ def _close_unknown_opening_lot(
     position_type: str,
     fx_provider: AnnualFxRateProvider,
     warnings: list[str],
+    *,
+    enter_dt: datetime | None = None,
+    opening_status: str = "missing_opening_lot",
+    entry_trade_id: str | None = None,
 ) -> dict[str, Any]:
-    broker_pnl_after_all_commissions = _allocated_broker_realized_pl(exit_trade, exit_broker_quantity)
+    broker_pnl = _allocated_broker_realized_pl(exit_trade, exit_broker_quantity)
+    broker_pnl_includes_commissions = _broker_realized_pl_includes_commissions(exit_trade)
     broker_basis = _allocated_broker_basis(exit_trade, exit_broker_quantity)
     exit_gross = exit_calculation_price * quantity * exit_multiplier
     exit_commission = abs(exit_commission_per_unit * quantity)
     if broker_basis is not None and broker_basis != 0:
         implied_acquisition_cost = broker_basis
     elif position_type == "short":
-        implied_acquisition_cost = exit_gross + exit_commission + broker_pnl_after_all_commissions
+        if broker_pnl_includes_commissions:
+            implied_acquisition_cost = exit_gross + exit_commission + broker_pnl
+        else:
+            implied_acquisition_cost = exit_gross + broker_pnl
     else:
-        implied_acquisition_cost = exit_gross - exit_commission - broker_pnl_after_all_commissions
+        if broker_pnl_includes_commissions:
+            implied_acquisition_cost = exit_gross - exit_commission - broker_pnl
+        else:
+            implied_acquisition_cost = exit_gross - broker_pnl
+    broker_pnl_after_all_commissions = broker_pnl if broker_pnl_includes_commissions else broker_pnl - exit_commission
     implied_enter_price = _implied_enter_price(implied_acquisition_cost, quantity, exit_multiplier)
     tax_pnl = broker_pnl_after_all_commissions + exit_commission
     rate = _annual_rate(fx_provider, exit_dt.year, _string_or_none(exit_trade.get("currency")), warnings)
-    warning = (
-        "Missing opening lot for closing trade "
-        f"{exit_trade.get('trade_id')} ({exit_trade.get('symbol')}); broker realized P/L used for FIFO audit row."
-    )
+    if opening_status == "missing_opening_lot":
+        warning = (
+            "Missing opening lot for closing trade "
+            f"{exit_trade.get('trade_id')} ({exit_trade.get('symbol')}); broker realized P/L used for FIFO audit row."
+        )
+    else:
+        warning = (
+            "Transfer-in cost basis is unresolved for closing trade "
+            f"{exit_trade.get('trade_id')} ({exit_trade.get('symbol')}); broker realized P/L used for FIFO audit row."
+        )
     if warning not in warnings:
         warnings.append(warning)
+    inferred_enter_dt = enter_dt or _parse_datetime(exit_trade.get("_missing_opening_enter_date")) or datetime(exit_dt.year, 1, 1)
     return {
         "asset_type": _string_or_none(exit_trade.get("asset_type")),
         "symbol": _string_or_none(exit_trade.get("symbol")),
@@ -2311,8 +2356,8 @@ def _close_unknown_opening_lot(
         "currency": _string_or_none(exit_trade.get("currency")),
         "country": _string_or_none(exit_trade.get("country")),
         "position_type": position_type,
-        "_opening_lot_status": "missing_opening_lot",
-        "enter_date": None,
+        "_opening_lot_status": opening_status,
+        "enter_date": inferred_enter_dt.isoformat(sep=" ") if inferred_enter_dt else None,
         "enter_quantity": _decimal_text(quantity),
         "enter_price": _price_text(implied_enter_price),
         "enter_multiplier": _multiplier_text(exit_multiplier),
@@ -2333,7 +2378,7 @@ def _close_unknown_opening_lot(
         "acquisition_cost_with_commission_kzt": _amount_kzt(implied_acquisition_cost, rate),
         "pnl_kzt": _amount_kzt(tax_pnl, rate),
         "source_trade_id": _string_or_none(exit_trade.get("trade_id")),
-        "entry_trade_id": None,
+        "entry_trade_id": entry_trade_id,
         "corporate_action_type": _string_or_none(exit_trade.get("_corporate_action_type")),
     }
 
@@ -2395,6 +2440,25 @@ def _close_fifo_lot(
             position_type,
             fx_provider,
             warnings,
+            enter_dt=opening.date_time,
+            entry_trade_id=opening.trade_id,
+        )
+    if opening.opening_lot_status == "pending_transfer_out_fifo_cost_basis" and _broker_realized_pl(exit_trade) != 0:
+        return _close_unknown_opening_lot(
+            exit_trade,
+            quantity,
+            exit_broker_quantity,
+            exit_price,
+            exit_calculation_price,
+            exit_multiplier,
+            exit_commission_per_unit,
+            exit_dt,
+            position_type,
+            fx_provider,
+            warnings,
+            enter_dt=opening.date_time,
+            opening_status="broker_pl_inferred_transfer_in",
+            entry_trade_id=opening.trade_id,
         )
     entry_gross = opening.calculation_price * quantity * opening.multiplier
     exit_gross = exit_calculation_price * quantity * exit_multiplier
@@ -2596,7 +2660,12 @@ def _build_years_results(dataset: CanonicalDataset) -> list[dict[str, Any]]:
     instrument_flags = _instrument_tax_flags(dataset)
     rows: list[dict[str, Any]] = []
     pnl_groups: dict[tuple[Any, ...], dict[str, Decimal]] = defaultdict(
-        lambda: {"pnl": Decimal("0"), "pnl_kzt": Decimal("0")}
+        lambda: {
+            "pnl": Decimal("0"),
+            "pnl_kzt": Decimal("0"),
+            "withhold_kzt": Decimal("0"),
+            "foreign_tax_credit_kzt": Decimal("0"),
+        }
     )
     amount_groups: dict[tuple[Any, ...], dict[str, Decimal]] = defaultdict(
         lambda: {
@@ -2617,14 +2686,25 @@ def _build_years_results(dataset: CanonicalDataset) -> list[dict[str, Any]]:
         else:
             flags = _record_tax_flags(record, instrument_flags)
             table_name = (
-                "Yearly Corp Actions"
-                if _is_non_taxable_corporate_action_fifo_row(record)
+                "Yearly Bonds Redemption"
+                if _is_bond_redemption_fifo_row(record)
                 else "Yearly Trades"
             )
         key = _years_result_key(table_name, year, record, flags)
         values = pnl_groups[key]
         values["pnl"] += _decimal(record.get("pnl"))
         values["pnl_kzt"] += _decimal(record.get("pnl_kzt"))
+
+    for record in dataset.tables.get("_TradeWithholdingTax", []):
+        year = _record_year(record, "date")
+        flags = _record_tax_flags(record, instrument_flags)
+        if flags.get("issuer_outside_kz_flag") is None:
+            flags = _issuer_outside_kz_flags()
+        key = _years_result_key("Yearly Trades", year, record, flags)
+        values = pnl_groups[key]
+        withholding_kzt = _decimal(record.get("withholding_tax_kzt"))
+        values["withhold_kzt"] += withholding_kzt
+        values["foreign_tax_credit_kzt"] += withholding_kzt
 
     for key, values in _build_dividend_year_groups(dataset.tables.get("Dividends", []), instrument_flags).items():
         amount_groups[key]["amount"] += values["amount"]
@@ -2654,8 +2734,20 @@ def _build_years_results(dataset: CanonicalDataset) -> list[dict[str, Any]]:
         values = pnl_groups[key]
         pnl = values["pnl"]
         pnl_kzt = values["pnl_kzt"]
+        withhold_kzt = values["withhold_kzt"]
+        foreign_tax_credit_kzt = values["foreign_tax_credit_kzt"]
         taxable_pnl_kzt = max(pnl_kzt, Decimal("0"))
-        tax_kzt = Decimal("0") if table_name in {"Yearly Corp Actions", "Yearly FX Trades"} else taxable_pnl_kzt * Decimal("0.10")
+        is_kz_issuer_trade = table_name == "Yearly Trades" and flag == "Issuer_KZ"
+        tax_kzt = (
+            Decimal("0")
+            if table_name in {"Yearly Bonds Redemption", "Yearly FX Trades"} or is_kz_issuer_trade
+            else taxable_pnl_kzt * Decimal("0.10")
+        )
+        tax_kzt_withhold = (
+            Decimal("0")
+            if table_name in {"Yearly Bonds Redemption", "Yearly FX Trades"} or is_kz_issuer_trade
+            else max(tax_kzt + foreign_tax_credit_kzt, Decimal("0"))
+        )
         rows.append(
             {
                 "table": table_name,
@@ -2665,7 +2757,9 @@ def _build_years_results(dataset: CanonicalDataset) -> list[dict[str, Any]]:
                 "currency": currency,
                 "pnl": _money_text(pnl),
                 "pnl_kzt": _money_text(pnl_kzt),
+                "withhold_kzt": _money_text(withhold_kzt),
                 "tax_kzt": _money_text(tax_kzt),
+                "tax_kzt_withhold": _money_text(tax_kzt_withhold),
             }
         )
 
@@ -2696,7 +2790,15 @@ def _build_years_results(dataset: CanonicalDataset) -> list[dict[str, Any]]:
                 }
             )
             continue
-        tax_kzt = Decimal("0") if table_name == "Yearly Coupons" else taxable_amount_kzt * Decimal("0.10")
+        is_kz_unreported_income = table_name in {"Yearly Coupons", "Yearly Dividends"} and flag == "Issuer_KZ"
+        displayed_amount_kzt = Decimal("0") if is_kz_unreported_income else amount_kzt
+        displayed_withhold_kzt = Decimal("0") if is_kz_unreported_income else withhold_kzt
+        tax_kzt = Decimal("0") if table_name == "Yearly Coupons" or is_kz_unreported_income else taxable_amount_kzt * Decimal("0.10")
+        tax_kzt_withhold = (
+            Decimal("0")
+            if amount_kzt <= 0 or table_name == "Yearly Coupons" or is_kz_unreported_income
+            else max(tax_kzt + foreign_tax_credit_kzt, Decimal("0"))
+        )
         rows.append(
             {
                 "table": table_name,
@@ -2705,22 +2807,23 @@ def _build_years_results(dataset: CanonicalDataset) -> list[dict[str, Any]]:
                 "country": country,
                 "currency": currency,
                 "amount": _money_text(amount),
-                "amount_kzt": _money_text(amount_kzt),
-                "withhold_kzt": _money_text(withhold_kzt),
+                "amount_kzt": _money_text(displayed_amount_kzt),
+                "withhold_kzt": _money_text(displayed_withhold_kzt),
                 "tax_kzt": _money_text(tax_kzt),
-                "tax_kzt_withhold": "0.00" if table_name == "Yearly Coupons" else _money_text(max(tax_kzt + foreign_tax_credit_kzt, Decimal("0"))),
+                "tax_kzt_withhold": _money_text(tax_kzt_withhold),
             }
         )
     return rows
 
 
-def _is_non_taxable_corporate_action_fifo_row(record: Mapping[str, Any]) -> bool:
+def _is_bond_redemption_fifo_row(record: Mapping[str, Any]) -> bool:
     if not str(record.get("source_trade_id") or "").startswith("CA:"):
         return False
     corporate_action_type = _string_or_none(record.get("corporate_action_type"))
-    if corporate_action_type is None:
+    asset_type = str(record.get("asset_type") or "").lower()
+    if corporate_action_type in {"maturity", "full_call"}:
         return True
-    return corporate_action_type in {"maturity", "full_call", "redemption"}
+    return corporate_action_type == "redemption" and "bond" in asset_type
 
 
 def _build_dividend_year_groups(
@@ -2784,13 +2887,14 @@ def _build_dividend_year_groups(
 
     for key, values in credit_groups.items():
         final_foreign_tax_paid = values["withholding_paid"] - values["withholding_reverted"]
+        displayed_foreign_tax_paid = max(final_foreign_tax_paid, Decimal("0"))
         kz_tax_before_credit = values["tax_usd"]
         foreign_tax_credit = min(max(final_foreign_tax_paid, Decimal("0")), kz_tax_before_credit)
         if values["amount"] == 0 and values["amount_kzt"] == 0 and foreign_tax_credit == 0:
             continue
         result[key]["amount"] += values["amount"]
         result[key]["amount_kzt"] += values["amount_kzt"]
-        result[key]["withhold_kzt"] -= final_foreign_tax_paid * values["rate"]
+        result[key]["withhold_kzt"] -= displayed_foreign_tax_paid * values["rate"]
         result[key]["foreign_tax_credit_kzt"] -= foreign_tax_credit * values["rate"]
     return result
 

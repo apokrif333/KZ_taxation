@@ -616,6 +616,7 @@ class InteractiveBrokersParserTests(unittest.TestCase):
         self.assertNotIn("calculation_price", trade)
 
         fifo_row = dataset.tables["Fifo"][0]
+        self.assertEqual(fifo_row["enter_date"], "2018-01-01 00:00:00")
         self.assertEqual(fifo_row["enter_price"], "130.4967026")
         self.assertEqual(fifo_row["acquisition_cost_with_commission"], "652.483513")
         self.assertEqual(fifo_row["pnl_after_all_commissions"], "24.85948")
@@ -981,7 +982,7 @@ class InteractiveBrokersParserTests(unittest.TestCase):
         prior_row = fifo_rows[1]
         self.assertEqual(prior_row["_opening_lot_status"], "missing_opening_lot")
         self.assertEqual(prior_row["position_type"], "long")
-        self.assertIsNone(prior_row["enter_date"])
+        self.assertEqual(prior_row["enter_date"], "2020-01-01 00:00:00")
         self.assertEqual(prior_row["enter_quantity"], "70")
         self.assertIsNotNone(prior_row["enter_price"])
         self.assertEqual(prior_row["exit_date"], "2020-02-28 16:00:00")
@@ -1003,7 +1004,7 @@ class InteractiveBrokersParserTests(unittest.TestCase):
         fifo_rows = [row for row in result.dataset.tables["Fifo"] if row["symbol"] == "FBT"]
         self.assertEqual(len(fifo_rows), 2)
         self.assertEqual([row["_opening_lot_status"] for row in fifo_rows], ["missing_opening_lot", "matched"])
-        self.assertIsNone(fifo_rows[0]["enter_date"])
+        self.assertEqual(fifo_rows[0]["enter_date"], "2020-01-01 00:00:00")
         self.assertEqual(fifo_rows[0]["enter_quantity"], "5")
         self.assertEqual(fifo_rows[0]["exit_quantity"], "5")
         self.assertEqual(fifo_rows[1]["enter_date"], "2020-06-01 09:30:00")
@@ -1179,7 +1180,7 @@ class InteractiveBrokersParserTests(unittest.TestCase):
         self.assertEqual(trade_rows[0]["pnl_kzt"], "14100.00")
         self.assertIsNone(trade_rows[0]["country"])
 
-    def test_yearly_corp_actions_are_not_taxable(self) -> None:
+    def test_yearly_bonds_redemption_is_not_taxable(self) -> None:
         dataset = CanonicalDataset.empty("ib", "UCORP")
         dataset.tables["Fifo"] = [
             {
@@ -1189,10 +1190,11 @@ class InteractiveBrokersParserTests(unittest.TestCase):
                 "pnl": "100",
                 "pnl_kzt": "45000",
                 "source_trade_id": "CA:bond-maturity",
+                "corporate_action_type": "maturity",
             }
         ]
         yearly = ib_module._build_years_results(dataset)
-        corp_rows = [row for row in yearly if row["table"] == "Yearly Corp Actions"]
+        corp_rows = [row for row in yearly if row["table"] == "Yearly Bonds Redemption"]
         self.assertEqual(len(corp_rows), 1)
         self.assertEqual(corp_rows[0]["pnl"], "100.00")
         self.assertEqual(corp_rows[0]["tax_kzt"], "0.00")
@@ -1215,6 +1217,74 @@ class InteractiveBrokersParserTests(unittest.TestCase):
         self.assertEqual(coupon_rows[0]["amount"], "100.00")
         self.assertEqual(coupon_rows[0]["tax_kzt"], "0.00")
         self.assertEqual(coupon_rows[0]["tax_kzt_withhold"], "0.00")
+
+    def test_kz_yearly_coupons_keep_amount_but_zero_kzt_columns(self) -> None:
+        dataset = CanonicalDataset.empty("ib", "UKZCOUPON")
+        dataset.tables["Instruments"] = [
+            {
+                "symbol": "KZBOND",
+                "isin": "KZ0000000001",
+                "issuer_country": "KZ",
+                "issuer_outside_kz_flag": False,
+            }
+        ]
+        dataset.tables["Coupons"] = [
+            {
+                "date": "2024-06-30",
+                "symbol": "KZBOND",
+                "isin": "KZ0000000001",
+                "country": "KZ",
+                "currency": "USD",
+                "gross_amount": "100",
+                "gross_amount_kzt": "45000",
+                "withholding_tax_kzt": "0",
+            }
+        ]
+        yearly = ib_module._build_years_results(dataset)
+        coupon_rows = [row for row in yearly if row["table"] == "Yearly Coupons"]
+        self.assertEqual(len(coupon_rows), 1)
+        self.assertEqual(coupon_rows[0]["flag"], "Issuer_KZ")
+        self.assertEqual(coupon_rows[0]["amount"], "100.00")
+        self.assertEqual(coupon_rows[0]["amount_kzt"], "0.00")
+        self.assertEqual(coupon_rows[0]["withhold_kzt"], "0.00")
+        self.assertEqual(coupon_rows[0]["tax_kzt"], "0.00")
+        self.assertEqual(coupon_rows[0]["tax_kzt_withhold"], "0.00")
+
+    def test_kz_yearly_dividends_keep_amount_but_zero_reporting_columns(self) -> None:
+        dataset = CanonicalDataset.empty("ib", "UKZDIV")
+        dataset.tables["Instruments"] = [
+            {
+                "symbol": "KZDIV",
+                "isin": "KZ0000000001",
+                "issuer_country": "KZ",
+                "issuer_outside_kz_flag": False,
+            }
+        ]
+        dataset.tables["Dividends"] = [
+            {
+                "date": "2024-06-30",
+                "pay_date": "2024-06-30",
+                "symbol": "KZDIV",
+                "isin": "KZ0000000001",
+                "country": "KZ",
+                "currency": "USD",
+                "gross_amount": "100",
+                "withholding_tax": "0",
+                "gross_amount_kzt": "45000",
+                "withholding_tax_kzt": "0",
+                "tax": "4500",
+                "tax_kzt": "4500",
+            }
+        ]
+        yearly = ib_module._build_years_results(dataset)
+        dividend_rows = [row for row in yearly if row["table"] == "Yearly Dividends"]
+        self.assertEqual(len(dividend_rows), 1)
+        self.assertEqual(dividend_rows[0]["flag"], "Issuer_KZ")
+        self.assertEqual(dividend_rows[0]["amount"], "100.00")
+        self.assertEqual(dividend_rows[0]["amount_kzt"], "0.00")
+        self.assertEqual(dividend_rows[0]["withhold_kzt"], "0.00")
+        self.assertEqual(dividend_rows[0]["tax_kzt"], "0.00")
+        self.assertEqual(dividend_rows[0]["tax_kzt_withhold"], "0.00")
 
 
 if __name__ == "__main__":

@@ -5,12 +5,14 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from .base import BrokerParser
+from .exante import ExanteParser
+from .freedom import FreedomParser
 from .ib import InteractiveBrokersParser
+from .tsifra import TsifraParser
 from kztax270.reference.fx import AnnualFxRateProvider
 from kztax270.transfers import TransferInFifoResolver
 from .legacy_adapters import (
     ExanteLegacyAdapter,
-    FreedomLegacyAdapter,
     InteractiveBrokersLegacyAdapter,
     TsifraLegacyAdapter,
 )
@@ -40,10 +42,15 @@ def default_registry(
 ) -> BrokerRegistry:
     registry = BrokerRegistry()
     registry.register(InteractiveBrokersParser(fx_provider=fx_provider, transfer_in_resolver=transfer_in_resolver))
-    registry.register(FreedomLegacyAdapter("freedom_en", "freedom_en"))
-    registry.register(FreedomLegacyAdapter("freedom_kz", "freedom_kz"))
-    registry.register(ExanteLegacyAdapter())
-    registry.register(TsifraLegacyAdapter())
+    registry.register(FreedomParser(fx_provider=fx_provider, transfer_in_resolver=transfer_in_resolver))
+    registry.register(ExanteParser(fx_provider=fx_provider, transfer_in_resolver=transfer_in_resolver))
+    exante_legacy = ExanteLegacyAdapter()
+    exante_legacy.broker_code = "exante_legacy"
+    registry.register(exante_legacy)
+    registry.register(TsifraParser(fx_provider=fx_provider, transfer_in_resolver=transfer_in_resolver))
+    tsifra_legacy = TsifraLegacyAdapter()
+    tsifra_legacy.broker_code = "tsifra_legacy"
+    registry.register(tsifra_legacy)
     ib_legacy = InteractiveBrokersLegacyAdapter()
     ib_legacy.broker_code = "ib_legacy"
     registry.register(ib_legacy)

@@ -24,7 +24,7 @@ account_id = "HXR2208.001"
 
 # Joint account example: one audit workbook, two account-level JSON drafts.
 [[clients.accounts]]
-broker = "freedom_en"
+broker = "freedom"
 account_id = "D1467068"
 
 [clients.accounts.joint_owners]

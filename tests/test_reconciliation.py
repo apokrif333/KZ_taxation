@@ -4,6 +4,7 @@ from decimal import Decimal
 import unittest
 
 from conftest_imports import SRC  # noqa: F401
+from kztax270.canonical.schema import CanonicalDataset
 from kztax270.reconciliation.engine import ReconciliationEngine
 from kztax270.reconciliation.models import ReconciliationMetric, ReconciliationSeverity
 
@@ -26,6 +27,23 @@ class ReconciliationTests(unittest.TestCase):
         )
         self.assertEqual(item.severity, ReconciliationSeverity.ERROR)
         self.assertEqual(item.instrument_key, "AAPL")
+
+    def test_unprocessed_row_keeps_row_severity(self) -> None:
+        dataset = CanonicalDataset.empty("test", "account")
+        dataset.tables["Unprocessed"] = [
+            {
+                "severity": "warning",
+                "reason": "known_ignored_row",
+                "details": "Visible but not fatal.",
+                "currency": "USD",
+            }
+        ]
+
+        items = ReconciliationEngine().reconcile_dataset(dataset)
+        unprocessed = [item for item in items if item.metric == ReconciliationMetric.UNPROCESSED_ROWS]
+
+        self.assertEqual(len(unprocessed), 1)
+        self.assertEqual(unprocessed[0].severity, ReconciliationSeverity.WARNING)
 
 
 if __name__ == "__main__":

@@ -28,10 +28,18 @@ def discover_raw_reports(raw_root: Path, rule: DiscoveryRule) -> list[BrokerRepo
     for path in sorted(p for p in broker_root.rglob("*") if p.is_file()):
         if path.suffix.lower() not in rule.extensions:
             continue
+        if is_transfer_out_source_file(path):
+            continue
         if rule.filename_must_contain_account and rule.account_id.lower() not in path.name.lower():
             continue
         reports.append(BrokerReport(broker=rule.broker, account_id=rule.account_id, path=path))
     return reports
+
+
+def is_transfer_out_source_file(path: Path) -> bool:
+    normalized = path.stem.lower().replace("_", " ").replace("-", " ")
+    parts = normalized.split()
+    return "transfer" in parts and "out" in parts
 
 
 def discover_many(raw_root: Path, rules: Iterable[DiscoveryRule]) -> list[BrokerReport]:
