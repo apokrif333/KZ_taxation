@@ -616,7 +616,7 @@ class InteractiveBrokersParserTests(unittest.TestCase):
         self.assertNotIn("calculation_price", trade)
 
         fifo_row = dataset.tables["Fifo"][0]
-        self.assertEqual(fifo_row["enter_date"], "2018-01-01 00:00:00")
+        self.assertIsNone(fifo_row["enter_date"])
         self.assertEqual(fifo_row["enter_price"], "130.4967026")
         self.assertEqual(fifo_row["acquisition_cost_with_commission"], "652.483513")
         self.assertEqual(fifo_row["pnl_after_all_commissions"], "24.85948")
@@ -982,7 +982,7 @@ class InteractiveBrokersParserTests(unittest.TestCase):
         prior_row = fifo_rows[1]
         self.assertEqual(prior_row["_opening_lot_status"], "missing_opening_lot")
         self.assertEqual(prior_row["position_type"], "long")
-        self.assertEqual(prior_row["enter_date"], "2020-01-01 00:00:00")
+        self.assertIsNone(prior_row["enter_date"])
         self.assertEqual(prior_row["enter_quantity"], "70")
         self.assertIsNotNone(prior_row["enter_price"])
         self.assertEqual(prior_row["exit_date"], "2020-02-28 16:00:00")

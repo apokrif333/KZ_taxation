@@ -950,10 +950,10 @@ def _populate_snapshot_positions(totals: RawReportTotals, reports: Sequence[Pars
             continue
         for row in report.rows.get(TSIFRA_SECTION_POSITIONS, []):
             quantity = _decimal(row.get("end_q"))
-            if abs(quantity) <= Decimal("0.0001"):
+            symbol = _normalize_isin(row.get("isin")) or _symbol_from_position(row)
+            if not symbol:
                 continue
-            symbol = _symbol_from_position(row) or _normalize_isin(row.get("isin"))
-            key = _dimension_key(year=report.period_end.year, currency=_none_text(row.get("price_curr")) or TSIFRA_BASE_CURRENCY, instrument_key=symbol)
+            key = _dimension_key(year=report.period_end.year, instrument_key=symbol)
             totals.positions_by_key[key] = totals.positions_by_key.get(key, Decimal("0")) + quantity
 
 

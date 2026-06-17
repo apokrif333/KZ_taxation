@@ -335,10 +335,9 @@ def _canonical_fifo_pnl_after_all_commissions_by_instrument(dataset: CanonicalDa
 def _canonical_positions_by_key(dataset: CanonicalDataset) -> dict[str, Decimal]:
     result: dict[str, Decimal] = {}
     for record in dataset.tables.get("Positions", []):
-        instrument_key = _str_or_none(record.get("symbol") or record.get("isin"))
+        instrument_key = _instrument_key(record)
         key = _dimension_key(
             year=_int_or_none(record.get("year")),
-            currency=_str_or_none(record.get("currency")),
             instrument_key=instrument_key,
         )
         result[key] = result.get(key, Decimal("0")) + _decimal_or_zero(record.get("quantity"))

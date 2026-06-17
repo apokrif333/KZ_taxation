@@ -314,6 +314,7 @@ def build_canonical_dataset(
         internal_trades,
         dataset.tables["Dividends"],
         transfer_totals_by_currency,
+        instrument_lookup,
     )
     return dataset
 
@@ -1235,13 +1236,14 @@ def _populate_raw_totals(
     trades: Sequence[Mapping[str, Any]],
     dividends: Sequence[Mapping[str, Any]],
     transfer_totals_by_currency: Mapping[str, Decimal],
+    instrument_lookup: Mapping[tuple[str, int | None], dict[str, Any]],
 ) -> None:
     gross_trades = Decimal("0")
     commissions = Decimal("0")
     realized_pl = Decimal("0")
     interest = Decimal("0")
     coupons = Decimal("0")
-    ending_positions: dict[tuple[int | None, str | None, str | None], Decimal] = defaultdict(Decimal)
+    ending_positions: dict[tuple[int | None, str | None], Decimal] = defaultdict(Decimal)
     use_snapshot_positions = _has_position_snapshots(reports)
 
     for trade in trades:
@@ -1249,7 +1251,7 @@ def _populate_raw_totals(
         year = trade_dt.year if trade_dt else None
         currency = _string_or_none(trade.get("currency"))
         instrument_key = _string_or_none(trade.get("isin") or trade.get("symbol"))
-        position_instrument_key = _string_or_none(trade.get("symbol") or trade.get("isin"))
+        position_instrument_key = _string_or_none(trade.get("isin") or trade.get("symbol"))
         amount = _decimal(trade.get("amount"))
         commission = _decimal(trade.get("commission"))
         gross_trades += amount
@@ -1268,10 +1270,10 @@ def _populate_raw_totals(
             totals.totals_by_metric_currency.get(turnover_key, Decimal("0")) + amount
         )
         if not use_snapshot_positions:
-            ending_positions[(year, currency, position_instrument_key)] += _decimal(trade.get("quantity"))
+            ending_positions[(year, position_instrument_key)] += _decimal(trade.get("quantity"))
 
     if use_snapshot_positions:
-        _populate_snapshot_positions(totals, reports)
+        _populate_snapshot_positions(totals, reports, instrument_lookup)
     else:
         for report in reports:
             for row in report.rows.get(EXANTE_SECTION_TRANSACTIONS, []):
@@ -1282,13 +1284,16 @@ def _populate_raw_totals(
                 symbol_id = _string_or_none(row.get("Symbol ID"))
                 symbol, exchange = _split_symbol_id(symbol_id)
                 currency = _currency_from_exchange(exchange)
-                instrument_key = symbol or _normalize_isin(row.get("ISIN"))
-                ending_positions[(year, currency, instrument_key)] += _decimal(row.get("Sum"))
+                instrument = _lookup_instrument(instrument_lookup, symbol=symbol, symbol_id=symbol_id, isin=_normalize_isin(row.get("ISIN")), year=year) or {}
+                instrument_key = _string_or_none(instrument.get("isin")) or _normalize_isin(row.get("ISIN")) or symbol
+                if not instrument_key:
+                    continue
+                ending_positions[(year, instrument_key)] += _decimal(row.get("Sum"))
 
-        for (year, currency, instrument_key), quantity in ending_positions.items():
+        for (year, instrument_key), quantity in ending_positions.items():
             if abs(quantity) <= Decimal("0.0001"):
                 continue
-            totals.positions_by_key[_dimension_key(year=year, currency=currency, instrument_key=instrument_key)] = quantity
+            totals.positions_by_key[_dimension_key(year=year, instrument_key=instrument_key)] = quantity
 
     _populate_snapshot_cash_balances(totals, reports)
 
@@ -1326,7 +1331,11 @@ def _has_position_snapshots(reports: Sequence[ParsedExanteReport]) -> bool:
     return any(report.rows.get(EXANTE_SECTION_OPEN_POSITIONS) for report in reports)
 
 
-def _populate_snapshot_positions(totals: RawReportTotals, reports: Sequence[ParsedExanteReport]) -> None:
+def _populate_snapshot_positions(
+    totals: RawReportTotals,
+    reports: Sequence[ParsedExanteReport],
+    instrument_lookup: Mapping[tuple[str, int | None], dict[str, Any]],
+) -> None:
     snapshot_dates = _latest_snapshot_dates_by_year(reports, EXANTE_SECTION_OPEN_POSITIONS)
     for report in reports:
         for row in report.rows.get(EXANTE_SECTION_OPEN_POSITIONS, []):
@@ -1334,14 +1343,14 @@ def _populate_snapshot_positions(totals: RawReportTotals, reports: Sequence[Pars
             if snapshot_dt is None or snapshot_dt.date() not in snapshot_dates:
                 continue
             quantity = _decimal(row.get("QTY"))
-            if abs(quantity) <= Decimal("0.0001"):
-                continue
             symbol_id = _string_or_none(row.get("Instrument"))
             symbol, _exchange = _split_symbol_id(symbol_id)
-            instrument_key = symbol or _normalize_isin(row.get("ISIN"))
+            instrument = _lookup_instrument(instrument_lookup, symbol=symbol, symbol_id=symbol_id, isin=_normalize_isin(row.get("ISIN")), year=snapshot_dt.year) or {}
+            instrument_key = _string_or_none(instrument.get("isin")) or _normalize_isin(row.get("ISIN")) or symbol
+            if not instrument_key:
+                continue
             key = _dimension_key(
                 year=snapshot_dt.year,
-                currency=_string_or_none(row.get("Currency")),
                 instrument_key=instrument_key,
             )
             totals.positions_by_key[key] = totals.positions_by_key.get(key, Decimal("0")) + quantity

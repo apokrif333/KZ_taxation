@@ -385,6 +385,91 @@ class FreedomParserTests(unittest.TestCase):
         )
         self.assertFalse(any(row["symbol"] == "AIRA.AIX.KZ" for row in result.dataset.tables["Positions"]))
 
+    def test_ticker_change_positions_match_raw_by_isin_without_duplicates(self) -> None:
+        import pandas as pd  # type: ignore
+
+        internal_transfer = "\u041f\u0435\u0440\u0435\u0432\u043e\u0434 \u0432\u043d\u0443\u0442\u0440\u0438 \u043a\u043e\u043c\u043f\u0430\u043d\u0438\u0438"
+        ticker_change = "\u0421\u043c\u0435\u043d\u0430 \u0442\u0438\u043a\u0435\u0440\u0430"
+
+        with tempfile.TemporaryDirectory() as tmp:
+            raw_root = Path(tmp) / "raw"
+            broker_root = raw_root / fe.BROKER_CODE
+            broker_root.mkdir(parents=True)
+            report_path = broker_root / "759023_2022-05-12 23_59_59_2025-08-12 23_59_59_all.xlsx"
+
+            with pd.ExcelWriter(report_path) as writer:
+                pd.DataFrame(
+                    [
+                        {
+                            fe.COL_TICKER: "KEGC3.KZ",
+                            fe.COL_ISIN: "KZ1C00000959",
+                            fe.COL_MARKET: "KASE",
+                            fe.COL_OPERATION: "Buy",
+                            fe.COL_QTY: 887,
+                            fe.COL_PRICE: 1482,
+                            fe.COL_CURRENCY: "KZT",
+                            fe.COL_AMOUNT: 1314534,
+                            fe.COL_REALIZED_PL: 0,
+                            fe.COL_COMMISSION: 0,
+                            fe.COL_TRADE_DATE: "2023-11-09 17:13:00",
+                            fe.COL_ORDER_ID: "buy-kegc",
+                        }
+                    ]
+                ).to_excel(writer, sheet_name="Trades 20220512 - 20250812", index=False)
+                pd.DataFrame(
+                    [
+                        {
+                            fe.COL_DATE: "2023-11-09 15:00:00",
+                            fe.COL_TYPE: internal_transfer,
+                            fe.COL_TICKER: "KEGC3.KZ",
+                            fe.COL_ISIN: "KZ1C00000959",
+                            fe.COL_QTY: -887,
+                            fe.COL_COMMENT: ticker_change,
+                        },
+                        {
+                            fe.COL_DATE: "2023-11-09 15:00:00",
+                            fe.COL_TYPE: internal_transfer,
+                            fe.COL_TICKER: "KEGC.KZ",
+                            fe.COL_ISIN: "KZ1C00000959",
+                            fe.COL_QTY: 887,
+                            fe.COL_COMMENT: ticker_change,
+                        },
+                    ]
+                ).to_excel(writer, sheet_name="Sec In Out 20220512 - 20250812", index=False)
+                pd.DataFrame(
+                    [
+                        {
+                            fe.COL_TICKER: "KEGC.KZ",
+                            fe.COL_ISIN: "KZ1C00000959",
+                            fe.COL_ASSET_TYPE: "Stocks",
+                            fe.COL_START_QTY: 0,
+                            fe.COL_END_QTY: 887,
+                            fe.COL_PRICE: 1445.8,
+                            fe.COL_CURRENCY: "KZT",
+                        },
+                        {
+                            fe.COL_TICKER: "KEGC3.KZ",
+                            fe.COL_ISIN: "KZ1C00000959",
+                            fe.COL_ASSET_TYPE: "Stocks",
+                            fe.COL_START_QTY: 0,
+                            fe.COL_END_QTY: 0,
+                            fe.COL_PRICE: 0,
+                            fe.COL_CURRENCY: "KZT",
+                        },
+                    ]
+                ).to_excel(writer, sheet_name="Securities 20220512 - 20250812", index=False)
+
+            parser = FreedomParser(
+                fx_provider=AnnualFxRateProvider({(2023, "KZT"): Decimal("1"), (2024, "KZT"): Decimal("1"), (2025, "KZT"): Decimal("1")})
+            )
+            result = parser.parse_reports(parser.discover_reports(raw_root, "759023"), "759023")
+
+        kegc_positions = [row for row in result.dataset.tables["Positions"] if row["isin"] == "KZ1C00000959"]
+        self.assertEqual([row["year"] for row in kegc_positions], [2023, 2024, 2025])
+        self.assertTrue(all(row["symbol"] == "KEGC.KZ" for row in kegc_positions))
+        self.assertEqual([Decimal(row["quantity"]) for row in kegc_positions], [Decimal("887"), Decimal("887"), Decimal("887")])
+        self.assertFalse(any(row.get("_position_cost_basis_status") == "missing_transfer_in_fifo_source" for row in kegc_positions))
+
     def test_internal_depository_change_does_not_request_transfer_in_price(self) -> None:
         import pandas as pd  # type: ignore
 
@@ -524,7 +609,7 @@ class FreedomParserTests(unittest.TestCase):
 
         fifo_kzto = next(row for row in result.dataset.tables["Fifo"] if row["symbol"] == "KZTO.KZ")
         self.assertEqual(fifo_kzto["_opening_lot_status"], "broker_pl_inferred_transfer_in")
-        self.assertEqual(fifo_kzto["enter_date"], "2021-12-31 00:00:00")
+        self.assertIsNone(fifo_kzto["enter_date"])
         self.assertNotEqual(fifo_kzto["enter_price"], "0")
 
         positions_2022 = result.dataset.tables["Positions"]
@@ -536,7 +621,16 @@ class FreedomParserTests(unittest.TestCase):
         self.assertEqual(quantities["KCEL.KZ"], Decimal("0"))
         self.assertEqual(quantities["HSBK.KZ"], Decimal("194"))
         self.assertEqual(quantities["RU_UKFFIPO.KZ"], Decimal("106"))
-        self.assertEqual([row for row in result.dataset.tables["Unprocessed"] if row["symbol"] in {"KZTO.KZ", "KCEL.KZ", "HSBK.KZ"}], [])
+        unprocessed_by_symbol = {
+            row["symbol"]: row
+            for row in result.dataset.tables["Unprocessed"]
+            if row["symbol"] in {"KZTO.KZ", "KCEL.KZ", "HSBK.KZ"}
+        }
+        # Starting-balance lots that were sold surface as inferred transfer-in rows; HSBK has no sells.
+        self.assertEqual(set(unprocessed_by_symbol), {"KZTO.KZ", "KCEL.KZ"})
+        self.assertTrue(
+            all(row["reason"] == "broker_pl_inferred_transfer_in" for row in unprocessed_by_symbol.values())
+        )
 
     def test_grph_to_lenz_conversion_carries_transfer_in_cost_basis(self) -> None:
         import pandas as pd  # type: ignore
@@ -631,6 +725,81 @@ class FreedomParserTests(unittest.TestCase):
         self.assertEqual([row["exit_quantity"] for row in lenz_fifo], ["0.7142857142857", "1"])
         self.assertFalse(any(row["symbol"] in {"GRPH.US", "LENZ.US"} for row in result.dataset.tables["Positions"]))
         self.assertEqual(result.dataset.tables["Unprocessed"], [])
+
+    def test_repeated_transfer_out_attempts_net_to_single_outgoing_transfer(self) -> None:
+        import pandas as pd  # type: ignore
+
+        seen_requests: list[TransferInRequest] = []
+
+        def resolver(request: TransferInRequest) -> list[TransferInFifoLot]:
+            seen_requests.append(request)
+            return []
+
+        block = "Блокировка"
+        withdraw = "Вывод в другой депозитарий"
+        reclaim = "Перевод из другого депозитария"
+
+        with tempfile.TemporaryDirectory() as tmp:
+            raw_root = Path(tmp) / "raw"
+            broker_root = raw_root / fe.BROKER_CODE
+            broker_root.mkdir(parents=True)
+            report_path = broker_root / "744347_2023-01-01 00_00_00_2023-12-31 23_59_59_all.xlsx"
+
+            with pd.ExcelWriter(report_path) as writer:
+                pd.DataFrame(
+                    [
+                        {
+                            fe.COL_TICKER: "B.0.061324.BND",
+                            fe.COL_ISIN: "US912797FS14",
+                            fe.COL_ASSET_TYPE: "Bonds",
+                            fe.COL_OPERATION: "Buy",
+                            fe.COL_QTY: 2000,
+                            fe.COL_PRICE: 1,
+                            fe.COL_CURRENCY: "USD",
+                            fe.COL_AMOUNT: 2000,
+                            fe.COL_REALIZED_PL: 0,
+                            fe.COL_COMMISSION: 0,
+                            fe.COL_TRADE_DATE: "2023-09-01 10:00:00",
+                            fe.COL_ORDER_ID: "buy-bond",
+                        }
+                    ]
+                ).to_excel(writer, sheet_name="Trades 20230101 - 20231231", index=False)
+                # Two failed withdrawal attempts (blocked, withdrawn, then cancelled/reclaimed)
+                # followed by a third attempt that actually leaves the account.
+                pd.DataFrame(
+                    [
+                        {fe.COL_TYPE: block, fe.COL_DATE: "2023-09-21 11:32:49", fe.COL_ACCOUNT: "торговый", fe.COL_QTY: -2000, fe.COL_TICKER: "B.0.061324.BND", fe.COL_ISIN: "US912797FS14", fe.COL_COMMENT: "Блокировка по поручению 23112126"},
+                        {fe.COL_TYPE: block, fe.COL_DATE: "2023-09-21 11:32:49", fe.COL_ACCOUNT: "Заблокировано под вывод", fe.COL_QTY: 2000, fe.COL_TICKER: "B.0.061324.BND", fe.COL_ISIN: "US912797FS14", fe.COL_COMMENT: "Блокировка по поручению 23112126"},
+                        {fe.COL_TYPE: withdraw, fe.COL_DATE: "2023-09-22 15:00:00", fe.COL_ACCOUNT: "Заблокировано под вывод", fe.COL_QTY: -2000, fe.COL_TICKER: "B.0.061324.BND", fe.COL_ISIN: "US912797FS14", fe.COL_COMMENT: "Перевод по поручению 23112126"},
+                        {fe.COL_TYPE: withdraw, fe.COL_DATE: "2023-09-25 09:09:48", fe.COL_ACCOUNT: "Заблокировано под вывод", fe.COL_QTY: 2000, fe.COL_TICKER: "B.0.061324.BND", fe.COL_ISIN: "US912797FS14", fe.COL_COMMENT: "Обратные проводки по отмене поручения 23112126"},
+                        {fe.COL_TYPE: block, fe.COL_DATE: "2023-09-25 09:09:49", fe.COL_ACCOUNT: "Заблокировано под вывод", fe.COL_QTY: -2000, fe.COL_TICKER: "B.0.061324.BND", fe.COL_ISIN: "US912797FS14", fe.COL_COMMENT: "Обратные проводки по отмене поручения 23112126"},
+                        {fe.COL_TYPE: block, fe.COL_DATE: "2023-09-25 09:09:49", fe.COL_ACCOUNT: "торговый", fe.COL_QTY: 2000, fe.COL_TICKER: "B.0.061324.BND", fe.COL_ISIN: "US912797FS14", fe.COL_COMMENT: "Обратные проводки по отмене поручения 23112126"},
+                        {fe.COL_TYPE: block, fe.COL_DATE: "2023-09-28 16:46:31", fe.COL_ACCOUNT: "торговый", fe.COL_QTY: -2000, fe.COL_TICKER: "B.0.061324.BND", fe.COL_ISIN: "US912797FS14", fe.COL_COMMENT: "Блокировка по поручению 23194099"},
+                        {fe.COL_TYPE: block, fe.COL_DATE: "2023-09-28 16:46:31", fe.COL_ACCOUNT: "Заблокировано под вывод", fe.COL_QTY: 2000, fe.COL_TICKER: "B.0.061324.BND", fe.COL_ISIN: "US912797FS14", fe.COL_COMMENT: "Блокировка по поручению 23194099"},
+                        {fe.COL_TYPE: withdraw, fe.COL_DATE: "2023-10-03 15:00:00", fe.COL_ACCOUNT: "Заблокировано под вывод", fe.COL_QTY: -2000, fe.COL_TICKER: "B.0.061324.BND", fe.COL_ISIN: "US912797FS14", fe.COL_COMMENT: "Перевод по поручению 23194099"},
+                        {fe.COL_TYPE: reclaim, fe.COL_DATE: "2023-10-03 15:00:01", fe.COL_ACCOUNT: "торговый", fe.COL_QTY: 2000, fe.COL_TICKER: "B.0.061324.BND", fe.COL_ISIN: "US912797FS14", fe.COL_COMMENT: "reclaim of 23194099"},
+                        {fe.COL_TYPE: block, fe.COL_DATE: "2023-10-23 08:31:23", fe.COL_ACCOUNT: "торговый", fe.COL_QTY: -2000, fe.COL_TICKER: "B.0.061324.BND", fe.COL_ISIN: "US912797FS14", fe.COL_COMMENT: "Блокировка по поручению 23444243"},
+                        {fe.COL_TYPE: block, fe.COL_DATE: "2023-10-23 08:31:23", fe.COL_ACCOUNT: "Заблокировано под вывод", fe.COL_QTY: 2000, fe.COL_TICKER: "B.0.061324.BND", fe.COL_ISIN: "US912797FS14", fe.COL_COMMENT: "Блокировка по поручению 23444243"},
+                        {fe.COL_TYPE: withdraw, fe.COL_DATE: "2023-10-23 15:00:00", fe.COL_ACCOUNT: "Заблокировано под вывод", fe.COL_QTY: -2000, fe.COL_TICKER: "B.0.061324.BND", fe.COL_ISIN: "US912797FS14", fe.COL_COMMENT: "Перевод по поручению 23444243"},
+                    ]
+                ).to_excel(writer, sheet_name="Sec In Out 20230101 - 20231231", index=False)
+
+            parser = FreedomParser(fx_provider=AnnualFxRateProvider({(2023, "USD"): Decimal("460")}), transfer_in_resolver=resolver)
+            result = parser.parse_reports(parser.discover_reports(raw_root, "744347"), "744347")
+
+        # The retry saga must not look like a transfer in: no transfer-out file is requested.
+        self.assertEqual(seen_requests, [])
+
+        # The cancelling in/out duplicates are gone from the audit sheet: only the net row remains.
+        bond_transfers = [row for row in result.dataset.tables["Transfers"] if row.get("isin") == "US912797FS14"]
+        self.assertEqual(len(bond_transfers), 1)
+        self.assertIn("Net of repeated transfer attempts", bond_transfers[0].get("broker_comment") or "")
+        self.assertEqual(bond_transfers[0]["direction"], "out")
+        self.assertEqual(Decimal(bond_transfers[0]["quantity"]), Decimal("2000"))
+
+        # The 2000 bonds leave the account, leaving no residual position and nothing unprocessed.
+        self.assertFalse(any(row.get("isin") == "US912797FS14" for row in result.dataset.tables["Positions"]))
+        self.assertEqual([row for row in result.dataset.tables["Unprocessed"] if row.get("isin") == "US912797FS14"], [])
 
     def test_cash_dividend_rows_are_not_collapsed_by_record_date(self) -> None:
         import pandas as pd  # type: ignore
@@ -935,13 +1104,181 @@ class FreedomParserTests(unittest.TestCase):
         fifo = result.dataset.tables["Fifo"][0]
         self.assertEqual(fifo["symbol"], "CTKB.US")
         self.assertEqual(fifo["_opening_lot_status"], "broker_pl_inferred_transfer_in")
-        self.assertEqual(fifo["enter_date"], "2024-02-14 00:00:00")
+        self.assertIsNone(fifo["enter_date"])
         self.assertEqual(fifo["enter_price"], "16.9995")
         self.assertEqual(fifo["acquisition_cost_with_commission"], "67.998")
         self.assertEqual(fifo["pnl"], "-44.95")
         self.assertEqual(fifo["pnl_after_all_commissions"], "-46.15")
         self.assertNotEqual(fifo["enter_price"], "0")
-        self.assertEqual(result.dataset.tables["Unprocessed"], [])
+        unprocessed = result.dataset.tables["Unprocessed"]
+        self.assertEqual(len(unprocessed), 1)
+        self.assertEqual(unprocessed[0]["reason"], "broker_pl_inferred_transfer_in")
+        self.assertEqual(unprocessed[0]["symbol"], "CTKB.US")
+
+    def test_freedom_average_cost_pnl_infers_transfer_in_price_before_fifo(self) -> None:
+        import pandas as pd  # type: ignore
+
+        with tempfile.TemporaryDirectory() as tmp:
+            raw_root = Path(tmp) / "raw"
+            broker_root = raw_root / fe.BROKER_CODE
+            broker_root.mkdir(parents=True)
+            report_path = broker_root / "861022_2018-06-24 23_59_59_2024-07-18 23_59_59_all.xlsx"
+
+            with pd.ExcelWriter(report_path) as writer:
+                pd.DataFrame(
+                    [
+                        {
+                            fe.COL_DATE: "2018-08-08 06:25:30",
+                            fe.COL_TYPE: "Transfer",
+                            fe.COL_TICKER: "BAST.KZ",
+                            fe.COL_ISIN: "KZ1C00001015",
+                            fe.COL_QTY: 369,
+                            fe.COL_COMMENT: "Transfer in",
+                        }
+                    ]
+                ).to_excel(writer, sheet_name="Sec In Out 20180624 - 20240718", index=False)
+                pd.DataFrame(
+                    [
+                        {
+                            fe.COL_TICKER: "BAST.KZ",
+                            fe.COL_ISIN: "KZ1C00001015",
+                            fe.COL_MARKET: "KASE",
+                            fe.COL_OPERATION: "Buy",
+                            fe.COL_QTY: 200,
+                            fe.COL_PRICE: 29730.72,
+                            fe.COL_CURRENCY: "KZT",
+                            fe.COL_AMOUNT: 5946144,
+                            fe.COL_REALIZED_PL: 0,
+                            fe.COL_COMMISSION: 11893,
+                            fe.COL_TRADE_DATE: "2019-02-07 13:34:39",
+                            fe.COL_ORDER_ID: "buy-bast",
+                        },
+                        {
+                            fe.COL_TICKER: "BAST.KZ",
+                            fe.COL_ISIN: "KZ1C00001015",
+                            fe.COL_MARKET: "KASE",
+                            fe.COL_OPERATION: "Sell",
+                            fe.COL_QTY: 200,
+                            fe.COL_PRICE: 29584.82,
+                            fe.COL_CURRENCY: "KZT",
+                            fe.COL_AMOUNT: 5916964,
+                            fe.COL_REALIZED_PL: -3198076.77,
+                            fe.COL_COMMISSION: 11834,
+                            fe.COL_TRADE_DATE: "2019-02-07 14:31:35",
+                            fe.COL_ORDER_ID: "sell-bast-1",
+                        },
+                        {
+                            fe.COL_TICKER: "BAST.KZ",
+                            fe.COL_ISIN: "KZ1C00001015",
+                            fe.COL_MARKET: "KASE",
+                            fe.COL_OPERATION: "Sell",
+                            fe.COL_QTY: 69,
+                            fe.COL_PRICE: 29050.23,
+                            fe.COL_CURRENCY: "KZT",
+                            fe.COL_AMOUNT: 2004465.87,
+                            fe.COL_REALIZED_PL: -1140223.20,
+                            fe.COL_COMMISSION: 903,
+                            fe.COL_TRADE_DATE: "2019-05-02 15:19:00",
+                            fe.COL_ORDER_ID: "sell-bast-2",
+                        },
+                        {
+                            fe.COL_TICKER: "BAST.KZ",
+                            fe.COL_ISIN: "KZ1C00001015",
+                            fe.COL_MARKET: "KASE",
+                            fe.COL_OPERATION: "Sell",
+                            fe.COL_QTY: 300,
+                            fe.COL_PRICE: 29000.45,
+                            fe.COL_CURRENCY: "KZT",
+                            fe.COL_AMOUNT: 8700135,
+                            fe.COL_REALIZED_PL: -4972426.16,
+                            fe.COL_COMMISSION: 3916,
+                            fe.COL_TRADE_DATE: "2019-05-02 15:26:48",
+                            fe.COL_ORDER_ID: "sell-bast-3",
+                        },
+                    ]
+                ).to_excel(writer, sheet_name="Trades 20180624 - 20240718", index=False)
+
+            parser = FreedomParser(fx_provider=AnnualFxRateProvider({(2018, "KZT"): Decimal("1"), (2019, "KZT"): Decimal("1")}))
+            result = parser.parse_reports(parser.discover_reports(raw_root, "861022"), "861022")
+
+        bast_fifo = [row for row in result.dataset.tables["Fifo"] if row["symbol"] == "BAST.KZ"]
+        inferred_rows = [row for row in bast_fifo if row["_opening_lot_status"] == "broker_average_inferred_transfer_in"]
+        matched_rows = [row for row in bast_fifo if row["_opening_lot_status"] == "matched"]
+
+        self.assertEqual([Decimal(row["enter_quantity"]) for row in inferred_rows], [Decimal("200"), Decimal("69"), Decimal("100")])
+        self.assertTrue(all(Decimal(row["enter_price"]).quantize(Decimal("0.01")) == Decimal("54163.00") for row in inferred_rows))
+        self.assertTrue(all(Decimal(row["enter_price"]).quantize(Decimal("0.01")) != Decimal("45575.20") for row in inferred_rows))
+        self.assertEqual([Decimal(row["enter_quantity"]) for row in matched_rows], [Decimal("200")])
+        self.assertEqual(Decimal(matched_rows[0]["enter_price"]), Decimal("29730.72"))
+        self.assertEqual(
+            {row["reason"] for row in result.dataset.tables["Unprocessed"] if row["symbol"] == "BAST.KZ"},
+            {"broker_average_inferred_transfer_in"},
+        )
+
+    def test_security_transfer_uses_trade_currency_and_raw_zero_position_is_reconciled(self) -> None:
+        import pandas as pd  # type: ignore
+
+        with tempfile.TemporaryDirectory() as tmp:
+            raw_root = Path(tmp) / "raw"
+            broker_root = raw_root / fe.BROKER_CODE
+            broker_root.mkdir(parents=True)
+            report_path = broker_root / "861022_2018-06-24 23_59_59_2024-07-18 23_59_59_all.xlsx"
+
+            with pd.ExcelWriter(report_path) as writer:
+                pd.DataFrame(
+                    [
+                        {
+                            fe.COL_DATE: "2018-08-02 06:25:30",
+                            fe.COL_TYPE: "Transfer",
+                            fe.COL_TICKER: "ARWAB1.KZ",
+                            fe.COL_ISIN: "KZ2P00003635",
+                            fe.COL_QTY: 74950,
+                            fe.COL_COMMENT: "Transfer in",
+                        }
+                    ]
+                ).to_excel(writer, sheet_name="Sec In Out 20180624 - 20240718", index=False)
+                pd.DataFrame(
+                    [
+                        {
+                            fe.COL_TICKER: "ARWAB1.KZ",
+                            fe.COL_ISIN: "KZ2P00003635",
+                            fe.COL_MARKET: "KASE",
+                            fe.COL_OPERATION: "Sell",
+                            fe.COL_QTY: 74950,
+                            fe.COL_PRICE: 728.75,
+                            fe.COL_CURRENCY: "KZT",
+                            fe.COL_AMOUNT: 54604812.5,
+                            fe.COL_REALIZED_PL: -1250000,
+                            fe.COL_COMMISSION: 5000,
+                            fe.COL_TRADE_DATE: "2019-09-24 12:00:00",
+                            fe.COL_ORDER_ID: "sell-arwab",
+                        }
+                    ]
+                ).to_excel(writer, sheet_name="Trades 20180624 - 20240718", index=False)
+                pd.DataFrame(
+                    [
+                        {
+                            fe.COL_TICKER: "ARWAB1.KZ",
+                            fe.COL_ISIN: "KZ2P00003635",
+                            fe.COL_ASSET_TYPE: "Bonds",
+                            fe.COL_END_QTY: 0,
+                        }
+                    ]
+                ).to_excel(writer, sheet_name="Securities 20180624 - 20240718", index=False)
+
+            parser = FreedomParser(fx_provider=AnnualFxRateProvider({(2018, "KZT"): Decimal("1"), (2019, "KZT"): Decimal("1")}))
+            result = parser.parse_reports(parser.discover_reports(raw_root, "861022"), "861022")
+
+        transfer = next(row for row in result.dataset.tables["Transfers"] if row["symbol"] == "ARWAB1.KZ")
+        self.assertEqual(transfer["currency"], "KZT")
+
+        positions = [row for row in result.dataset.tables["Positions"] if row["symbol"] == "ARWAB1.KZ"]
+        self.assertEqual([int(row["year"]) for row in positions], [2018])
+        self.assertEqual(Decimal(positions[0]["quantity"]), Decimal("74950"))
+
+        raw_position_keys = result.dataset.raw_totals.positions_by_key
+        self.assertEqual(raw_position_keys.get("|2024||KZ2P00003635"), Decimal("0"))
+        self.assertNotIn(2024, {int(row["year"]) for row in positions})
 
     def test_bond_trades_keep_multiplier_one_and_coupons_follow_cash_in_out(self) -> None:
         import pandas as pd  # type: ignore

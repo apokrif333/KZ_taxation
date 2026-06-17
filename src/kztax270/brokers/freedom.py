@@ -215,13 +215,14 @@ def build_canonical_dataset(
         warnings=dataset.warnings,
         symbol_history=symbol_history,
         transfer_in_resolver=transfer_in_resolver,
+        broker_cost_basis_method="average",
     )
     fifo_rows.extend(_build_fx_fifo_rows(internal_trades, fx_provider, dataset.warnings))
     fifo_source_trade_ids = _fifo_source_trade_ids(fifo_rows)
     dataset.tables["_BrokerTradeRealizedPL"] = _build_broker_trade_realized_pl(
         [trade for trade in internal_trades if _none_text(trade.get("trade_id")) in fifo_source_trade_ids]
     )
-    fifo_positions = _append_missing_raw_positions(fifo_positions, reports, instrument_lookup, fx_provider, dataset.warnings)
+    fifo_positions = _append_missing_raw_positions(fifo_positions, reports, instrument_lookup, fx_provider, dataset.warnings, corporate_actions)
     audit_transfer_rows = [row for row in transfers if row.get("_exclude_from_fifo")]
     dataset.tables["Fifo"] = fifo_rows
     dataset.tables["Positions"] = fifo_positions
@@ -1020,8 +1021,77 @@ def _build_transfers(
             transfer = _security_transfer_row(report, idx, row, instrument_lookup, internal_trades)
             if transfer is not None:
                 transfers.append(transfer)
+    transfers = _collapse_retry_security_transfers(transfers)
     _annotate_transfer_in_identity_changes(transfers, instrument_lookup)
     return transfers, dict(cash_totals_by_currency)
+
+
+def _collapse_retry_security_transfers(transfers: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Collapse Freedom block/withdraw/reclaim retry sagas into one net transfer.
+
+    Freedom's "Sec In Out" sheet logs every blocking step, withdrawal attempt and its
+    cancellation/reclaim as separate rows ("Блокировка", "Вывод в другой депозитарий",
+    "Перевод из другого депозитария", ...). A single real transfer out can therefore
+    surface as a dozen rows that individually look like alternating transfers in and out,
+    which makes the parser request a transfer-out cost-basis file for the spurious "in"
+    legs. Replace each such saga with a single net transfer so both FIFO and the audit
+    Transfers sheet show only the real movement instead of the cancelling duplicates.
+    """
+
+    groups: dict[tuple[str | None, str | None], list[dict[str, Any]]] = defaultdict(list)
+    for transfer in transfers:
+        if not _is_collapsible_security_transfer(transfer):
+            continue
+        key = (_none_text(transfer.get("source_report")), _none_text(transfer.get("_instrument_identity_key")))
+        groups[key].append(transfer)
+
+    collapsed_ids: set[int] = set()
+    synthetic: list[dict[str, Any]] = []
+    for group in groups.values():
+        if len(group) <= 1 or not _is_retry_transfer_saga(group):
+            continue
+        collapsed_ids.update(id(row) for row in group)
+        net = sum((_decimal(row.get("_raw_quantity")) for row in group), Decimal("0"))
+        if abs(net) <= Decimal("0.0001"):
+            continue
+        synthetic.append(_net_security_transfer(group, net))
+
+    if not collapsed_ids:
+        return transfers
+    remaining = [transfer for transfer in transfers if id(transfer) not in collapsed_ids]
+    remaining.extend(synthetic)
+    return remaining
+
+
+def _is_collapsible_security_transfer(transfer: Mapping[str, Any]) -> bool:
+    return (
+        transfer.get("transfer_type") == "security"
+        and not transfer.get("_exclude_from_fifo")
+        and not transfer.get("_synthetic_starting_position")
+        and ":sec:" in (_none_text(transfer.get("_transfer_id")) or "")
+    )
+
+
+def _is_retry_transfer_saga(group: Sequence[Mapping[str, Any]]) -> bool:
+    """A retry/cancel saga repeats the same quantity with both in and out legs."""
+
+    raw_quantities = [_decimal(row.get("_raw_quantity")) for row in group]
+    has_incoming = any(quantity > 0 for quantity in raw_quantities)
+    has_outgoing = any(quantity < 0 for quantity in raw_quantities)
+    magnitudes = {abs(quantity) for quantity in raw_quantities}
+    return has_incoming and has_outgoing and len(magnitudes) == 1
+
+
+def _net_security_transfer(group: Sequence[Mapping[str, Any]], net: Decimal) -> dict[str, Any]:
+    template = max(group, key=lambda row: _none_text(row.get("date")) or "")
+    transfer = dict(template)
+    transfer["direction"] = "in" if net > 0 else "out"
+    transfer["quantity"] = _decimal_text(abs(net))
+    transfer["_raw_quantity"] = _decimal_text(net)
+    transfer["_transfer_id"] = f"{_none_text(template.get('_transfer_id'))}:net"
+    transfer["broker_comment"] = "Net of repeated transfer attempts (block / withdraw / reclaim)"
+    transfer.pop("_exclude_from_fifo", None)
+    return transfer
 
 
 def _starting_position_transfer_rows(
@@ -1131,7 +1201,7 @@ def _security_transfer_row(
         "asset_type": _none_text(instrument.get("type")) or "Stocks",
         "symbol": symbol,
         "isin": isin,
-        "currency": _security_transfer_currency(symbol, instrument),
+        "currency": _security_transfer_currency(symbol, isin, event_dt, instrument, internal_trades),
         "quantity": str(abs(quantity)),
         "price": None,
         "enter_date": None,
@@ -1247,11 +1317,52 @@ def _annotate_transfer_in_identity_changes(
         transfer["_converted_ratio"] = str(ratio)
 
 
-def _security_transfer_currency(symbol: str | None, instrument: Mapping[str, Any]) -> str:
+def _security_transfer_currency(
+    symbol: str | None,
+    isin: str | None,
+    event_dt: datetime | None,
+    instrument: Mapping[str, Any],
+    internal_trades: Sequence[Mapping[str, Any]],
+) -> str:
     normalized_symbol = _clean_symbol(symbol)
     if normalized_symbol and (normalized_symbol.endswith(".SPB") or "_RUR" in normalized_symbol):
         return "RUB"
+    trade_currency = _matching_trade_currency(symbol, isin, event_dt, internal_trades)
+    if trade_currency:
+        return trade_currency
     return _normalize_currency(instrument.get("_currency")) or FREEDOM_BASE_CURRENCY
+
+
+def _matching_trade_currency(
+    symbol: str | None,
+    isin: str | None,
+    event_dt: datetime | None,
+    internal_trades: Sequence[Mapping[str, Any]],
+) -> str | None:
+    identity = _instrument_identity_key_from_values(isin=isin, symbol=symbol)
+    if identity is None:
+        return None
+    candidates: list[tuple[int, Decimal, str]] = []
+    for idx, trade in enumerate(internal_trades):
+        trade_identity = _instrument_identity_key_from_values(
+            isin=_none_text(trade.get("isin")),
+            symbol=_none_text(trade.get("symbol")),
+        )
+        if trade_identity != identity:
+            continue
+        currency = _normalize_currency(trade.get("currency"))
+        if not currency:
+            continue
+        trade_dt = _parse_datetime(trade.get("date_time"))
+        if event_dt is not None and trade_dt is not None:
+            distance = Decimal(str(abs((trade_dt - event_dt).total_seconds())))
+        else:
+            distance = Decimal(idx)
+        candidates.append((0 if trade_dt and event_dt and trade_dt >= event_dt else 1, distance, currency))
+    if not candidates:
+        return None
+    candidates.sort(key=lambda item: (item[0], item[1]))
+    return candidates[0][2]
 
 
 def _build_dividends(
@@ -1462,17 +1573,18 @@ def _append_missing_raw_positions(
     instrument_lookup: Mapping[tuple[str, int | None], dict[str, Any]],
     fx_provider: AnnualFxRateProvider,
     warnings: list[str],
+    actions: Sequence[Mapping[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
-    result = [dict(row) for row in position_rows]
+    result = _apply_ticker_changes_to_records(position_rows, actions or [])
     canonical_by_key: dict[tuple[int | None, str | None], Decimal] = defaultdict(Decimal)
     for row in result:
-        key = (_int_or_none(row.get("year")), _none_text(row.get("symbol") or row.get("isin")))
+        key = (_int_or_none(row.get("year")), _position_identity_key(row))
         canonical_by_key[key] += _decimal(row.get("quantity"))
-    for raw in _raw_position_records(reports):
+    for raw in _apply_ticker_changes_to_records(_raw_position_records(reports), actions or []):
         year = raw["year"]
         currency = raw["currency"]
         symbol = raw["symbol"]
-        key = (year, symbol)
+        key = (year, _position_identity_key(raw))
         missing = raw["quantity"] - canonical_by_key.get(key, Decimal("0"))
         if abs(missing) <= Decimal("0.0001"):
             continue
@@ -1501,7 +1613,11 @@ def _append_missing_raw_positions(
     return result
 
 
-def _raw_position_records(reports: Sequence[ParsedFreedomReport]) -> list[dict[str, Any]]:
+def _position_identity_key(row: Mapping[str, Any]) -> str | None:
+    return _none_text(row.get("isin")) or _none_text(row.get("symbol"))
+
+
+def _raw_position_records(reports: Sequence[ParsedFreedomReport], *, include_zero: bool = False) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
     for report in _latest_reports_by_year(reports).values():
         year = _year_for_report(report)
@@ -1509,14 +1625,17 @@ def _raw_position_records(reports: Sequence[ParsedFreedomReport]) -> list[dict[s
             continue
         for row in report.rows.get(SECTION_SECURITIES, []):
             quantity = _decimal(_cell(row, COL_END_QTY))
-            if abs(quantity) <= Decimal("0.0001"):
-                continue
             symbol = _clean_symbol(_cell(row, COL_TICKER)) or _normalize_isin(_cell(row, COL_ISIN))
+            isin = _normalize_isin(_cell(row, COL_ISIN))
+            if not symbol and not isin:
+                continue
+            if abs(quantity) <= Decimal("0.0001") and not include_zero:
+                continue
             records.append(
                 {
                     "year": year,
                     "symbol": symbol,
-                    "isin": _normalize_isin(_cell(row, COL_ISIN)),
+                    "isin": isin,
                     "quantity": quantity,
                     "currency": _normalize_currency(_cell(row, COL_CURRENCY)) or FREEDOM_BASE_CURRENCY,
                     "asset_type": _asset_type(_cell(row, COL_ASSET_TYPE), symbol),
@@ -1640,8 +1759,8 @@ def _populate_fifo_raw_pnl_totals(
 
 
 def _populate_raw_positions(totals: RawReportTotals, reports: Sequence[ParsedFreedomReport]) -> None:
-    for raw in _raw_position_records(reports):
-        key = _dimension_key(year=raw["year"], currency=raw["currency"], instrument_key=raw["symbol"])
+    for raw in _raw_position_records(reports, include_zero=True):
+        key = _dimension_key(year=raw["year"], instrument_key=_position_identity_key(raw))
         totals.positions_by_key[key] = totals.positions_by_key.get(key, Decimal("0")) + raw["quantity"]
 
 

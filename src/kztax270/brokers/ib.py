@@ -1669,6 +1669,7 @@ def _build_fifo_and_positions(
     warnings: list[str],
     symbol_history: Mapping[str, Sequence[Mapping[str, Any]]],
     transfer_in_resolver: TransferInFifoResolver | None = None,
+    broker_cost_basis_method: str = "fifo",
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
     fifo_rows: list[dict[str, Any]] = []
     position_rows: list[dict[str, Any]] = []
@@ -1768,6 +1769,17 @@ def _build_fifo_and_positions(
                     matched = min(remaining, opening.quantity)
                     opening_broker_matched = _matched_broker_quantity(opening, matched)
                     exit_broker_matched = matched * broker_quantity_per_calculation_unit
+                    if broker_cost_basis_method == "average":
+                        _infer_average_cost_unknown_open_lots(
+                            books["short"],
+                            trade,
+                            matched,
+                            exit_broker_matched,
+                            calculation_price,
+                            multiplier,
+                            commission_per_unit,
+                            "short",
+                        )
                     fifo_rows.append(
                         _close_fifo_lot(
                             opening,
@@ -1829,6 +1841,17 @@ def _build_fifo_and_positions(
                     matched = min(remaining, opening.quantity)
                     opening_broker_matched = _matched_broker_quantity(opening, matched)
                     exit_broker_matched = matched * broker_quantity_per_calculation_unit
+                    if broker_cost_basis_method == "average":
+                        _infer_average_cost_unknown_open_lots(
+                            books["long"],
+                            trade,
+                            matched,
+                            exit_broker_matched,
+                            calculation_price,
+                            multiplier,
+                            commission_per_unit,
+                            "long",
+                        )
                     fifo_rows.append(
                         _close_fifo_lot(
                             opening,
@@ -1998,7 +2021,7 @@ def _open_incoming_transfer_lot(
     )
     base_trade_id = _string_or_none(transfer.get("_transfer_id"))
     trade_id_suffix = f":fifo_source:{source_lot.source_row}" if source_lot and source_lot.source_row is not None else ""
-    enter_dt = source_lot.enter_date if source_lot and source_lot.enter_date is not None else transfer_dt
+    enter_dt = source_lot.enter_date if source_lot is not None else None
     lot = FifoOpenLot(
         asset_type=str(transfer.get("asset_type") or ""),
         symbol=str(transfer.get("_converted_symbol") or transfer.get("symbol") or ""),
@@ -2094,6 +2117,25 @@ def _apply_split_to_open_lots(books: Mapping[str, deque[FifoOpenLot]], ratio: De
             lot.calculation_price = lot.calculation_price * ratio
 
 
+_UNPROCESSED_LOT_STATUSES = {
+    "missing_opening_lot",
+    "broker_pl_inferred_transfer_in",
+    "broker_average_inferred_transfer_in",
+}
+
+_UNPROCESSED_DETAILS: dict[str, str] = {
+    "missing_opening_lot": "Closing trade has broker realized P/L but no opening lot in discovered raw reports.",
+    "broker_pl_inferred_transfer_in": (
+        "Opening lot originated from a starting balance or unresolved transfer-in; "
+        "cost basis was inferred from broker realized P/L because no raw purchase record exists."
+    ),
+    "broker_average_inferred_transfer_in": (
+        "Opening lot originated from a starting balance or unresolved transfer-in; "
+        "cost basis was inferred from broker average-cost P/L and then applied to tax FIFO."
+    ),
+}
+
+
 def _build_unprocessed_rows(
     trades: Sequence[Mapping[str, Any]],
     fifo_rows: Sequence[Mapping[str, Any]],
@@ -2101,15 +2143,16 @@ def _build_unprocessed_rows(
     trades_by_id = {_string_or_none(trade.get("trade_id")): trade for trade in trades}
     rows: list[dict[str, Any]] = []
     for fifo_row in fifo_rows:
-        if fifo_row.get("_opening_lot_status") != "missing_opening_lot":
+        lot_status = _string_or_none(fifo_row.get("_opening_lot_status"))
+        if lot_status not in _UNPROCESSED_LOT_STATUSES:
             continue
         trade_id = _string_or_none(fifo_row.get("source_trade_id"))
         trade = trades_by_id.get(trade_id, {})
-        details = "Closing trade has broker realized P/L but no opening lot in discovered raw reports."
+        details = _UNPROCESSED_DETAILS.get(lot_status or "", "Opening lot source is unknown.")
         rows.append(
             {
                 "severity": "error",
-                "reason": "missing_opening_lot",
+                "reason": lot_status,
                 "details": details,
                 "source_sheet": "Trades",
                 "source_report": _string_or_none(trade.get("source_report") or fifo_row.get("source_report")),
@@ -2298,6 +2341,89 @@ def _append_position_snapshots(
             )
 
 
+def _infer_average_cost_unknown_open_lots(
+    lots: deque[FifoOpenLot],
+    exit_trade: Mapping[str, Any],
+    quantity: Decimal,
+    exit_broker_quantity: Decimal,
+    exit_calculation_price: Decimal,
+    exit_multiplier: Decimal,
+    exit_commission_per_unit: Decimal,
+    position_type: str,
+) -> None:
+    if not lots or _broker_realized_pl(exit_trade) == 0:
+        return
+    unknown_lots = [
+        lot
+        for lot in lots
+        if lot.quantity > 0 and lot.opening_lot_status == "pending_transfer_out_fifo_cost_basis"
+    ]
+    if not unknown_lots:
+        return
+    known_lots = [
+        lot
+        for lot in lots
+        if lot.quantity > 0 and lot.opening_lot_status != "pending_transfer_out_fifo_cost_basis"
+    ]
+    if not known_lots:
+        return
+
+    implied_sold_cost = _broker_implied_acquisition_cost(
+        exit_trade,
+        quantity,
+        exit_broker_quantity,
+        exit_calculation_price,
+        exit_multiplier,
+        exit_commission_per_unit,
+        position_type,
+    )
+    broker_average_price = _implied_enter_price(implied_sold_cost, quantity, exit_multiplier)
+    pool_denominator = sum((lot.quantity * (lot.multiplier or Decimal("1")) for lot in lots if lot.quantity > 0), Decimal("0"))
+    unknown_denominator = sum((lot.quantity * (lot.multiplier or Decimal("1")) for lot in unknown_lots), Decimal("0"))
+    if pool_denominator == 0 or unknown_denominator == 0:
+        return
+    known_cost = sum(
+        (lot.calculation_price * lot.quantity * (lot.multiplier or Decimal("1")) for lot in known_lots),
+        Decimal("0"),
+    )
+    unknown_cost = broker_average_price * pool_denominator - known_cost
+    unknown_price = unknown_cost / unknown_denominator
+    if unknown_price <= 0:
+        return
+
+    for lot in unknown_lots:
+        multiplier = lot.multiplier or Decimal("1")
+        lot.price = unknown_price
+        lot.calculation_price = unknown_price
+        lot.raw_amount = abs(unknown_price * lot.quantity * multiplier)
+        lot.opening_lot_status = "broker_average_inferred_transfer_in"
+
+
+def _broker_implied_acquisition_cost(
+    exit_trade: Mapping[str, Any],
+    quantity: Decimal,
+    exit_broker_quantity: Decimal,
+    exit_calculation_price: Decimal,
+    exit_multiplier: Decimal,
+    exit_commission_per_unit: Decimal,
+    position_type: str,
+) -> Decimal:
+    broker_pnl = _allocated_broker_realized_pl(exit_trade, exit_broker_quantity)
+    broker_pnl_includes_commissions = _broker_realized_pl_includes_commissions(exit_trade)
+    broker_basis = _allocated_broker_basis(exit_trade, exit_broker_quantity)
+    exit_gross = exit_calculation_price * quantity * exit_multiplier
+    exit_commission = abs(exit_commission_per_unit * quantity)
+    if broker_basis is not None and broker_basis != 0:
+        return broker_basis
+    if position_type == "short":
+        if broker_pnl_includes_commissions:
+            return exit_gross + exit_commission + broker_pnl
+        return exit_gross + broker_pnl
+    if broker_pnl_includes_commissions:
+        return exit_gross - exit_commission - broker_pnl
+    return exit_gross - broker_pnl
+
+
 def _close_unknown_opening_lot(
     exit_trade: Mapping[str, Any],
     quantity: Decimal,
@@ -2317,21 +2443,17 @@ def _close_unknown_opening_lot(
 ) -> dict[str, Any]:
     broker_pnl = _allocated_broker_realized_pl(exit_trade, exit_broker_quantity)
     broker_pnl_includes_commissions = _broker_realized_pl_includes_commissions(exit_trade)
-    broker_basis = _allocated_broker_basis(exit_trade, exit_broker_quantity)
     exit_gross = exit_calculation_price * quantity * exit_multiplier
     exit_commission = abs(exit_commission_per_unit * quantity)
-    if broker_basis is not None and broker_basis != 0:
-        implied_acquisition_cost = broker_basis
-    elif position_type == "short":
-        if broker_pnl_includes_commissions:
-            implied_acquisition_cost = exit_gross + exit_commission + broker_pnl
-        else:
-            implied_acquisition_cost = exit_gross + broker_pnl
-    else:
-        if broker_pnl_includes_commissions:
-            implied_acquisition_cost = exit_gross - exit_commission - broker_pnl
-        else:
-            implied_acquisition_cost = exit_gross - broker_pnl
+    implied_acquisition_cost = _broker_implied_acquisition_cost(
+        exit_trade,
+        quantity,
+        exit_broker_quantity,
+        exit_calculation_price,
+        exit_multiplier,
+        exit_commission_per_unit,
+        position_type,
+    )
     broker_pnl_after_all_commissions = broker_pnl if broker_pnl_includes_commissions else broker_pnl - exit_commission
     implied_enter_price = _implied_enter_price(implied_acquisition_cost, quantity, exit_multiplier)
     tax_pnl = broker_pnl_after_all_commissions + exit_commission
@@ -2348,7 +2470,7 @@ def _close_unknown_opening_lot(
         )
     if warning not in warnings:
         warnings.append(warning)
-    inferred_enter_dt = enter_dt or _parse_datetime(exit_trade.get("_missing_opening_enter_date")) or datetime(exit_dt.year, 1, 1)
+    inferred_enter_dt = enter_dt or _parse_datetime(exit_trade.get("_missing_opening_enter_date"))
     return {
         "asset_type": _string_or_none(exit_trade.get("asset_type")),
         "symbol": _string_or_none(exit_trade.get("symbol")),
@@ -2476,6 +2598,11 @@ def _close_fifo_lot(
     pnl_after_all_commissions = pnl_before_commission - allocated_commission
     rate = _annual_rate(fx_provider, exit_dt.year, opening.currency, warnings)
     display_symbol = _string_or_none(exit_trade.get("symbol")) or opening.symbol
+    opening_lot_status = (
+        opening.opening_lot_status
+        if opening.opening_lot_status == "broker_average_inferred_transfer_in"
+        else "matched"
+    )
     return {
         "asset_type": opening.asset_type,
         "symbol": display_symbol,
@@ -2483,7 +2610,7 @@ def _close_fifo_lot(
         "currency": opening.currency,
         "country": opening.country,
         "position_type": position_type,
-        "_opening_lot_status": "matched",
+        "_opening_lot_status": opening_lot_status,
         "enter_date": opening.date_time.isoformat(sep=" ") if opening.date_time else None,
         "enter_quantity": _decimal_text(quantity),
         "enter_price": _decimal_text(opening.calculation_price),
@@ -3132,14 +3259,31 @@ def _populate_raw_totals(
         for row in report.rows.get(IB_SECTION_CASH, []):
             if row.get("Currency Summary") == "Ending Cash" and row.get("Currency") not in {None, "", "Base Currency Summary"}:
                 totals.cash_by_currency[_dimension_key(year=year, currency=str(row.get("Currency")))] = _decimal(row.get("Total"))
+        raw_position_keys: set[str] = set()
         for row in report.rows.get(IB_SECTION_POSITIONS, []):
             if row.get("DataDiscriminator") and row.get("DataDiscriminator") != "Summary":
                 continue
             raw_symbol = _string_or_none(row.get("Symbol"))
             normalized_symbol = _normalize_position_symbol(raw_symbol)
-            instrument_key = normalized_symbol or raw_symbol
-            key = _dimension_key(year=year, currency=_string_or_none(row.get("Currency")), instrument_key=instrument_key)
+            instrument = _lookup_instrument(instrument_lookup, normalized_symbol or raw_symbol, year) or {}
+            instrument_key = _string_or_none(instrument.get("isin")) or normalized_symbol or raw_symbol
+            key = _dimension_key(year=year, instrument_key=instrument_key)
+            raw_position_keys.add(key)
             totals.positions_by_key[key] = totals.positions_by_key.get(key, Decimal("0")) + _decimal(row.get("Quantity"))
+        for row in report.rows.get(IB_SECTION_MTM, []):
+            asset_type = _string_or_none(row.get("Asset Category"))
+            if not asset_type or asset_type.startswith("Total"):
+                continue
+            raw_symbol = _string_or_none(row.get("Symbol"))
+            normalized_symbol = _normalize_position_symbol(raw_symbol)
+            if not normalized_symbol:
+                continue
+            instrument = _lookup_instrument(instrument_lookup, normalized_symbol, year) or {}
+            instrument_key = _string_or_none(instrument.get("isin")) or normalized_symbol
+            key = _dimension_key(year=year, instrument_key=instrument_key)
+            if key in raw_position_keys:
+                continue
+            totals.positions_by_key[key] = totals.positions_by_key.get(key, Decimal("0")) + _decimal(row.get("Current Quantity"))
 
     for currency, amount in transfer_totals_by_currency.items():
         key = _dimension_key(metric=ReconciliationMetric.TOTAL_DEPOSITS_WITHDRAWALS_TRANSFERS.value, currency=currency)
