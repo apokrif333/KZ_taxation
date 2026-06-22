@@ -1280,6 +1280,124 @@ class FreedomParserTests(unittest.TestCase):
         self.assertEqual(raw_position_keys.get("|2024||KZ2P00003635"), Decimal("0"))
         self.assertNotIn(2024, {int(row["year"]) for row in positions})
 
+    def test_old_freedom_trade_headers_and_empty_yearly_securities_snapshots(self) -> None:
+        import pandas as pd  # type: ignore
+
+        account = "broker_urbissinov83@gmail_com"
+        with tempfile.TemporaryDirectory() as tmp:
+            raw_root = Path(tmp) / "raw"
+            broker_root = raw_root / fe.BROKER_CODE
+            broker_root.mkdir(parents=True)
+            report_2018 = broker_root / f"{account}_2018_06_24_23_59_59_2018_12_31_23_59_59.xlsx"
+            report_2019 = broker_root / f"{account}_2018_12_30_23_59_59_2019_12_31_23_59_59.xlsx"
+            report_2020 = broker_root / f"{account}_2019_12_30_23_59_59_2020_12_31_23_59_59.xlsx"
+
+            with pd.ExcelWriter(report_2018) as writer:
+                pd.DataFrame(
+                    [
+                        {
+                            fe.COL_DATE: "2018-08-08 06:25:30",
+                            fe.COL_TYPE: "Transfer",
+                            fe.COL_TICKER: "BAST.KZ",
+                            fe.COL_ISIN: "KZ1C00001015",
+                            fe.COL_QTY: 369,
+                            fe.COL_COMMENT: "Transfer in",
+                        }
+                    ]
+                ).to_excel(writer, sheet_name="Sec In Out 20180624 - 20181231", index=False)
+                pd.DataFrame(
+                    [
+                        {
+                            fe.COL_TICKER: "BAST.KZ",
+                            fe.COL_ISIN: "KZ1C00001015",
+                            fe.COL_ASSET_TYPE: "Stocks",
+                            fe.COL_START_QTY: 0,
+                            fe.COL_END_QTY: 369,
+                            fe.COL_CURRENCY: "KZT",
+                        }
+                    ]
+                ).to_excel(writer, sheet_name="Securities 20180624 - 20181231", index=False)
+
+            with pd.ExcelWriter(report_2019) as writer:
+                pd.DataFrame(
+                    [
+                        {
+                            fe.COL_TICKER: "BAST.KZ",
+                            fe.COL_ISIN: "KZ1C00001015",
+                            fe.COL_MARKET: "KASE",
+                            fe.COL_OPERATION: "Покупка",
+                            fe.COL_QTY: 200,
+                            fe.COL_PRICE: 29730.72,
+                            fe.COL_CURRENCY: "KZT",
+                            fe.COL_AMOUNT: 5946144,
+                            "Прибыль": 0,
+                            fe.COL_COMMISSION: 11893,
+                            "Дата": "2019-02-07 13:34:39",
+                            fe.COL_ORDER_ID: "buy-bast",
+                        },
+                        {
+                            fe.COL_TICKER: "BAST.KZ",
+                            fe.COL_ISIN: "KZ1C00001015",
+                            fe.COL_MARKET: "KASE",
+                            fe.COL_OPERATION: "Продажа",
+                            fe.COL_QTY: 200,
+                            fe.COL_PRICE: 29584.82,
+                            fe.COL_CURRENCY: "KZT",
+                            fe.COL_AMOUNT: 5916964,
+                            "Прибыль": -3198076.77,
+                            fe.COL_COMMISSION: 11834,
+                            "Дата": "2019-02-07 14:31:35",
+                            fe.COL_ORDER_ID: "sell-bast-1",
+                        },
+                        {
+                            fe.COL_TICKER: "BAST.KZ",
+                            fe.COL_ISIN: "KZ1C00001015",
+                            fe.COL_MARKET: "KASE",
+                            fe.COL_OPERATION: "Продажа",
+                            fe.COL_QTY: 369,
+                            fe.COL_PRICE: 29000.45,
+                            fe.COL_CURRENCY: "KZT",
+                            fe.COL_AMOUNT: 10701166.05,
+                            "Прибыль": -6112649.36,
+                            fe.COL_COMMISSION: 4819,
+                            "Дата": "2019-05-02 15:26:48",
+                            fe.COL_ORDER_ID: "sell-bast-2",
+                        },
+                    ]
+                ).to_excel(writer, sheet_name="Trades 20181230 - 20191231", index=False)
+                pd.DataFrame(
+                    [
+                        {
+                            fe.COL_TICKER: "BAST.KZ",
+                            fe.COL_ISIN: "KZ1C00001015",
+                            fe.COL_ASSET_TYPE: "Stocks",
+                            fe.COL_START_QTY: 369,
+                            fe.COL_END_QTY: 0,
+                        }
+                    ]
+                ).to_excel(writer, sheet_name="Securities 20181230 - 20191231", index=False)
+
+            with pd.ExcelWriter(report_2020) as writer:
+                pd.DataFrame(columns=[fe.COL_TICKER, fe.COL_ISIN, fe.COL_ASSET_TYPE, fe.COL_START_QTY, fe.COL_END_QTY]).to_excel(
+                    writer,
+                    sheet_name="Securities 20191230 - 20201231",
+                    index=False,
+                )
+
+            parser = FreedomParser(fx_provider=AnnualFxRateProvider({(2018, "KZT"): Decimal("1"), (2019, "KZT"): Decimal("1")}))
+            result = parser.parse_reports(parser.discover_reports(raw_root, account), account)
+
+        self.assertTrue(all(row["date_time"] for row in result.dataset.tables["Trades"]))
+        self.assertEqual([int(row["year"]) for row in result.dataset.tables["Positions"] if row["symbol"] == "BAST.KZ"], [2018])
+        self.assertEqual(result.dataset.raw_totals.positions_by_key.get("|2020||KZ1C00001015"), Decimal("0"))
+        inferred_rows = [
+            row
+            for row in result.dataset.tables["Fifo"]
+            if row["symbol"] == "BAST.KZ" and row["_opening_lot_status"] == "broker_average_inferred_transfer_in"
+        ]
+        self.assertTrue(inferred_rows)
+        self.assertTrue(all(Decimal(row["enter_price"]) > 0 for row in inferred_rows))
+
     def test_bond_trades_keep_multiplier_one_and_coupons_follow_cash_in_out(self) -> None:
         import pandas as pd  # type: ignore
 

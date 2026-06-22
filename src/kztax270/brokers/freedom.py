@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -87,9 +87,9 @@ COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
     COL_PRICE: ("Price",),
     COL_CURRENCY: ("Currency",),
     COL_AMOUNT: ("Amount", "Sum"),
-    COL_REALIZED_PL: ("Realized P/L", "P/L", "P/L on closed trades", "P/L on Closed Trades"),
+    COL_REALIZED_PL: ("Прибыль", "Realized P/L", "P/L", "P/L on closed trades", "P/L on Closed Trades"),
     COL_COMMISSION: ("Commission",),
-    COL_TRADE_DATE: ("Trade Date", "Date_Time", "Date Time"),
+    COL_TRADE_DATE: ("Дата", "Trade Date", "Date_Time", "Date Time"),
     COL_ORDER_ID: ("Order ID", "OrderId", "Order Id", "Id/OrderId"),
     COL_TYPE: ("Type",),
     COL_DATE: ("Date",),
@@ -130,7 +130,13 @@ class FreedomParser:
 
     def discover_reports(self, raw_root: Path, account_id: str) -> list[BrokerReport]:
         reports = discover_raw_reports(raw_root, DiscoveryRule(broker=BROKER_CODE, account_id=account_id, extensions=frozenset({".xlsx", ".xls"})))
-        return [report for report in reports if not _is_ignored_freedom_report_path(report.path)]
+        result: list[BrokerReport] = []
+        for report in reports:
+            if _is_ignored_freedom_report_path(report.path):
+                continue
+            period_start, period_end = _period_from_filename(report.path.name)
+            result.append(replace(report, period_start=period_start, period_end=period_end))
+        return result
 
     def parse_reports(self, reports: Sequence[BrokerReport], account_id: str) -> ParseResult:
         parsed_reports = [parse_freedom_report(report.path, account_id=account_id) for report in reports]
@@ -170,6 +176,7 @@ def parse_freedom_report(path: Path, *, account_id: str | None = None) -> Parsed
 
         df = pd.read_excel(path, sheet_name=sheet_name)
         if df.empty:
+            parsed.rows.setdefault(section, [])
             continue
         df.columns = [str(column).strip() for column in df.columns]
         for row in df.dropna(how="all").to_dict("records"):
@@ -252,6 +259,7 @@ def build_canonical_dataset(
         transfer_totals_by_currency,
         fifo_source_trade_ids,
         fifo_rows,
+        dataset.tables["Positions"],
     )
     return dataset
 
@@ -266,6 +274,11 @@ def _period_from_filename(name: str) -> tuple[date | None, date | None]:
     matches = re.findall(r"(\d{4}-\d{2}-\d{2})", name)
     if len(matches) >= 2:
         return date.fromisoformat(matches[0]), date.fromisoformat(matches[1])
+    compact_matches = re.findall(r"(\d{4})_(\d{2})_(\d{2})", name)
+    if len(compact_matches) >= 2:
+        start = date(*(int(part) for part in compact_matches[0]))
+        end = date(*(int(part) for part in compact_matches[1]))
+        return start, end
     return None, None
 
 
@@ -1678,6 +1691,7 @@ def _populate_raw_totals(
     transfer_totals_by_currency: Mapping[str, Decimal],
     fifo_source_trade_ids: set[str],
     fifo_rows: Sequence[Mapping[str, Any]],
+    positions: Sequence[Mapping[str, Any]],
 ) -> None:
     gross_trades = Decimal("0")
     commissions = Decimal("0")
@@ -1723,7 +1737,7 @@ def _populate_raw_totals(
     )
     for currency, amount in transfer_totals_by_currency.items():
         totals.totals_by_metric_currency[_dimension_key(metric=ReconciliationMetric.TOTAL_DEPOSITS_WITHDRAWALS_TRANSFERS.value, currency=currency)] = amount
-    _populate_raw_positions(totals, reports)
+    _populate_raw_positions(totals, reports, positions)
     _populate_raw_cash(totals, reports)
 
 
@@ -1758,10 +1772,39 @@ def _populate_fifo_raw_pnl_totals(
         totals.totals_by_metric_currency[key] = totals.totals_by_metric_currency.get(key, Decimal("0")) + allocated_pl
 
 
-def _populate_raw_positions(totals: RawReportTotals, reports: Sequence[ParsedFreedomReport]) -> None:
-    for raw in _raw_position_records(reports, include_zero=True):
+def _populate_raw_positions(
+    totals: RawReportTotals,
+    reports: Sequence[ParsedFreedomReport],
+    positions: Sequence[Mapping[str, Any]],
+) -> None:
+    raw_records = _raw_position_records(reports, include_zero=True)
+    known_instrument_keys = {_position_identity_key(raw) for raw in raw_records}
+    known_instrument_keys |= {_position_identity_key(row) for row in positions}
+    known_instrument_keys.discard(None)
+    for raw in raw_records:
         key = _dimension_key(year=raw["year"], instrument_key=_position_identity_key(raw))
         totals.positions_by_key[key] = totals.positions_by_key.get(key, Decimal("0")) + raw["quantity"]
+    snapshot_years = _raw_position_snapshot_years(reports)
+    for year in snapshot_years:
+        for instrument_key in known_instrument_keys:
+            totals.positions_by_key.setdefault(_dimension_key(year=year, instrument_key=instrument_key), Decimal("0"))
+    for row in positions:
+        year = _int_or_none(row.get("year"))
+        if year not in snapshot_years:
+            continue
+        key = _dimension_key(year=year, instrument_key=_position_identity_key(row))
+        totals.positions_by_key.setdefault(key, Decimal("0"))
+
+
+def _raw_position_snapshot_years(reports: Sequence[ParsedFreedomReport]) -> set[int]:
+    years: set[int] = set()
+    for report in reports:
+        if SECTION_SECURITIES not in report.rows:
+            continue
+        year = _year_for_report(report)
+        if year is not None:
+            years.add(year)
+    return years
 
 
 def _populate_raw_cash(totals: RawReportTotals, reports: Sequence[ParsedFreedomReport]) -> None:
