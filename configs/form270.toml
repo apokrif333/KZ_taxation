@@ -1,6 +1,3 @@
-# Example config for:
-# .\.venv\Scripts\python.exe -m kztax270 run configs\accounts.example.toml
-
 [paths]
 processed_data = "data/processed"
 output_data = "data/output"
@@ -8,7 +5,7 @@ form270_template = "data/templates/270 new template.json"
 
 [form270]
 # tax_year filters rows in processed Excel workbooks.
-tax_year = 2024
+tax_year = 2023
 joint_account = false
 civ_servant = false
 phone = "+7 (707) 878-71-33"
@@ -29,7 +26,7 @@ fio2 = "Алексей"
 fio3 = "Михайлович"
 iin = "930113399037"
 
-# Joint account example:
+# Для совместного счета раскомментируй/добавь отдельную форму такого вида:
 #
 # [[form270.forms]]
 # broker = "ib"
@@ -43,3 +40,7 @@ iin = "930113399037"
 # second_fio2 = "Имя2"
 # second_fio3 = "Отчество2"
 # second_iin = "000000000002"
+#
+# Для госслужащих добавь civ_servant = true в конкретную форму.
+# Для брокера/банка с остатком на иностранном денежном счете добавь bank_code,
+# bank_name, bank_country в конкретную форму либо секцию [form270.banks.<broker>].

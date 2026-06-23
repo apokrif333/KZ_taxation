@@ -3263,6 +3263,9 @@ def _populate_raw_totals(
         for row in report.rows.get(IB_SECTION_POSITIONS, []):
             if row.get("DataDiscriminator") and row.get("DataDiscriminator") != "Summary":
                 continue
+            asset_type = _string_or_none(row.get("Asset Category"))
+            if _is_cash_position_asset(asset_type):
+                continue
             raw_symbol = _string_or_none(row.get("Symbol"))
             normalized_symbol = _normalize_position_symbol(raw_symbol)
             instrument = _lookup_instrument(instrument_lookup, normalized_symbol or raw_symbol, year) or {}
@@ -3273,6 +3276,8 @@ def _populate_raw_totals(
         for row in report.rows.get(IB_SECTION_MTM, []):
             asset_type = _string_or_none(row.get("Asset Category"))
             if not asset_type or asset_type.startswith("Total"):
+                continue
+            if _is_cash_position_asset(asset_type):
                 continue
             raw_symbol = _string_or_none(row.get("Symbol"))
             normalized_symbol = _normalize_position_symbol(raw_symbol)
@@ -3323,6 +3328,10 @@ def _normalize_position_symbol(symbol: str | None) -> str | None:
     if not symbol:
         return None
     return symbol.split(" - ", 1)[0].strip()
+
+
+def _is_cash_position_asset(asset_type: str | None) -> bool:
+    return str(asset_type or "").strip().lower() in {"cash", "forex"}
 
 
 def _is_total_amount_row(row: Mapping[str, Any]) -> bool:

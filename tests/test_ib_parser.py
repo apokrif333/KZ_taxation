@@ -178,6 +178,8 @@ Trades,Data,Order,Forex,USD,EUR.USD,"2024-02-10, 10:00:00",-50,1.2,,60,-1,,,7,
 Cash Report,Header,Currency Summary,Currency,Total,Securities,Futures,
 Cash Report,Data,Ending Cash,USD,0,0,0,
 Open Positions,Header,DataDiscriminator,Asset Category,Currency,Symbol,Quantity,Mult,Cost Price,Cost Basis,Close Price,Value,Unrealized P/L,Code
+Mark-to-Market Performance Summary,Header,Asset Category,Symbol,Prior Quantity,Current Quantity,Prior Price,Current Price,Mark-to-Market P/L Position,Mark-to-Market P/L Transaction,Mark-to-Market P/L Commissions,Mark-to-Market P/L Other,Mark-to-Market P/L Total,Code
+Mark-to-Market Performance Summary,Data,Forex,USD,0,-393.401880703,1.0000,1.0000,0,0,0,0,0,
 Realized & Unrealized Performance Summary,Header,Asset Category,Symbol,Cost Adj.,Realized S/T Profit,Realized S/T Loss,Realized L/T Profit,Realized L/T Loss,Realized Total,Unrealized S/T Profit,Unrealized S/T Loss,Unrealized L/T Profit,Unrealized L/T Loss,Unrealized Total,Total,Code
 Realized & Unrealized Performance Summary,Data,Forex,EUR.USD,0,10,0,0,0,10,0,0,0,0,0,10,
 """
@@ -775,6 +777,14 @@ class InteractiveBrokersParserTests(unittest.TestCase):
         self.assertEqual(fx_fifo_rows[1]["pnl_before_commission"], "7")
         self.assertEqual(fx_fifo_rows[1]["pnl_after_all_commissions"], "6")
         self.assertEqual(fx_fifo_rows[1]["pnl"], "6")
+        reconciliation = ReconciliationEngine().reconcile_dataset(fx_result.dataset)
+        position_errors = [
+            item
+            for item in reconciliation
+            if item.metric == ReconciliationMetric.ENDING_POSITION_QUANTITY
+            and item.severity == ReconciliationSeverity.ERROR
+        ]
+        self.assertEqual(position_errors, [])
 
         with tempfile.TemporaryDirectory() as tmp:
             raw_root = Path(tmp) / "raw"

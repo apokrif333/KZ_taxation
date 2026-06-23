@@ -1,0 +1,1732 @@
+[
+    {
+        "id": 5,
+        "code": "AUD",
+        "nameRu": "\u0410\u0432\u0441\u0442\u0440\u0430\u043b\u0438\u0439\u0441\u043a\u0438\u0439 \u0434\u043e\u043b\u043b\u0430\u0440",
+        "nameKk": "\u0410\u0432\u0441\u0442\u0440\u0430\u043b\u0438\u0439\u0441\u043a\u0438\u0439 \u0434\u043e\u043b\u043b\u0430\u0440",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 177,
+        "code": "AZN",
+        "nameRu": "\u0410\u0437\u0435\u0440\u0431\u0430\u0439\u0434\u0436\u0430\u043d\u0441\u043a\u0438\u0439 \u043c\u0430\u043d\u0430\u0442",
+        "nameKk": "\u0410\u0437\u0435\u0440\u0431\u0430\u0439\u0434\u0436\u0430\u043d\u0441\u043a\u0438\u0439 \u043c\u0430\u043d\u0430\u0442",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 2,
+        "code": "DZD",
+        "nameRu": "\u0410\u043b\u0436\u0438\u0440\u0441\u043a\u0438\u0439 \u0434\u0438\u043d\u0430\u0440",
+        "nameKk": "\u0410\u043b\u0436\u0438\u0440\u0441\u043a\u0438\u0439 \u0434\u0438\u043d\u0430\u0440",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 4,
+        "code": "ARS",
+        "nameRu": "\u0410\u0440\u0433\u0435\u043d\u0442\u0438\u043d\u0441\u043a\u043e\u0435 \u043f\u0435\u0441\u043e",
+        "nameKk": "\u0410\u0440\u0433\u0435\u043d\u0442\u0438\u043d\u0441\u043a\u043e\u0435 \u043f\u0435\u0441\u043e",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 9,
+        "code": "AMD",
+        "nameRu": "\u0410\u0440\u043c\u044f\u043d\u0441\u043a\u0438\u0439 \u0434\u0440\u0430\u043c",
+        "nameKk": "\u0410\u0440\u043c\u044f\u043d\u0441\u043a\u0438\u0439 \u0434\u0440\u0430\u043c",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 92,
+        "code": "AWG",
+        "nameRu": "\u0410\u0440\u0443\u0431\u0430\u043d\u0441\u043a\u0438\u0439 \u0444\u043b\u043e\u0440\u0438\u043d",
+        "nameKk": "\u0410\u0440\u0443\u0431\u0430\u043d\u0441\u043a\u0438\u0439 \u0433\u0443\u043b\u044c\u0434\u0435\u043d",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 159,
+        "code": "AFN",
+        "nameRu": "\u0410\u0444\u0433\u0430\u043d\u0438",
+        "nameKk": "\u0410\u0444\u0433\u0430\u043d\u0438",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 6,
+        "code": "BSD",
+        "nameRu": "\u0411\u0430\u0433\u0430\u043c\u0441\u043a\u0438\u0439 \u0434\u043e\u043b\u043b\u0430\u0440",
+        "nameKk": "\u0411\u0430\u0433\u0430\u043c\u0441\u043a\u0438\u0439 \u0434\u043e\u043b\u043b\u0430\u0440",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 99,
+        "code": "PAB",
+        "nameRu": "\u0411\u0430\u043b\u044c\u0431\u043e\u0430",
+        "nameKk": "\u0411\u0430\u043b\u044c\u0431\u043e\u0430",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 10,
+        "code": "BBD",
+        "nameRu": "\u0411\u0430\u0440\u0431\u0430\u0434\u043e\u0441\u0441\u043a\u0438\u0439 \u0434\u043e\u043b\u043b\u0430\u0440",
+        "nameKk": "\u0411\u0430\u0440\u0431\u0430\u0434\u043e\u0441\u0441\u043a\u0438\u0439 \u0434\u043e\u043b\u043b\u0430\u0440",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 126,
+        "code": "THB",
+        "nameRu": "\u0411\u0430\u0442",
+        "nameKk": "\u0411\u0430\u0442",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 7,
+        "code": "BHD",
+        "nameRu": "\u0411\u0430\u0445\u0440\u0435\u0439\u043d\u0441\u043a\u0438\u0439 \u0434\u0438\u043d\u0430\u0440",
+        "nameKk": "\u0411\u0430\u0445\u0440\u0435\u0439\u043d\u0441\u043a\u0438\u0439 \u0434\u0438\u043d\u0430\u0440",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 15,
+        "code": "BZD",
+        "nameRu": "\u0411\u0435\u043b\u0438\u0437\u0441\u043a\u0438\u0439 \u0434\u043e\u043b\u043b\u0430\u0440",
+        "nameKk": "\u0411\u0435\u043b\u0438\u0437\u0441\u043a\u0438\u0439 \u0434\u043e\u043b\u043b\u0430\u0440",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 162,
+        "code": "BYR",
+        "nameRu": "\u0411\u0435\u043b\u043e\u0440\u0443\u0441\u0441\u043a\u0438\u0439 \u0440\u0443\u0431\u043b\u044c",
+        "nameKk": "\u0411\u0435\u043b\u043e\u0440\u0443\u0441\u0441\u043a\u0438\u0439 \u0440\u0443\u0431\u043b\u044c",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 23159,
+        "code": "BYN",
+        "nameRu": "\u0411\u0435\u043b\u043e\u0440\u0443\u0441\u0441\u043a\u0438\u0439 \u0440\u0443\u0431\u043b\u044c",
+        "nameKk": "\u0411\u0435\u043b\u043e\u0440\u0443\u0441\u0441\u043a\u0438\u0439 \u0440\u0443\u0431\u043b\u044c",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 11,
+        "code": "BMD",
+        "nameRu": "\u0411\u0435\u0440\u043c\u0443\u0434\u0441\u043a\u0438\u0439 \u0434\u043e\u043b\u043b\u0430\u0440",
+        "nameKk": "\u0411\u0435\u0440\u043c\u0443\u0434\u0441\u043a\u0438\u0439 \u0434\u043e\u043b\u043b\u0430\u0440",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 163,
+        "code": "BGN",
+        "nameRu": "\u0411\u043e\u043b\u0433\u0430\u0440\u0441\u043a\u0438\u0439 \u043b\u0435\u0432",
+        "nameKk": "\u0411\u043e\u043b\u0433\u0430\u0440\u0441\u043a\u0438\u0439 \u043b\u0435\u0432",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 172,
+        "code": "VEF",
+        "nameRu": "\u0411\u043e\u043b\u0438\u0432\u0430\u0440",
+        "nameKk": "\u0411\u043e\u043b\u0438\u0432\u0430\u0440 \u0444\u0443\u044d\u0440\u0442\u0435",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 37057,
+        "code": "VES",
+        "nameRu": "\u0411\u043e\u043b\u0438\u0432\u0430\u0440 \u0421\u043e\u0431\u0435\u0440\u0430\u043d\u043e",
+        "nameKk": "\u0411\u043e\u043b\u0438\u0432\u0430\u0440 \u0421\u043e\u0431\u0435\u0440\u0430\u043d\u043e",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 13,
+        "code": "BOB",
+        "nameRu": "\u0411\u043e\u043b\u0438\u0432\u0438\u0430\u043d\u043e",
+        "nameKk": "\u0411\u043e\u043b\u0438\u0432\u0438\u0430\u043d\u043e",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 170,
+        "code": "BRL",
+        "nameRu": "\u0411\u0440\u0430\u0437\u0438\u043b\u044c\u0441\u043a\u0438\u0439 \u0440\u0435\u0430\u043b",
+        "nameKk": "\u0411\u0440\u0430\u0437\u0438\u043b\u044c\u0441\u043a\u0438\u0439 \u0440\u0435\u0430\u043b",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 17,
+        "code": "BND",
+        "nameRu": "\u0411\u0440\u0443\u043d\u0435\u0439\u0441\u043a\u0438\u0439 \u0434\u043e\u043b\u043b\u0430\u0440",
+        "nameKk": "\u0411\u0440\u0443\u043d\u0435\u0439\u0441\u043a\u0438\u0439 \u0434\u043e\u043b\u043b\u0430\u0440",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 19,
+        "code": "BIF",
+        "nameRu": "\u0411\u0443\u0440\u0443\u043d\u0434\u0438\u0439\u0441\u043a\u0438\u0439 \u0444\u0440\u0430\u043d\u043a",
+        "nameKk": "\u0411\u0443\u0440\u0443\u043d\u0434\u0438\u0439\u0441\u043a\u0438\u0439 \u0444\u0440\u0430\u043d\u043a",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 93,
+        "code": "VUV",
+        "nameRu": "\u0412\u0430\u0442\u0443",
+        "nameKk": "\u0412\u0430\u0442\u0443",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 65,
+        "code": "KRW",
+        "nameRu": "\u0412\u043e\u043d\u0430",
+        "nameKk": "\u0412\u043e\u043d\u0430",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 152,
+        "code": "XCD",
+        "nameRu": "\u0412\u043e\u0441\u0442\u043e\u0447\u043d\u043e-\u043a\u0430\u0440\u0438\u0431\u0441\u043a\u0438\u0439 \u0434\u043e\u043b\u043b\u0430\u0440",
+        "nameKk": "\u0412\u043e\u0441\u0442\u043e\u0447\u043d\u043e-\u043a\u0430\u0440\u0438\u0431\u0441\u043a\u0438\u0439 \u0434\u043e\u043b\u043b\u0430\u0440",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 48,
+        "code": "GYD",
+        "nameRu": "\u0413\u0430\u0439\u0430\u043d\u0441\u043a\u0438\u0439 \u0434\u043e\u043b\u043b\u0430\u0440",
+        "nameKk": "\u0413\u0430\u0439\u0430\u043d\u0441\u043a\u0438\u0439 \u0434\u043e\u043b\u043b\u0430\u0440",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 171,
+        "code": "GHS",
+        "nameRu": "\u0413\u0430\u043d\u0441\u043a\u0438\u0439 \u0441\u0435\u0434\u0438",
+        "nameKk": "\u0421\u0435\u0434\u0438",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 47,
+        "code": "GNF",
+        "nameRu": "\u0413\u0432\u0438\u043d\u0435\u0439\u0441\u043a\u0438\u0439 \u0444\u0440\u0430\u043d\u043a",
+        "nameKk": "\u0413\u0432\u0438\u043d\u0435\u0439\u0441\u043a\u0438\u0439 \u0444\u0440\u0430\u043d\u043a",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 45,
+        "code": "GIP",
+        "nameRu": "\u0413\u0438\u0431\u0440\u0430\u043b\u0442\u0430\u0440\u0441\u043a\u0438\u0439 \u0444\u0443\u043d\u0442",
+        "nameKk": "\u0413\u0438\u0431\u0440\u0430\u043b\u0442\u0430\u0440\u0441\u043a\u0438\u0439 \u0444\u0443\u043d\u0442",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 51,
+        "code": "HKD",
+        "nameRu": "\u0413\u043e\u043d\u043a\u043e\u043d\u0433\u0441\u043a\u0438\u0439 \u0434\u043e\u043b\u043b\u0430\u0440",
+        "nameKk": "\u0413\u043e\u043d\u043a\u043e\u043d\u0433\u0441\u043a\u0438\u0439 \u0434\u043e\u043b\u043b\u0430\u0440",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 167,
+        "code": "UAH",
+        "nameRu": "\u0413\u0440\u0438\u0432\u043d\u0430",
+        "nameKk": "\u0413\u0440\u0438\u0432\u043d\u0430",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 101,
+        "code": "PYG",
+        "nameRu": "\u0413\u0443\u0430\u0440\u0430\u043d\u0438",
+        "nameKk": "\u0413\u0443\u0430\u0440\u0430\u043d\u0438",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 49,
+        "code": "HTG",
+        "nameRu": "\u0413\u0443\u0440\u0434",
+        "nameKk": "\u0413\u0443\u0440\u0434",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 43,
+        "code": "GMD",
+        "nameRu": "\u0414\u0430\u043b\u0430\u0441\u0438",
+        "nameKk": "\u0414\u0430\u043b\u0430\u0441\u0438",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 34,
+        "code": "DKK",
+        "nameRu": "\u0414\u0430\u0442\u0441\u043a\u0430\u044f \u043a\u0440\u043e\u043d\u0430",
+        "nameKk": "\u0414\u0430\u0442\u0441\u043a\u0430\u044f \u043a\u0440\u043e\u043d\u0430",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 134,
+        "code": "MKD",
+        "nameRu": "\u0414\u0435\u043d\u0430\u0440",
+        "nameKk": "\u0414\u0438\u043d\u0430\u0440",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 129,
+        "code": "AED",
+        "nameRu": "\u0414\u0438\u0440\u0445\u0430\u043c (\u041e\u0410\u042d)",
+        "nameKk": "\u0414\u0438\u0440\u0445\u0430\u043c (\u041e\u0410\u042d)",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 110,
+        "code": "STD",
+        "nameRu": "\u0414\u043e\u0431\u0440\u0430",
+        "nameKk": "\u0414\u043e\u0431\u0440\u0430",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 33278,
+        "code": "STN",
+        "nameRu": "\u0414\u043e\u0431\u0440\u0430",
+        "nameKk": "\u0414\u043e\u0431\u0440\u0430",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 188,
+        "code": "ZWL",
+        "nameRu": "\u0414\u043e\u043b\u043b\u0430\u0440 \u0417\u0438\u043c\u0431\u0430\u0431\u0432\u0435",
+        "nameKk": "\u0414\u043e\u043b\u043b\u0430\u0440 \u0417\u0438\u043c\u0431\u0430\u0431\u0432\u0435",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 89,
+        "code": "NAD",
+        "nameRu": "\u0414\u043e\u043b\u043b\u0430\u0440 \u041d\u0430\u043c\u0438\u0431\u0438\u0438",
+        "nameKk": "\u0414\u043e\u043b\u043b\u0430\u0440 \u041d\u0430\u043c\u0438\u0431\u0438\u0438",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 23,
+        "code": "KYD",
+        "nameRu": "\u0414\u043e\u043b\u043b\u0430\u0440 \u041e\u0441\u0442\u0440\u043e\u0432\u043e\u0432 \u041a\u0430\u0439\u043c\u0430\u043d",
+        "nameKk": "\u0414\u043e\u043b\u043b\u0430\u0440 \u041e\u0441\u0442\u0440\u043e\u0432\u043e\u0432 \u041a\u0430\u0439\u043c\u0430\u043d",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 195,
+        "code": "USN",
+        "nameRu": "\u0414\u043e\u043b\u043b\u0430\u0440 \u0441\u043b\u0435\u0434\u0443\u044e\u0449\u0435\u0433\u043e \u0434\u043d\u044f",
+        "nameKk": "\u0414\u043e\u043b\u043b\u0430\u0440 \u0441\u043b\u0435\u0434\u0443\u044e\u0449\u0435\u0433\u043e \u0434\u043d\u044f",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 16,
+        "code": "SBD",
+        "nameRu": "\u0414\u043e\u043b\u043b\u0430\u0440 \u0421\u043e\u043b\u043e\u043c\u043e\u043d\u043e\u0432\u044b\u0445 \u041e\u0441\u0442\u0440\u043e\u0432\u043e\u0432",
+        "nameKk": "\u0414\u043e\u043b\u043b\u0430\u0440 \u0421\u043e\u043b\u043e\u043c\u043e\u043d\u043e\u0432\u044b\u0445 \u041e\u0441\u0442\u0440\u043e\u0432\u043e\u0432",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 139,
+        "code": "USD",
+        "nameRu": "\u0414\u043e\u043b\u043b\u0430\u0440 \u0421\u0428\u0410",
+        "nameKk": "\u0414\u043e\u043b\u043b\u0430\u0440 \u0421\u0428\u0410",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 128,
+        "code": "TTD",
+        "nameRu": "\u0414\u043e\u043b\u043b\u0430\u0440 \u0422\u0440\u0438\u043d\u0438\u0434\u0430\u0434\u0430 \u0438 \u0422\u043e\u0431\u0430\u0433\u043e",
+        "nameKk": "\u0414\u043e\u043b\u043b\u0430\u0440 \u0422\u0440\u0438\u043d\u0438\u0434\u0430\u0434\u0430 \u0438 \u0422\u043e\u0431\u0430\u0433\u043e",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 41,
+        "code": "FJD",
+        "nameRu": "\u0414\u043e\u043b\u043b\u0430\u0440 \u0424\u0438\u0434\u0436\u0438",
+        "nameKk": "\u0414\u043e\u043b\u043b\u0430\u0440 \u0424\u0438\u0434\u0436\u0438",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 35,
+        "code": "DOP",
+        "nameRu": "\u0414\u043e\u043c\u0438\u043d\u0438\u043a\u0430\u043d\u0441\u043a\u043e\u0435 \u043f\u0435\u0441\u043e",
+        "nameKk": "\u0414\u043e\u043c\u0438\u043d\u0438\u043a\u0430\u043d\u0441\u043a\u043e\u0435 \u043f\u0435\u0441\u043e",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 116,
+        "code": "VND",
+        "nameRu": "\u0414\u043e\u043d\u0433",
+        "nameKk": "\u0414\u043e\u043d\u0433",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 166,
+        "code": "EUR",
+        "nameRu": "\u0415\u0432\u0440\u043e",
+        "nameKk": "\u0415\u0432\u0440\u043e",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 136,
+        "code": "EGP",
+        "nameRu": "\u0415\u0433\u0438\u043f\u0435\u0442\u0441\u043a\u0438\u0439 \u0444\u0443\u043d\u0442",
+        "nameKk": "\u0415\u0433\u0438\u043f\u0435\u0442\u0441\u043a\u0438\u0439 \u0444\u0443\u043d\u0442",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 193,
+        "code": "CLF",
+        "nameRu": "\u0415\u0434\u0438\u043d\u0438\u0446\u0430 \u0440\u0430\u0437\u0432\u0438\u0442\u0438\u044f",
+        "nameKk": "\u0415\u0434\u0438\u043d\u0438\u0446\u0430 \u0440\u0430\u0437\u0432\u0438\u0442\u0438\u044f",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 158,
+        "code": "COU",
+        "nameRu": "\u0415\u0434\u0438\u043d\u0438\u0446\u0430 \u0440\u0435\u0430\u043b\u044c\u043d\u043e\u0439 \u0441\u0442\u043e\u0438\u043c\u043e\u0441\u0442\u0438",
+        "nameKk": "\u0415\u0434\u0438\u043d\u0438\u0446\u0430 \u0440\u0435\u0430\u043b\u044c\u043d\u043e\u0439 \u0441\u0442\u043e\u0438\u043c\u043e\u0441\u0442\u0438",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 3625,
+        "code": "ZMW",
+        "nameRu": "\u0417\u0430\u043c\u0431\u0438\u0439\u0441\u043a\u0430\u044f \u043a\u0432\u0430\u0447\u0430",
+        "nameKk": "\u0417\u0430\u043c\u0431\u0438\u0439\u0441\u043a\u0430\u044f \u043a\u0432\u0430\u0447\u0430",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 145,
+        "code": "ZMK",
+        "nameRu": "\u0417\u0430\u043c\u0431\u0438\u0439\u0441\u043a\u0430\u044f \u043a\u0432\u0430\u0447\u0430",
+        "nameKk": "\u041a\u0432\u0430\u0447\u0430",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 169,
+        "code": "PLN",
+        "nameRu": "\u0417\u043b\u043e\u0442\u044b\u0439",
+        "nameKk": "\u0417\u043b\u043e\u0442\u044b\u0439",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 95,
+        "code": "NIO",
+        "nameRu": "\u0417\u043e\u043b\u043e\u0442\u0430\u044f \u043a\u043e\u0440\u0434\u043e\u0431\u0430",
+        "nameKk": "\u0417\u043e\u043b\u043e\u0442\u0430\u044f \u043a\u043e\u0440\u0434\u043e\u0431\u0430",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 60,
+        "code": "JPY",
+        "nameRu": "\u0418\u0435\u043d\u0430",
+        "nameKk": "\u0419\u0435\u043d\u0430",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 54,
+        "code": "INR",
+        "nameRu": "\u0418\u043d\u0434\u0438\u0439\u0441\u043a\u0430\u044f \u0440\u0443\u043f\u0438\u044f",
+        "nameKk": "\u0418\u043d\u0434\u0438\u0439\u0441\u043a\u0430\u044f \u0440\u0443\u043f\u0438\u044f",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 62,
+        "code": "JOD",
+        "nameRu": "\u0418\u043e\u0440\u0434\u0430\u043d\u0441\u043a\u0438\u0439 \u0434\u0438\u043d\u0430\u0440",
+        "nameKk": "\u0418\u043e\u0440\u0434\u0430\u043d\u0441\u043a\u0438\u0439 \u0434\u0438\u043d\u0430\u0440",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 57,
+        "code": "IQD",
+        "nameRu": "\u0418\u0440\u0430\u043a\u0441\u043a\u0438\u0439 \u0434\u0438\u043d\u0430\u0440",
+        "nameKk": "\u0418\u0440\u0430\u043a\u0441\u043a\u0438\u0439 \u0434\u0438\u043d\u0430\u0440",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 56,
+        "code": "IRR",
+        "nameRu": "\u0418\u0440\u0430\u043d\u0441\u043a\u0438\u0439 \u0440\u0438\u0430\u043b",
+        "nameKk": "\u0418\u0440\u0430\u043d\u0441\u043a\u0438\u0439 \u0440\u0438\u0430\u043b",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 53,
+        "code": "ISK",
+        "nameRu": "\u0418\u0441\u043b\u0430\u043d\u0434\u0441\u043a\u0430\u044f \u043a\u0440\u043e\u043d\u0430",
+        "nameKk": "\u0418\u0441\u043b\u0430\u043d\u0434\u0441\u043a\u0430\u044f \u043a\u0440\u043e\u043d\u0430",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 144,
+        "code": "YER",
+        "nameRu": "\u0419\u0435\u043c\u0435\u043d\u0441\u043a\u0438\u0439 \u0440\u0438\u0430\u043b",
+        "nameKk": "\u0419\u0435\u043c\u0435\u043d\u0441\u043a\u0438\u0439 \u0440\u0438\u0430\u043b",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 21,
+        "code": "CAD",
+        "nameRu": "\u041a\u0430\u043d\u0430\u0434\u0441\u043a\u0438\u0439 \u0434\u043e\u043b\u043b\u0430\u0440",
+        "nameKk": "\u041a\u0430\u043d\u0430\u0434\u0441\u043a\u0438\u0439 \u0434\u043e\u043b\u043b\u0430\u0440",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 105,
+        "code": "QAR",
+        "nameRu": "\u041a\u0430\u0442\u0430\u0440\u0441\u043a\u0438\u0439 \u0440\u0438\u0430\u043b",
+        "nameKk": "\u041a\u0430\u0442\u0430\u0440\u0441\u043a\u0438\u0439 \u0440\u0438\u0430\u043b",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 161,
+        "code": "AOA",
+        "nameRu": "\u041a\u0432\u0430\u043d\u0437\u0430",
+        "nameKk": "\u041a\u0432\u0430\u043d\u0437\u0430",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 63,
+        "code": "KES",
+        "nameRu": "\u041a\u0435\u043d\u0438\u0439\u0441\u043a\u0438\u0439 \u0448\u0438\u043b\u043b\u0438\u043d\u0433",
+        "nameKk": "\u041a\u0435\u043d\u0438\u0439\u0441\u043a\u0438\u0439 \u0448\u0438\u043b\u043b\u0438\u043d\u0433",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 46,
+        "code": "GTQ",
+        "nameRu": "\u041a\u0435\u0442\u0441\u0430\u043b\u044c",
+        "nameKk": "\u041a\u0435\u0442\u0441\u0430\u043b\u044c",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 100,
+        "code": "PGK",
+        "nameRu": "\u041a\u0438\u043d\u0430",
+        "nameKk": "\u041a\u0438\u043d\u0430",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 27,
+        "code": "COP",
+        "nameRu": "\u041a\u043e\u043b\u0443\u043c\u0431\u0438\u0439\u0441\u043a\u043e\u0435 \u043f\u0435\u0441\u043e",
+        "nameKk": "\u041a\u043e\u043b\u0443\u043c\u0431\u0438\u0439\u0441\u043a\u043e\u0435 \u043f\u0435\u0441\u043e",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 28,
+        "code": "KMF",
+        "nameRu": "\u041a\u043e\u043c\u043e\u0440\u0441\u043a\u0438\u0439 \u0444\u0440\u0430\u043d\u043a",
+        "nameKk": "\u0424\u0440\u0430\u043d\u043a \u041a\u043e\u043c\u043e\u0440",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 165,
+        "code": "BAM",
+        "nameRu": "\u041a\u043e\u043d\u0432\u0435\u0440\u0442\u0438\u0440\u0443\u0435\u043c\u0430\u044f \u043c\u0430\u0440\u043a\u0430",
+        "nameKk": "\u041a\u043e\u043d\u0432\u0435\u0440\u0442\u0438\u0440\u0443\u0435\u043c\u0430\u044f \u043c\u0430\u0440\u043a\u0430",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 187,
+        "code": "CUC",
+        "nameRu": "\u041a\u043e\u043d\u0432\u0435\u0440\u0442\u0438\u0440\u0443\u0435\u043c\u043e\u0435 \u043f\u0435\u0441\u043e",
+        "nameKk": "\u041a\u043e\u043d\u0432\u0435\u0440\u0442\u0438\u0440\u0443\u0435\u043c\u043e\u0435 \u043f\u0435\u0441\u043e",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 164,
+        "code": "CDF",
+        "nameRu": "\u041a\u043e\u043d\u0433\u043e\u043b\u0435\u0437\u0441\u043a\u0438\u0439 \u0444\u0440\u0430\u043d\u043a",
+        "nameKk": "\u041a\u043e\u043d\u0433\u043e\u043b\u0435\u0437\u0441\u043a\u0438\u0439 \u0444\u0440\u0430\u043d\u043a",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 29,
+        "code": "CRC",
+        "nameRu": "\u041a\u043e\u0441\u0442\u0430-\u0440\u0438\u043a\u0430\u043d\u0441\u043a\u0438\u0439 \u043a\u043e\u043b\u043e\u043d",
+        "nameKk": "\u041a\u043e\u0441\u0442\u0430\u0440\u0438\u043a\u0430\u043d\u0441\u043a\u0438\u0439 \u043a\u043e\u043b\u043e\u043d",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 31,
+        "code": "CUP",
+        "nameRu": "\u041a\u0443\u0431\u0438\u043d\u0441\u043a\u043e\u0435 \u043f\u0435\u0441\u043e",
+        "nameKk": "\u041a\u0443\u0431\u0438\u043d\u0441\u043a\u043e\u0435 \u043f\u0435\u0441\u043e",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 66,
+        "code": "KWD",
+        "nameRu": "\u041a\u0443\u0432\u0435\u0439\u0442\u0441\u043a\u0438\u0439 \u0434\u0438\u043d\u0430\u0440",
+        "nameKk": "\u041a\u0443\u0432\u0435\u0439\u0442\u0441\u043a\u0438\u0439 \u0434\u0438\u043d\u0430\u0440",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 30,
+        "code": "HRK",
+        "nameRu": "\u041a\u0443\u043d\u0430",
+        "nameKk": "\u0425\u043e\u0440\u0432\u0430\u0442\u0441\u043a\u0430\u044f \u043a\u0443\u043d\u0430",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 18,
+        "code": "MMK",
+        "nameRu": "\u041a\u044c\u044f\u0442",
+        "nameKk": "\u041a\u044c\u044f\u0442",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 68,
+        "code": "LAK",
+        "nameRu": "\u041b\u0430\u043e\u0441\u0441\u043a\u0438\u0439 \u043a\u0438\u043f",
+        "nameKk": "\u041a\u0438\u043f",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 168,
+        "code": "GEL",
+        "nameRu": "\u041b\u0430\u0440\u0438",
+        "nameKk": "\u041b\u0430\u0440\u0438",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 71,
+        "code": "LVL",
+        "nameRu": "\u041b\u0430\u0442\u0432\u0438\u0439\u0441\u043a\u0438\u0439 \u043b\u0430\u0442",
+        "nameKk": "\u041b\u0430\u0442\u0432\u0438\u0439\u0441\u043a\u0438\u0439 \u043b\u0430\u0442",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 1,
+        "code": "ALL",
+        "nameRu": "\u041b\u0435\u043a",
+        "nameKk": "\u041b\u0435\u043a",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 50,
+        "code": "HNL",
+        "nameRu": "\u041b\u0435\u043c\u043f\u0438\u0440\u0430",
+        "nameKk": "\u041b\u0435\u043c\u043f\u0438\u0440\u0430",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 113,
+        "code": "SLL",
+        "nameRu": "\u041b\u0435\u043e\u043d\u0435",
+        "nameKk": "\u041b\u0435\u043e\u043d\u0435",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 72,
+        "code": "LRD",
+        "nameRu": "\u041b\u0438\u0431\u0435\u0440\u0438\u0439\u0441\u043a\u0438\u0439 \u0434\u043e\u043b\u043b\u0430\u0440",
+        "nameKk": "\u041b\u0438\u0431\u0435\u0440\u0438\u0439\u0441\u043a\u0438\u0439 \u0434\u043e\u043b\u043b\u0430\u0440",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 69,
+        "code": "LBP",
+        "nameRu": "\u041b\u0438\u0432\u0430\u043d\u0441\u043a\u0438\u0439 \u0444\u0443\u043d\u0442",
+        "nameKk": "\u041b\u0438\u0432\u0430\u043d\u0441\u043a\u0438\u0439 \u0444\u0443\u043d\u0442",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 73,
+        "code": "LYD",
+        "nameRu": "\u041b\u0438\u0432\u0438\u0439\u0441\u043a\u0438\u0439 \u0434\u0438\u043d\u0430\u0440",
+        "nameKk": "\u041b\u0438\u0432\u0438\u0439\u0441\u043a\u0438\u0439 \u0434\u0438\u043d\u0430\u0440",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 122,
+        "code": "SZL",
+        "nameRu": "\u041b\u0438\u043b\u0430\u043d\u0433\u0435\u043d\u0438",
+        "nameKk": "\u041b\u0438\u043b\u0430\u043d\u0433\u0435\u043d\u0438",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 74,
+        "code": "LTL",
+        "nameRu": "\u041b\u0438\u0442\u043e\u0432\u0441\u043a\u0438\u0439 \u043b\u0438\u0442",
+        "nameKk": "\u041b\u0438\u0442\u043e\u0432\u0441\u043a\u0438\u0439 \u043b\u0438\u0442",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 70,
+        "code": "LSL",
+        "nameRu": "\u041b\u043e\u0442\u0438",
+        "nameKk": "\u041b\u043e\u0442\u0438",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 82,
+        "code": "MUR",
+        "nameRu": "\u041c\u0430\u0432\u0440\u0438\u043a\u0438\u0439\u0441\u043a\u0430\u044f \u0440\u0443\u043f\u0438\u044f",
+        "nameKk": "\u041c\u0430\u0432\u0440\u0438\u043a\u0438\u0439\u0441\u043a\u0430\u044f \u0440\u0443\u043f\u0438\u044f",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 77,
+        "code": "MWK",
+        "nameRu": "\u041c\u0430\u043b\u0430\u0432\u0438\u0439\u0441\u043a\u0430\u044f \u043a\u0432\u0430\u0447\u0430",
+        "nameKk": "\u041a\u0432\u0430\u0447\u0430",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 157,
+        "code": "MGA",
+        "nameRu": "\u041c\u0430\u043b\u0430\u0433\u0430\u0441\u0438\u0439\u0441\u043a\u0438\u0439 \u0430\u0440\u0438\u0430\u0440\u0438",
+        "nameKk": "\u041c\u0430\u043b\u0430\u0433\u0430\u0441\u0438\u0439\u0441\u043a\u0438\u0439 \u0430\u0440\u0438\u0430\u0440\u0438",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 61,
+        "code": "MYR",
+        "nameRu": "\u041c\u0430\u043b\u0430\u0439\u0437\u0438\u0439\u0441\u043a\u0438\u0439 \u0440\u0438\u043d\u0433\u0433\u0438\u0442",
+        "nameKk": "\u041c\u0430\u043b\u0430\u0439\u0437\u0438\u0439\u0441\u043a\u0438\u0439 \u0440\u0438\u043d\u0433\u0433\u0438\u0442",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 86,
+        "code": "MAD",
+        "nameRu": "\u041c\u0430\u0440\u043e\u043a\u043a\u0430\u043d\u0441\u043a\u0438\u0439 \u0434\u0438\u0440\u0445\u0430\u043c",
+        "nameKk": "\u041c\u0430\u0440\u043e\u043a\u043a\u0430\u043d\u0441\u043a\u0438\u0439 \u0434\u0438\u0440\u0445\u0430\u043c",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 192,
+        "code": "BOV",
+        "nameRu": "\u041c\u0432\u0434\u043e\u043b",
+        "nameKk": "\u041c\u0432\u0434\u043e\u043b",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 191,
+        "code": "MXV",
+        "nameRu": "\u041c\u0435\u043a\u0441\u0438\u043a\u0430\u043d\u0441\u043a\u0430\u044f \u0438\u043d\u0432\u0435\u0441\u0442\u0438\u0446\u0438\u043e\u043d\u043d\u0430\u044f \u0435\u0434\u0438\u043d\u0438\u0446\u0430",
+        "nameKk": "\u041c\u0435\u043a\u0441\u0438\u043a\u0430\u043d\u0441\u043a\u0430\u044f \u0438\u043d\u0432\u0435\u0441\u0442\u0438\u0446\u0438\u043e\u043d\u043d\u0430\u044f \u0435\u0434\u0438\u043d\u0438\u0446\u0430",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 83,
+        "code": "MXN",
+        "nameRu": "\u041c\u0435\u043a\u0441\u0438\u043a\u0430\u043d\u0441\u043a\u043e\u0435 \u043f\u0435\u0441\u043e",
+        "nameKk": "\u041c\u0435\u043a\u0441\u0438\u043a\u0430\u043d\u0441\u043a\u043e\u0435 \u043f\u0435\u0441\u043e",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 176,
+        "code": "MZN",
+        "nameRu": "\u041c\u043e\u0437\u0430\u043c\u0431\u0438\u043a\u0441\u043a\u0438\u0439 \u043c\u0435\u0442\u0438\u043a\u0430\u043b",
+        "nameKk": "\u041c\u0435\u0442\u0438\u043a\u0430\u043b",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 85,
+        "code": "MDL",
+        "nameRu": "\u041c\u043e\u043b\u0434\u0430\u0432\u0441\u043a\u0438\u0439 \u043b\u0435\u0439",
+        "nameKk": "\u041c\u043e\u043b\u0434\u0430\u0432\u0441\u043a\u0438\u0439 \u043b\u0435\u0439",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 96,
+        "code": "NGN",
+        "nameRu": "\u041d\u0430\u0439\u0440\u0430",
+        "nameKk": "\u041d\u0430\u0439\u0440\u0430",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 38,
+        "code": "ERN",
+        "nameRu": "\u041d\u0430\u043a\u0444\u0430",
+        "nameKk": "\u041d\u0430\u043a\u0444\u0430",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 12,
+        "code": "BTN",
+        "nameRu": "\u041d\u0433\u0443\u043b\u0442\u0440\u0443\u043c",
+        "nameKk": "\u041d\u0433\u0443\u043b\u0442\u0440\u0443\u043c",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 90,
+        "code": "NPR",
+        "nameRu": "\u041d\u0435\u043f\u0430\u043b\u044c\u0441\u043a\u0430\u044f \u0440\u0443\u043f\u0438\u044f",
+        "nameKk": "\u041d\u0435\u043f\u0430\u043b\u044c\u0441\u043a\u0430\u044f \u0440\u0443\u043f\u0438\u044f",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 91,
+        "code": "ANG",
+        "nameRu": "\u041d\u0438\u0434\u0435\u0440\u043b\u0430\u043d\u0434\u0441\u043a\u0438\u0439 \u0430\u043d\u0442\u0438\u043b\u044c\u0441\u043a\u0438\u0439 \u0433\u0443\u043b\u044c\u0434\u0435\u043d",
+        "nameKk": "\u041d\u0438\u0434\u0435\u0440\u043b\u0430\u043d\u0434\u0441\u043a\u0438\u0439 \u0430\u043d\u0442\u0438\u043b\u044c\u0441\u043a\u0438\u0439 \u0433\u0443\u043b\u044c\u0434\u0435\u043d",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 94,
+        "code": "NZD",
+        "nameRu": "\u041d\u043e\u0432\u043e\u0437\u0435\u043b\u0430\u043d\u0434\u0441\u043a\u0438\u0439 \u0434\u043e\u043b\u043b\u0430\u0440",
+        "nameKk": "\u041d\u043e\u0432\u043e\u0437\u0435\u043b\u0430\u043d\u0434\u0441\u043a\u0438\u0439 \u0434\u043e\u043b\u043b\u0430\u0440",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 58,
+        "code": "ILS",
+        "nameRu": "\u041d\u043e\u0432\u044b\u0439 \u0438\u0437\u0440\u0430\u0438\u043b\u044c\u0441\u043a\u0438\u0439 \u0448\u0435\u043a\u0435\u043b\u044c",
+        "nameKk": "\u041d\u043e\u0432\u044b\u0439 \u0438\u0437\u0440\u0430\u0438\u043b\u044c\u0441\u043a\u0438\u0439 \u0448\u0435\u043a\u0435\u043b\u044c",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 147,
+        "code": "TWD",
+        "nameRu": "\u041d\u043e\u0432\u044b\u0439 \u0442\u0430\u0439\u0432\u0430\u043d\u044c\u0441\u043a\u0438\u0439 \u0434\u043e\u043b\u043b\u0430\u0440",
+        "nameKk": "\u041d\u043e\u0432\u044b\u0439 \u0442\u0430\u0439\u0432\u0430\u043d\u044c\u0441\u043a\u0438\u0439 \u0434\u043e\u043b\u043b\u0430\u0440",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 189,
+        "code": "TMT",
+        "nameRu": "\u041d\u043e\u0432\u044b\u0439 \u0442\u0443\u0440\u043a\u043c\u0435\u043d\u0441\u043a\u0438\u0439 \u043c\u0430\u043d\u0430\u0442",
+        "nameKk": "\u041d\u043e\u0432\u044b\u0439 \u043c\u0430\u043d\u0430\u0442",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 97,
+        "code": "NOK",
+        "nameRu": "\u041d\u043e\u0440\u0432\u0435\u0436\u0441\u043a\u0430\u044f \u043a\u0440\u043e\u043d\u0430",
+        "nameKk": "\u041d\u043e\u0440\u0432\u0435\u0436\u0441\u043a\u0430\u044f \u043a\u0440\u043e\u043d\u0430",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 88,
+        "code": "OMR",
+        "nameRu": "\u041e\u043c\u0430\u043d\u0441\u043a\u0438\u0439 \u0440\u0438\u0430\u043b",
+        "nameKk": "\u041e\u043c\u0430\u043d\u0441\u043a\u0438\u0439 \u0440\u0438\u0430\u043b",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 127,
+        "code": "TOP",
+        "nameRu": "\u041f\u0430\u0430\u043d\u0433\u0430",
+        "nameKk": "\u041f\u0430\u0430\u043d\u0433\u0430",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 98,
+        "code": "PKR",
+        "nameRu": "\u041f\u0430\u043a\u0438\u0441\u0442\u0430\u043d\u0441\u043a\u0430\u044f \u0440\u0443\u043f\u0438\u044f",
+        "nameKk": "\u041f\u0430\u043a\u0438\u0441\u0442\u0430\u043d\u0441\u043a\u0430\u044f \u0440\u0443\u043f\u0438\u044f",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 75,
+        "code": "MOP",
+        "nameRu": "\u041f\u0430\u0442\u0430\u043a\u0430",
+        "nameKk": "\u041f\u0430\u0442\u0430\u043a\u0430",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 14,
+        "code": "BWP",
+        "nameRu": "\u041f\u0443\u043b\u0430",
+        "nameKk": "\u041f\u0443\u043b\u0430",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 190,
+        "code": "XUA",
+        "nameRu": "\u0420\u0430\u0441\u0447\u0451\u0442\u043d\u0430\u044f \u0435\u0434\u0438\u043d\u0438\u0446\u0430 ADB",
+        "nameKk": "\u0420\u0430\u0441\u0447\u0451\u0442\u043d\u0430\u044f \u0435\u0434\u0438\u043d\u0438\u0446\u0430 ADB",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 20,
+        "code": "KHR",
+        "nameRu": "\u0420\u0438\u0435\u043b\u044c",
+        "nameKk": "\u0420\u0438\u0435\u043b\u044c",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 107,
+        "code": "RUB",
+        "nameRu": "\u0420\u043e\u0441\u0441\u0438\u0439\u0441\u043a\u0438\u0439 \u0440\u0443\u0431\u043b\u044c",
+        "nameKk": "\u0420\u043e\u0441\u0441\u0438\u0439\u0441\u043a\u0438\u0439 \u0440\u0443\u0431\u043b\u044c",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 149,
+        "code": "RON",
+        "nameRu": "\u0420\u0443\u043c\u044b\u043d\u0441\u043a\u0438\u0439 \u043b\u0435\u0439",
+        "nameKk": "\u041d\u043e\u0432\u044b\u0439 \u0440\u0443\u043c\u044b\u043d\u0441\u043a\u0438\u0439 \u043b\u0435\u0439",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 55,
+        "code": "IDR",
+        "nameRu": "\u0420\u0443\u043f\u0438\u044f",
+        "nameKk": "\u0420\u0443\u043f\u0438\u044f",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 79,
+        "code": "MVR",
+        "nameRu": "\u0420\u0443\u0444\u0438\u044f",
+        "nameKk": "\u0420\u0443\u0444\u0438\u044f",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 119,
+        "code": "ZAR",
+        "nameRu": "\u0420\u044d\u043d\u0434",
+        "nameKk": "\u0420\u044d\u043d\u0434",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 36,
+        "code": "SVC",
+        "nameRu": "\u0421\u0430\u043b\u044c\u0432\u0430\u0434\u043e\u0440\u0441\u043a\u0438\u0439 \u043a\u043e\u043b\u043e\u043d",
+        "nameKk": "\u0421\u0430\u043b\u044c\u0432\u0430\u0434\u043e\u0440\u0441\u043a\u0438\u0439 \u043a\u043e\u043b\u043e\u043d",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 111,
+        "code": "SAR",
+        "nameRu": "\u0421\u0430\u0443\u0434\u043e\u0432\u0441\u043a\u0438\u0439 \u0440\u0438\u044f\u043b",
+        "nameKk": "\u0421\u0430\u0443\u0434\u043e\u0432\u0441\u043a\u0438\u0439 \u0440\u0438\u044f\u043b",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 155,
+        "code": "XDR",
+        "nameRu": "\u0421\u0414\u0420 (\u0441\u043f\u0435\u0446\u0438\u0430\u043b\u044c\u043d\u044b\u0435 \u043f\u0440\u0430\u0432\u0430 \u0437\u0430\u0438\u043c\u0441\u0442\u0432\u043e\u0432\u0430\u043d\u0438\u044f)",
+        "nameKk": "\u0421\u0414\u0420 (\u0441\u043f\u0435\u0446\u0438\u0430\u043b\u044c\u043d\u044b\u0435 \u043f\u0440\u0430\u0432\u0430\n            \u0437\u0430\u0438\u043c\u0441\u0442\u0432\u043e\u0432\u0430\u043d\u0438\u044f)",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 64,
+        "code": "KPW",
+        "nameRu": "\u0421\u0435\u0432\u0435\u0440\u043e\u043a\u043e\u0440\u0435\u0439\u0441\u043a\u0430\u044f \u0432\u043e\u043d\u0430",
+        "nameKk": "\u0421\u0435\u0432\u0435\u0440\u043e-\u043a\u043e\u0440\u0435\u0439\u0441\u043a\u0430\u044f \u0432\u043e\u043d\u0430",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 112,
+        "code": "SCR",
+        "nameRu": "\u0421\u0435\u0439\u0448\u0435\u043b\u044c\u0441\u043a\u0430\u044f \u0440\u0443\u043f\u0438\u044f",
+        "nameKk": "\u0421\u0435\u0439\u0448\u0435\u043b\u044c\u0441\u043a\u0430\u044f \u0440\u0443\u043f\u0438\u044f",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 175,
+        "code": "RSD",
+        "nameRu": "\u0421\u0435\u0440\u0431\u0441\u043a\u0438\u0439 \u0434\u0438\u043d\u0430\u0440",
+        "nameKk": "\u0421\u0435\u0440\u0431\u0441\u043a\u0438\u0439 \u0434\u0438\u043d\u0430\u0440",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 114,
+        "code": "SGD",
+        "nameRu": "\u0421\u0438\u043d\u0433\u0430\u043f\u0443\u0440\u0441\u043a\u0438\u0439 \u0434\u043e\u043b\u043b\u0430\u0440",
+        "nameKk": "\u0421\u0438\u043d\u0433\u0430\u043f\u0443\u0440\u0441\u043a\u0438\u0439 \u0434\u043e\u043b\u043b\u0430\u0440",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 125,
+        "code": "SYP",
+        "nameRu": "\u0421\u0438\u0440\u0438\u0439\u0441\u043a\u0438\u0439 \u0444\u0443\u043d\u0442",
+        "nameKk": "\u0421\u0438\u0440\u0438\u0439\u0441\u043a\u0438\u0439 \u0444\u0443\u043d\u0442",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 102,
+        "code": "PEN",
+        "nameRu": "\u0421\u043e\u043b\u044c",
+        "nameKk": "\u041d\u043e\u0432\u044b\u0439 \u0441\u043e\u043b\u044c",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 67,
+        "code": "KGS",
+        "nameRu": "\u0421\u043e\u043c",
+        "nameKk": "\u0421\u043e\u043c",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 118,
+        "code": "SOS",
+        "nameRu": "\u0421\u043e\u043c\u0430\u043b\u0438\u0439\u0441\u043a\u0438\u0439 \u0448\u0438\u043b\u043b\u0438\u043d\u0433",
+        "nameKk": "\u0421\u043e\u043c\u0430\u043b\u0438\u0439\u0441\u043a\u0438\u0439 \u0448\u0438\u043b\u043b\u0438\u043d\u0433",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 160,
+        "code": "TJS",
+        "nameRu": "\u0421\u043e\u043c\u043e\u043d\u0438",
+        "nameKk": "\u0421\u043e\u043c\u043e\u043d\u0438",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 173,
+        "code": "SDG",
+        "nameRu": "\u0421\u0443\u0434\u0430\u043d\u0441\u043a\u0438\u0439 \u0444\u0443\u043d\u0442",
+        "nameKk": "\u0421\u0443\u0434\u0430\u043d\u0441\u043a\u0438\u0439 \u0444\u0443\u043d\u0442",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 194,
+        "code": "XSU",
+        "nameRu": "\u0421\u0443\u043a\u0440\u0435",
+        "nameKk": "\u0421\u0443\u043a\u0440\u0435",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 156,
+        "code": "SRD",
+        "nameRu": "\u0421\u0443\u0440\u0438\u043d\u0430\u043c\u0441\u043a\u0438\u0439 \u0434\u043e\u043b\u043b\u0430\u0440",
+        "nameKk": "\u0421\u0443\u0440\u0438\u043d\u0430\u043c\u0441\u043a\u0438\u0439 \u0434\u043e\u043b\u043b\u0430\u0440",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 8,
+        "code": "BDT",
+        "nameRu": "\u0422\u0430\u043a\u0430",
+        "nameKk": "\u0422\u0430\u043a\u0430",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 143,
+        "code": "WST",
+        "nameRu": "\u0422\u0430\u043b\u0430",
+        "nameKk": "\u0422\u0430\u043b\u0430",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 138,
+        "code": "TZS",
+        "nameRu": "\u0422\u0430\u043d\u0437\u0430\u043d\u0438\u0439\u0441\u043a\u0438\u0439 \u0448\u0438\u043b\u043b\u0438\u043d\u0433",
+        "nameKk": "\u0422\u0430\u043d\u0437\u0430\u043d\u0438\u0439\u0441\u043a\u0438\u0439 \u0448\u0438\u043b\u043b\u0438\u043d\u0433",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 78,
+        "code": "KZT",
+        "nameRu": "\u0422\u0435\u043d\u0433\u0435",
+        "nameKk": "\u0422\u0435\u043d\u0433\u0435",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 84,
+        "code": "MNT",
+        "nameRu": "\u0422\u0443\u0433\u0440\u0438\u043a",
+        "nameKk": "\u0422\u0443\u0433\u0440\u0438\u043a",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 130,
+        "code": "TND",
+        "nameRu": "\u0422\u0443\u043d\u0438\u0441\u0441\u043a\u0438\u0439 \u0434\u0438\u043d\u0430\u0440",
+        "nameKk": "\u0422\u0443\u043d\u0438\u0441\u0441\u043a\u0438\u0439 \u0434\u0438\u043d\u0430\u0440",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 150,
+        "code": "TRY",
+        "nameRu": "\u0422\u0443\u0440\u0435\u0446\u043a\u0430\u044f \u043b\u0438\u0440\u0430",
+        "nameKk": "\u041d\u043e\u0432\u0430\u044f \u0442\u0443\u0440\u0435\u0446\u043a\u0430\u044f \u043b\u0438\u0440\u0430",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 133,
+        "code": "UGX",
+        "nameRu": "\u0423\u0433\u0430\u043d\u0434\u0438\u0439\u0441\u043a\u0438\u0439 \u0448\u0438\u043b\u043b\u0438\u043d\u0433",
+        "nameKk": "\u0423\u0433\u0430\u043d\u0434\u0438\u0439\u0441\u043a\u0438\u0439 \u0448\u0438\u043b\u043b\u0438\u043d\u0433",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 34691,
+        "code": "MRU",
+        "nameRu": "\u0423\u0433\u0438\u044f",
+        "nameKk": "\u0423\u0433\u0438\u044f",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 81,
+        "code": "MRO",
+        "nameRu": "\u0423\u0433\u0438\u044f",
+        "nameKk": "\u0423\u0433\u0438\u044f",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 141,
+        "code": "UZS",
+        "nameRu": "\u0423\u0437\u0431\u0435\u043a\u0441\u043a\u0438\u0439 \u0441\u0443\u043c",
+        "nameKk": "\u0423\u0437\u0431\u0435\u043a\u0441\u043a\u0438\u0439 \u0441\u0443\u043c",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 140,
+        "code": "UYU",
+        "nameRu": "\u0423\u0440\u0443\u0433\u0432\u0430\u0439\u0441\u043a\u043e\u0435 \u043f\u0435\u0441\u043e",
+        "nameKk": "\u0423\u0440\u0443\u0433\u0432\u0430\u0439\u0441\u043a\u043e\u0435 \u043f\u0435\u0441\u043e",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 174,
+        "code": "UYI",
+        "nameRu": "\u0423\u0440\u0443\u0433\u0432\u0430\u0439\u0441\u043a\u043e\u0435 \u043f\u0435\u0441\u043e \u0432 \u0438\u043d\u0434\u0435\u043a\u0441\u0438\u0440\u043e\u0432\u0430\u043d\u043d\u044b\u0445 \u0435\u0434\u0438\u043d\u0438\u0446\u0430\u0445",
+        "nameKk": "\u0423\u0440\u0443\u0433\u0432\u0430\u0439\u0441\u043a\u043e\u0435 \u043f\u0435\u0441\u043e \u0432 \u0438\u043d\u0434\u0435\u043a\u0441\u0438\u0440\u043e\u0432\u0430\u043d\u043d\u044b\u0445\n            \u0435\u0434\u0438\u043d\u0438\u0446\u0430\u0445",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 103,
+        "code": "PHP",
+        "nameRu": "\u0424\u0438\u043b\u0438\u043f\u043f\u0438\u043d\u0441\u043a\u043e\u0435 \u043f\u0435\u0441\u043e",
+        "nameKk": "\u0424\u0438\u043b\u0438\u043f\u043f\u0438\u043d\u0441\u043a\u043e\u0435 \u043f\u0435\u0441\u043e",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 52,
+        "code": "HUF",
+        "nameRu": "\u0424\u043e\u0440\u0438\u043d\u0442",
+        "nameKk": "\u0424\u043e\u0440\u0438\u043d\u0442",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 42,
+        "code": "DJF",
+        "nameRu": "\u0424\u0440\u0430\u043d\u043a \u0414\u0436\u0438\u0431\u0443\u0442\u0438",
+        "nameKk": "\u0424\u0440\u0430\u043d\u043a \u0414\u0436\u0438\u0431\u0443\u0442\u0438",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 151,
+        "code": "XAF",
+        "nameRu": "\u0424\u0440\u0430\u043d\u043a \u041a\u0424\u0410 \u0412\u0415\u0410\u0421",
+        "nameKk": "\u0424\u0440\u0430\u043d\u043a \u041a\u0424\u0410 \u0412\u0415\u0410\u0421",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 153,
+        "code": "XOF",
+        "nameRu": "\u0424\u0440\u0430\u043d\u043a \u041a\u0424\u0410 \u0412\u0421\u0415\u0410\u041e",
+        "nameKk": "\u0424\u0440\u0430\u043d\u043a \u041a\u0424\u0410 \u0412\u0421\u0415\u0410\u041e",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 154,
+        "code": "XPF",
+        "nameRu": "\u0424\u0440\u0430\u043d\u043a \u041a\u0424\u041f",
+        "nameKk": "\u0424\u0440\u0430\u043d\u043a \u041a\u0424\u041f",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 108,
+        "code": "RWF",
+        "nameRu": "\u0424\u0440\u0430\u043d\u043a \u0420\u0443\u0430\u043d\u0434\u044b",
+        "nameKk": "\u0424\u0440\u0430\u043d\u043a \u0420\u0443\u0430\u043d\u0434\u044b",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 109,
+        "code": "SHP",
+        "nameRu": "\u0424\u0443\u043d\u0442 \u0421\u0432\u044f\u0442\u043e\u0439 \u0415\u043b\u0435\u043d\u044b",
+        "nameKk": "\u0424\u0443\u043d\u0442 \u0421\u0432\u044f\u0442\u043e\u0439 \u0415\u043b\u0435\u043d\u044b",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 137,
+        "code": "GBP",
+        "nameRu": "\u0424\u0443\u043d\u0442 \u0441\u0442\u0435\u0440\u043b\u0438\u043d\u0433\u043e\u0432",
+        "nameKk": "\u0424\u0443\u043d\u0442 \u0441\u0442\u0435\u0440\u043b\u0438\u043d\u0433\u043e\u0432",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 40,
+        "code": "FKP",
+        "nameRu": "\u0424\u0443\u043d\u0442 \u0424\u043e\u043b\u043a\u043b\u0435\u043d\u0434\u0441\u043a\u0438\u0445 \u043e\u0441\u0442\u0440\u043e\u0432\u043e\u0432",
+        "nameKk": "\u0424\u0443\u043d\u0442 \u0424\u043e\u043b\u043a\u043b\u0435\u043d\u0434\u0441\u043a\u0438\u0445 \u043e\u0441\u0442\u0440\u043e\u0432\u043e\u0432",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 33,
+        "code": "CZK",
+        "nameRu": "\u0427\u0435\u0448\u0441\u043a\u0430\u044f \u043a\u0440\u043e\u043d\u0430",
+        "nameKk": "\u0427\u0435\u0448\u0441\u043a\u0430\u044f \u043a\u0440\u043e\u043d\u0430",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 25,
+        "code": "CLP",
+        "nameRu": "\u0427\u0438\u043b\u0438\u0439\u0441\u043a\u043e\u0435 \u043f\u0435\u0441\u043e",
+        "nameKk": "\u0427\u0438\u043b\u0438\u0439\u0441\u043a\u043e\u0435 \u043f\u0435\u0441\u043e",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 123,
+        "code": "SEK",
+        "nameRu": "\u0428\u0432\u0435\u0434\u0441\u043a\u0430\u044f \u043a\u0440\u043e\u043d\u0430",
+        "nameKk": "\u0428\u0432\u0435\u0434\u0441\u043a\u0430\u044f \u043a\u0440\u043e\u043d\u0430",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 124,
+        "code": "CHF",
+        "nameRu": "\u0428\u0432\u0435\u0439\u0446\u0430\u0440\u0441\u043a\u0438\u0439 \u0444\u0440\u0430\u043d\u043a",
+        "nameKk": "\u0428\u0432\u0435\u0439\u0446\u0430\u0440\u0441\u043a\u0438\u0439 \u0444\u0440\u0430\u043d\u043a",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 24,
+        "code": "LKR",
+        "nameRu": "\u0428\u0440\u0438-\u043b\u0430\u043d\u043a\u0438\u0439\u0441\u043a\u0430\u044f \u0440\u0443\u043f\u0438\u044f",
+        "nameKk": "\u0428\u0440\u0438-\u041b\u0430\u043d\u043a\u0438\u0439\u0441\u043a\u0430\u044f \u0440\u0443\u043f\u0438\u044f",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 22,
+        "code": "CVE",
+        "nameRu": "\u042d\u0441\u043a\u0443\u0434\u043e \u041a\u0430\u0431\u043e-\u0412\u0435\u0440\u0434\u0435",
+        "nameKk": "\u042d\u0441\u043a\u0443\u0434\u043e \u041a\u0430\u0431\u043e-\u0412\u0435\u0440\u0434\u0435",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 37,
+        "code": "ETB",
+        "nameRu": "\u042d\u0444\u0438\u043e\u043f\u0441\u043a\u0438\u0439 \u0431\u044b\u0440",
+        "nameKk": "\u042d\u0444\u0438\u043e\u043f\u0441\u043a\u0438\u0439 \u0431\u044b\u0440",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 26,
+        "code": "CNY",
+        "nameRu": "\u042e\u0430\u043d\u044c",
+        "nameKk": "\u042e\u0430\u043d\u044c \u0420\u0435\u043d\u043c\u0438\u043d\u0431\u0438",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 1003,
+        "code": "SSP",
+        "nameRu": "\u042e\u0436\u043d\u043e\u0441\u0443\u0434\u0430\u043d\u0441\u043a\u0438\u0439 \u0444\u0443\u043d\u0442",
+        "nameKk": "\u042e\u0436\u043d\u043e\u0441\u0443\u0434\u0430\u043d\u0441\u043a\u0438\u0439 \u0444\u0443\u043d\u0442",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 59,
+        "code": "JMD",
+        "nameRu": "\u042f\u043c\u0430\u0439\u0441\u043a\u0438\u0439 \u0434\u043e\u043b\u043b\u0430\u0440",
+        "nameKk": "\u042f\u043c\u0430\u0439\u0441\u043a\u0438\u0439 \u0434\u043e\u043b\u043b\u0430\u0440",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    }
+]

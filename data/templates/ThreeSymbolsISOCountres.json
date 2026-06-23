@@ -1,0 +1,2622 @@
+[
+    {
+        "id": 958,
+        "code": "USA",
+        "nameRu": "\u0421\u0428\u0410",
+        "nameKk": "\u0410\u049a\u0428",
+        "nameQq": "null",
+        "nameEn": "USA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 1009,
+        "code": "898",
+        "nameRu": "\u041d\u0415\u0423\u041a\u0410\u0417\u0410\u041d\u041d\u042b\u0415 \u0422\u0415\u0420\u0420\u0418\u0422\u041e\u0420\u0418\u0418",
+        "nameKk": "\u041d\u0415\u0423\u041a\u0410\u0417\u0410\u041d\u041d\u042b\u0415 \u0422\u0415\u0420\u0420\u0418\u0422\u041e\u0420\u0418\u0418",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 619961550,
+        "code": "BUR",
+        "nameRu": "\u041c\u044c\u044f\u043d\u043c\u0430",
+        "nameKk": "\u041c\u0438\u0430\u043d\u043c\u0430",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 619961600,
+        "code": "ZAR",
+        "nameRu": "\u0417\u0430\u0438\u0440",
+        "nameKk": "\u0417\u0430\u0438\u0440",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 619961650,
+        "code": "274",
+        "nameRu": "\u0413\u0430\u0437\u0430 \u0421\u0435\u043a\u0442\u043e\u0440",
+        "nameKk": "\u0413\u0430\u0437\u0430 \u0421\u0435\u043a\u0442\u043e\u0440",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 619961700,
+        "code": "JTN",
+        "nameRu": "\u0414\u0436\u043e\u043d\u0441\u0442\u043e\u043d \u0410\u0442\u043e\u043b\u043b",
+        "nameKk": "\u0414\u0436\u043e\u043d\u0441\u0442\u043e\u043d \u0410\u0442\u043e\u043b\u043b",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 619961750,
+        "code": "MID",
+        "nameRu": "\u041e-\u0432\u0430 \u041c\u0438\u0434\u0443\u044d\u0439",
+        "nameKk": "\u041e-\u0432\u0430 \u041c\u0438\u0434\u0443\u044d\u0439",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 619961800,
+        "code": "TMP",
+        "nameRu": "\u0412\u043e\u0441\u0442\u043e\u0447\u043d\u044b\u0439 \u0422\u0438\u043c\u043e\u0440",
+        "nameKk": "\u0412\u043e\u0441\u0442\u043e\u0447\u043d\u044b\u0439 \u0422\u0438\u043c\u043e\u0440",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 619961850,
+        "code": "830",
+        "nameRu": "\u041d\u043e\u0440\u043c\u0430\u043d\u0434\u0441\u043a\u0438\u0435 \u043e-\u0432\u0430",
+        "nameKk": "\u041d\u043e\u0440\u043c\u0430\u043d\u0434\u0441\u043a\u0438\u0435 \u043e-\u0432\u0430",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 619961900,
+        "code": "WAK",
+        "nameRu": "\u041e-\u0432 \u0423\u044d\u0439\u043a",
+        "nameKk": "\u041e-\u0432 \u0423\u044d\u0439\u043a",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 619961950,
+        "code": "YUG",
+        "nameRu": "\u042e\u0433\u043e\u0441\u043b\u0430\u0432\u0438\u044f",
+        "nameKk": "\u042e\u0433\u043e\u0441\u043b\u0430\u0432\u0438\u044f",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 1042,
+        "code": "\u041d\u0415\u0423",
+        "nameRu": "\u041d\u0415 \u0423\u0421\u0422\u0410\u041d\u041e\u0412\u041b\u0415\u041d\u041e",
+        "nameKk": "\u0410\u041d\u042b\u049a\u0422\u0410\u041b\u041c\u0410\u0492\u0410\u041d",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 1002,
+        "code": "111",
+        "nameRu": "\u0410\u0437\u0430\u043c\u0430\u0442\u0442\u044b\u049b \u0435\u043b\u0456 \u0430\u043d\u044b\u049b\u0442\u0430\u043b\u043c\u0430\u0493\u0430\u043d",
+        "nameKk": "\u0421\u0442\u0440\u0430\u043d\u0430 \u0433\u0440\u0430\u0436\u0434\u0430\u043d\u0441\u0442\u0432\u0430 \u043d\u0435 \u043e\u043f\u0440\u0435\u0434\u0435\u043b\u0435\u043d\u0430",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 800,
+        "code": "PSE",
+        "nameRu": "\u0413\u041e\u0421\u0423\u0414\u0410\u0420\u0421\u0422\u0412\u041e \u041f\u0410\u041b\u0415\u0421\u0422\u0418\u041d\u0410",
+        "nameKk": "\u041f\u0410\u041b\u0415\u0421\u0422\u0418\u041d\u0421\u041a\u0410\u042f \u0422\u0415\u0420\u0420\u0418\u0422\u041e\u0420\u0418\u042f, \u041e\u041a\u041a\u0423\u041f\u0418\u0420\u041e\u0412\u0410\u041d\u041d\u0410\u042f",
+        "nameQq": "null",
+        "nameEn": "PALESTINE",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 748,
+        "code": "BGR",
+        "nameRu": "\u0411\u041e\u041b\u0413\u0410\u0420\u0418\u042f",
+        "nameKk": "\u0411\u041e\u041b\u0413\u0410\u0420\u0418\u042f",
+        "nameQq": "null",
+        "nameEn": "BULGARIA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 750,
+        "code": "BDI",
+        "nameRu": "\u0411\u0423\u0420\u0423\u041d\u0414\u0418",
+        "nameKk": "\u0411\u0423\u0420\u0423\u041d\u0414\u0418",
+        "nameQq": "null",
+        "nameEn": "BURUNDI",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 751,
+        "code": "BLR",
+        "nameRu": "\u0411\u0415\u041b\u0410\u0420\u0423\u0421\u042c",
+        "nameKk": "\u0411\u0415\u041b\u0410\u0420\u0423\u0421\u042c",
+        "nameQq": "null",
+        "nameEn": "BELARUS",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 752,
+        "code": "KHM",
+        "nameRu": "\u041a\u0410\u041c\u0411\u041e\u0414\u0416\u0410",
+        "nameKk": "\u041a\u0410\u041c\u0411\u041e\u0414\u0416\u0410",
+        "nameQq": "null",
+        "nameEn": "CAMBODIA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 753,
+        "code": "CMR",
+        "nameRu": "\u041a\u0410\u041c\u0415\u0420\u0423\u041d",
+        "nameKk": "\u041a\u0410\u041c\u0415\u0420\u0423\u041d",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 754,
+        "code": "CAN",
+        "nameRu": "\u041a\u0410\u041d\u0410\u0414\u0410",
+        "nameKk": "\u041a\u0410\u041d\u0410\u0414\u0410",
+        "nameQq": "null",
+        "nameEn": "CANADA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 755,
+        "code": "CPV",
+        "nameRu": "\u041a\u0410\u0411\u041e-\u0412\u0415\u0420\u0414\u0415",
+        "nameKk": "\u041a\u0410\u0411\u041e-\u0412\u0415\u0420\u0414\u0415",
+        "nameQq": "null",
+        "nameEn": "CABO VERDE",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 756,
+        "code": "CYM",
+        "nameRu": "\u041e\u0421\u0422\u0420\u041e\u0412\u0410 \u041a\u0410\u0419\u041c\u0410\u041d",
+        "nameKk": "\u041e\u0421\u0422\u0420\u041e\u0412\u0410 \u041a\u0410\u0419\u041c\u0410\u041d",
+        "nameQq": "null",
+        "nameEn": "CAYMAN IS",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 757,
+        "code": "CAF",
+        "nameRu": "\u0426\u0415\u041d\u0422\u0420\u0410\u041b\u042c\u041d\u041e-\u0410\u0424\u0420\u0418\u041a\u0410\u041d\u0421\u041a\u0410\u042f \u0420\u0415\u0421\u041f\u0423\u0411\u041b\u0418\u041a\u0410",
+        "nameKk": "\u0426\u0415\u041d\u0422\u0420\u0410\u041b\u042c\u041d\u041e-\u0410\u0424\u0420\u0418\u041a\u0410\u041d\u0421\u041a\u0410\u042f \u0420\u0415\u0421\u041f\u0423\u0411\u041b\u0418\u041a\u0410",
+        "nameQq": "null",
+        "nameEn": "CENT. AFR. REP",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 758,
+        "code": "LKA",
+        "nameRu": "\u0428\u0420\u0418-\u041b\u0410\u041d\u041a\u0410",
+        "nameKk": "\u0428\u0420\u0418-\u041b\u0410\u041d\u041a\u0410",
+        "nameQq": "null",
+        "nameEn": "SRI LANKA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 759,
+        "code": "TCD",
+        "nameRu": "\u0427\u0410\u0414",
+        "nameKk": "\u0427\u0410\u0414",
+        "nameQq": "null",
+        "nameEn": "CHAD",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 760,
+        "code": "CHL",
+        "nameRu": "\u0427\u0418\u041b\u0418",
+        "nameKk": "\u0427\u0418\u041b\u0418",
+        "nameQq": "null",
+        "nameEn": "CHILE",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 761,
+        "code": "CHN",
+        "nameRu": "\u041a\u0418\u0422\u0410\u0419",
+        "nameKk": "\u041a\u0418\u0422\u0410\u0419",
+        "nameQq": "null",
+        "nameEn": "CHINA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 762,
+        "code": "TWN",
+        "nameRu": "\u0422\u0410\u0419\u0412\u0410\u041d\u042c (\u041a\u0418\u0422\u0410\u0419)",
+        "nameKk": "\u0422\u0410\u0419\u0412\u0410\u041d\u042c (\u041a\u0418\u0422\u0410\u0419)",
+        "nameQq": "null",
+        "nameEn": "\u0422AIWAN",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 763,
+        "code": "CXR",
+        "nameRu": "\u041e\u0421\u0422\u0420\u041e\u0412 \u0420\u041e\u0416\u0414\u0415\u0421\u0422\u0412\u0410",
+        "nameKk": "\u041e\u0421\u0422\u0420\u041e\u0412 \u0420\u041e\u0416\u0414\u0415\u0421\u0422\u0412\u0410",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 764,
+        "code": "CCK",
+        "nameRu": "\u041a\u041e\u041a\u041e\u0421\u041e\u0412\u042b\u0415 (\u041a\u0418\u041b\u0418\u041d\u0413) \u041e\u0421\u0422\u0420\u041e\u0412\u0410",
+        "nameKk": "\u041a\u041e\u041a\u041e\u0421\u041e\u0412\u042b\u0415 (\u041a\u0418\u041b\u0418\u041d\u0413) \u041e\u0421\u0422\u0420\u041e\u0412\u0410",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 765,
+        "code": "COL",
+        "nameRu": "\u041a\u041e\u041b\u0423\u041c\u0411\u0418\u042f",
+        "nameKk": "\u041a\u041e\u041b\u0423\u041c\u0411\u0418\u042f",
+        "nameQq": "null",
+        "nameEn": "COLOMBIA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 766,
+        "code": "COM",
+        "nameRu": "\u041a\u041e\u041c\u041e\u0420\u042b",
+        "nameKk": "\u041a\u041e\u041c\u041e\u0420\u042b",
+        "nameQq": "null",
+        "nameEn": "COMOROS",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 767,
+        "code": "MYT",
+        "nameRu": "\u041c\u0410\u0419\u041e\u0422\u0422\u0410",
+        "nameKk": "\u041c\u0410\u0419\u041e\u0422\u0422\u0410",
+        "nameQq": "null",
+        "nameEn": "MAYOTTE",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 768,
+        "code": "COG",
+        "nameRu": "\u041a\u041e\u041d\u0413\u041e",
+        "nameKk": "\u041a\u041e\u041d\u0413\u041e",
+        "nameQq": "null",
+        "nameEn": "CONGO",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 770,
+        "code": "COK",
+        "nameRu": "\u041e\u0421\u0422\u0420\u041e\u0412\u0410 \u041a\u0423\u041a\u0410",
+        "nameKk": "\u041e\u0421\u0422\u0420\u041e\u0412\u0410 \u041a\u0423\u041a\u0410",
+        "nameQq": "null",
+        "nameEn": "COOK IS",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 771,
+        "code": "CRI",
+        "nameRu": "\u041a\u041e\u0421\u0422\u0410-\u0420\u0418\u041a\u0410",
+        "nameKk": "\u041a\u041e\u0421\u0422\u0410-\u0420\u0418\u041a\u0410",
+        "nameQq": "null",
+        "nameEn": "COSTA RICA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 772,
+        "code": "HRV",
+        "nameRu": "\u0425\u041e\u0420\u0412\u0410\u0422\u0418\u042f",
+        "nameKk": "\u0425\u041e\u0420\u0412\u0410\u0422\u0418\u042f",
+        "nameQq": "null",
+        "nameEn": "CROATIA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 773,
+        "code": "CUB",
+        "nameRu": "\u041a\u0423\u0411\u0410",
+        "nameKk": "\u041a\u0423\u0411\u0410",
+        "nameQq": "null",
+        "nameEn": "CUBA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 774,
+        "code": "CYP",
+        "nameRu": "\u041a\u0418\u041f\u0420",
+        "nameKk": "\u041a\u0418\u041f\u0420",
+        "nameQq": "null",
+        "nameEn": "CYPRUS",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 775,
+        "code": "CZE",
+        "nameRu": "\u0427\u0415\u0425\u0418\u042f",
+        "nameKk": "\u0427\u0415\u0428\u0421\u041a\u0410\u042f \u0420\u0415\u0421\u041f\u0423\u0411\u041b\u0418\u041a\u0410",
+        "nameQq": "null",
+        "nameEn": "CZECH REP",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 776,
+        "code": "BEN",
+        "nameRu": "\u0411\u0415\u041d\u0418\u041d",
+        "nameKk": "\u0411\u0415\u041d\u0418\u041d",
+        "nameQq": "null",
+        "nameEn": "BENIN",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 777,
+        "code": "DNK",
+        "nameRu": "\u0414\u0410\u041d\u0418\u042f",
+        "nameKk": "\u0414\u0410\u041d\u0418\u042f",
+        "nameQq": "null",
+        "nameEn": "DENMARK",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 778,
+        "code": "DMA",
+        "nameRu": "\u0414\u041e\u041c\u0418\u041d\u0418\u041a\u0410",
+        "nameKk": "\u0414\u041e\u041c\u0418\u041d\u0418\u041a\u0410",
+        "nameQq": "null",
+        "nameEn": "DOMINICA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 779,
+        "code": "DOM",
+        "nameRu": "\u0414\u041e\u041c\u0418\u041d\u0418\u041a\u0410\u041d\u0421\u041a\u0410\u042f \u0420\u0415\u0421\u041f\u0423\u0411\u041b\u0418\u041a\u0410",
+        "nameKk": "\u0414\u041e\u041c\u0418\u041d\u0418\u041a\u0410\u041d\u0421\u041a\u0410\u042f \u0420\u0415\u0421\u041f\u0423\u0411\u041b\u0418\u041a\u0410",
+        "nameQq": "null",
+        "nameEn": "DOMINICAN RP",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 780,
+        "code": "ECU",
+        "nameRu": "\u042d\u041a\u0412\u0410\u0414\u041e\u0420",
+        "nameKk": "\u042d\u041a\u0412\u0410\u0414\u041e\u0420",
+        "nameQq": "null",
+        "nameEn": "ECUADOR",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 781,
+        "code": "SLV",
+        "nameRu": "\u042d\u041b\u042c-\u0421\u0410\u041b\u042c\u0412\u0410\u0414\u041e\u0420",
+        "nameKk": "\u042d\u041b\u042c-\u0421\u0410\u041b\u042c\u0412\u0410\u0414\u041e\u0420",
+        "nameQq": "null",
+        "nameEn": "EL SALVADOR",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 782,
+        "code": "GNQ",
+        "nameRu": "\u042d\u041a\u0412\u0410\u0422\u041e\u0420\u0418\u0410\u041b\u042c\u041d\u0410\u042f \u0413\u0412\u0418\u041d\u0415\u042f",
+        "nameKk": "\u042d\u041a\u0412\u0410\u0422\u041e\u0420\u0418\u0410\u041b\u042c\u041d\u0410\u042f \u0413\u0412\u0418\u041d\u0415\u042f",
+        "nameQq": "null",
+        "nameEn": "EQ. GUINEA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 783,
+        "code": "ETH",
+        "nameRu": "\u042d\u0424\u0418\u041e\u041f\u0418\u042f",
+        "nameKk": "\u042d\u0424\u0418\u041e\u041f\u0418\u042f",
+        "nameQq": "null",
+        "nameEn": "ETHIOPIA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 784,
+        "code": "ERI",
+        "nameRu": "\u042d\u0420\u0418\u0422\u0420\u0415\u042f",
+        "nameKk": "\u042d\u0420\u0418\u0422\u0420\u0415\u042f",
+        "nameQq": "null",
+        "nameEn": "ERITREA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 785,
+        "code": "EST",
+        "nameRu": "\u042d\u0421\u0422\u041e\u041d\u0418\u042f",
+        "nameKk": "\u042d\u0421\u0422\u041e\u041d\u0418\u042f",
+        "nameQq": "null",
+        "nameEn": "ESTONIA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 786,
+        "code": "FRO",
+        "nameRu": "\u0424\u0410\u0420\u0415\u0420\u0421\u041a\u0418\u0415 \u041e\u0421\u0422\u0420\u041e\u0412\u0410",
+        "nameKk": "\u0424\u0410\u0420\u0415\u0420\u0421\u041a\u0418\u0415 \u041e\u0421\u0422\u0420\u041e\u0412\u0410",
+        "nameQq": "null",
+        "nameEn": "FAEROE IS",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 787,
+        "code": "FLK",
+        "nameRu": "\u0424\u041e\u041b\u041a\u041b\u0415\u041d\u0414\u0421\u041a\u0418\u0415 \u041e\u0421\u0422\u0420\u041e\u0412\u0410 (\u041c\u0410\u041b\u042c\u0412\u0418\u041d\u0421\u041a\u0418\u0415)",
+        "nameKk": "\u0424\u041e\u041b\u041a\u041b\u0415\u041d\u0414\u0421\u041a\u0418\u0415 \u041e\u0421\u0422\u0420\u041e\u0412\u0410 (\u041c\u0410\u041b\u042c\u0412\u0418\u041d\u0421\u041a\u0418\u0415)",
+        "nameQq": "null",
+        "nameEn": "FALKLAND IS",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 788,
+        "code": "SGS",
+        "nameRu": "\u042e\u0416\u041d\u0410\u042f \u0414\u0416\u041e\u0420\u0414\u0416\u0418\u042f \u0418 \u042e\u0416\u041d\u042b\u0415 \u0421\u0410\u041d\u0414\u0412\u0418\u0427\u0415\u0412\u042b \u041e\u0421\u0422\u0420\u041e\u0412\u0410",
+        "nameKk": "\u042e\u0416\u041d\u0410\u042f \u0414\u0416\u041e\u0420\u0414\u0416\u0418\u042f \u0418 \u042e\u0416\u041d\u042b\u0415 \u0421\u0410\u041d\u0414\u0412\u0418\u0427\u0415\u0412\u042b \u041e\u0421\u0422\u0420\u041e\u0412\u0410",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 789,
+        "code": "FJI",
+        "nameRu": "\u0424\u0418\u0414\u0416\u0418",
+        "nameKk": "\u0424\u0418\u0414\u0416\u0418",
+        "nameQq": "null",
+        "nameEn": "FIJI",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 790,
+        "code": "FIN",
+        "nameRu": "\u0424\u0418\u041d\u041b\u042f\u041d\u0414\u0418\u042f",
+        "nameKk": "\u0424\u0418\u041d\u041b\u042f\u041d\u0414\u0418\u042f",
+        "nameQq": "null",
+        "nameEn": "FINLAND",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 791,
+        "code": "ALA",
+        "nameRu": "\u042d\u041b\u0410\u041d\u0414\u0421\u041a\u0418\u0415 \u041e\u0421\u0422\u0420\u041e\u0412\u0410",
+        "nameKk": "\u042d\u041b\u0410\u041d\u0414\u0421\u041a\u0418\u0415 \u041e\u0421\u0422\u0420\u041e\u0412\u0410",
+        "nameQq": "null",
+        "nameEn": "ALAND ISLANDS",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 792,
+        "code": "FRA",
+        "nameRu": "\u0424\u0420\u0410\u041d\u0426\u0418\u042f",
+        "nameKk": "\u0424\u0420\u0410\u041d\u0426\u0418\u042f",
+        "nameQq": "null",
+        "nameEn": "FRANCE",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 793,
+        "code": "GUF",
+        "nameRu": "\u0424\u0420\u0410\u041d\u0426\u0423\u0417\u0421\u041a\u0410\u042f \u0413\u0412\u0418\u0410\u041d\u0410",
+        "nameKk": "\u0424\u0420\u0410\u041d\u0426\u0423\u0417\u0421\u041a\u0410\u042f \u0413\u0412\u0418\u0410\u041d\u0410",
+        "nameQq": "null",
+        "nameEn": "FR. GUIANA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 794,
+        "code": "PYF",
+        "nameRu": "\u0424\u0420\u0410\u041d\u0426\u0423\u0417\u0421\u041a\u0410\u042f \u041f\u041e\u041b\u0418\u041d\u0415\u0417\u0418\u042f",
+        "nameKk": "\u0424\u0420\u0410\u041d\u0426\u0423\u0417\u0421\u041a\u0410\u042f \u041f\u041e\u041b\u0418\u041d\u0415\u0417\u0418\u042f",
+        "nameQq": "null",
+        "nameEn": "FR. POLYNESIA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 795,
+        "code": "ATF",
+        "nameRu": "\u0424\u0420\u0410\u041d\u0426\u0423\u0417\u0421\u041a\u0418\u0415 \u042e\u0416\u041d\u042b\u0415 \u0422\u0415\u0420\u0420\u0418\u0422\u041e\u0420\u0418\u0418",
+        "nameKk": "\u0424\u0420\u0410\u041d\u0426\u0423\u0417\u0421\u041a\u0418\u0415 \u042e\u0416\u041d\u042b\u0415 \u0422\u0415\u0420\u0420\u0418\u0422\u041e\u0420\u0418\u0418",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 796,
+        "code": "DJI",
+        "nameRu": "\u0414\u0416\u0418\u0411\u0423\u0422\u0418",
+        "nameKk": "\u0414\u0416\u0418\u0411\u0423\u0422\u0418",
+        "nameQq": "null",
+        "nameEn": "DJIBOUTI",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 797,
+        "code": "GAB",
+        "nameRu": "\u0413\u0410\u0411\u041e\u041d",
+        "nameKk": "\u0413\u0410\u0411\u041e\u041d",
+        "nameQq": "null",
+        "nameEn": "GABON",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 798,
+        "code": "GEO",
+        "nameRu": "\u0413\u0420\u0423\u0417\u0418\u042f",
+        "nameKk": "\u0413\u0420\u0423\u0417\u0418\u042f",
+        "nameQq": "null",
+        "nameEn": "GEORGIA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 799,
+        "code": "GMB",
+        "nameRu": "\u0413\u0410\u041c\u0411\u0418\u042f",
+        "nameKk": "\u0413\u0410\u041c\u0411\u0418\u042f",
+        "nameQq": "null",
+        "nameEn": "GAMBIA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 801,
+        "code": "DEU",
+        "nameRu": "\u0413\u0415\u0420\u041c\u0410\u041d\u0418\u042f",
+        "nameKk": "\u0413\u0415\u0420\u041c\u0410\u041d\u0418\u042f",
+        "nameQq": "null",
+        "nameEn": "GERMANY",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 802,
+        "code": "GHA",
+        "nameRu": "\u0413\u0410\u041d\u0410",
+        "nameKk": "\u0413\u0410\u041d\u0410",
+        "nameQq": "null",
+        "nameEn": "GHANA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 803,
+        "code": "GIB",
+        "nameRu": "\u0413\u0418\u0411\u0420\u0410\u041b\u0422\u0410\u0420",
+        "nameKk": "\u0413\u0418\u0411\u0420\u0410\u041b\u0422\u0410\u0420",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 804,
+        "code": "KIR",
+        "nameRu": "\u041a\u0418\u0420\u0418\u0411\u0410\u0422\u0418",
+        "nameKk": "\u041a\u0418\u0420\u0418\u0411\u0410\u0422\u0418",
+        "nameQq": "null",
+        "nameEn": "KIRIBATI",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 805,
+        "code": "GRC",
+        "nameRu": "\u0413\u0420\u0415\u0426\u0418\u042f",
+        "nameKk": "\u0413\u0420\u0415\u0426\u0418\u042f",
+        "nameQq": "null",
+        "nameEn": "GREECE",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 806,
+        "code": "GRL",
+        "nameRu": "\u0413\u0420\u0415\u041d\u041b\u0410\u041d\u0414\u0418\u042f",
+        "nameKk": "\u0413\u0420\u0415\u041d\u041b\u0410\u041d\u0414\u0418\u042f",
+        "nameQq": "null",
+        "nameEn": "GREENLAND",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 807,
+        "code": "GRD",
+        "nameRu": "\u0413\u0420\u0415\u041d\u0410\u0414\u0410",
+        "nameKk": "\u0413\u0420\u0415\u041d\u0410\u0414\u0410",
+        "nameQq": "null",
+        "nameEn": "GRENADA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 808,
+        "code": "GLP",
+        "nameRu": "\u0413\u0412\u0410\u0414\u0415\u041b\u0423\u041f\u0410",
+        "nameKk": "\u0413\u0412\u0410\u0414\u0415\u041b\u0423\u041f\u0410",
+        "nameQq": "null",
+        "nameEn": "GUADELOUPE",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 809,
+        "code": "GUM",
+        "nameRu": "\u0413\u0423\u0410\u041c",
+        "nameKk": "\u0413\u0423\u0410\u041c",
+        "nameQq": "null",
+        "nameEn": "GUAM",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 810,
+        "code": "GTM",
+        "nameRu": "\u0413\u0412\u0410\u0422\u0415\u041c\u0410\u041b\u0410",
+        "nameKk": "\u0413\u0412\u0410\u0422\u0415\u041c\u0410\u041b\u0410",
+        "nameQq": "null",
+        "nameEn": "GUATEMALA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 811,
+        "code": "GIN",
+        "nameRu": "\u0413\u0412\u0418\u041d\u0415\u042f",
+        "nameKk": "\u0413\u0412\u0418\u041d\u0415\u042f",
+        "nameQq": "null",
+        "nameEn": "GUINEA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 812,
+        "code": "GUY",
+        "nameRu": "\u0413\u0410\u0419\u0410\u041d\u0410",
+        "nameKk": "\u0413\u0410\u0419\u0410\u041d\u0410",
+        "nameQq": "null",
+        "nameEn": "GUYANA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 813,
+        "code": "HTI",
+        "nameRu": "\u0413\u0410\u0418\u0422\u0418",
+        "nameKk": "\u0413\u0410\u0418\u0422\u0418",
+        "nameQq": "null",
+        "nameEn": "HAITI",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 814,
+        "code": "HMD",
+        "nameRu": "\u041e\u0421\u0422\u0420\u041e\u0412 \u0425\u0415\u0420\u0414 \u0418 \u041e\u0421\u0422\u0420\u041e\u0412\u0410 \u041c\u0410\u041a\u0414\u041e\u041d\u0410\u041b\u042c\u0414",
+        "nameKk": "\u041e\u0421\u0422\u0420\u041e\u0412 \u0425\u0415\u0420\u0414 \u0418 \u041e\u0421\u0422\u0420\u041e\u0412\u0410 \u041c\u0410\u041a\u0414\u041e\u041d\u0410\u041b\u042c\u0414",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 815,
+        "code": "VAT",
+        "nameRu": "\u041f\u0410\u041f\u0421\u041a\u0418\u0419 \u041f\u0420\u0415\u0421\u0422\u041e\u041b (\u0413\u041e\u0421\u0423\u0414\u0410\u0420\u0421\u0422\u0412\u041e-\u0413\u041e\u0420\u041e\u0414 \u0412\u0410\u0422\u0418\u041a\u0410\u041d)",
+        "nameKk": "\u041f\u0410\u041f\u0421\u041a\u0418\u0419 \u041f\u0420\u0415\u0421\u0422\u041e\u041b (\u0413\u041e\u0421\u0423\u0414\u0410\u0420\u0421\u0422\u0412\u041e-\u0413\u041e\u0420\u041e\u0414 \u0412\u0410\u0422\u0418\u041a\u0410\u041d)",
+        "nameQq": "null",
+        "nameEn": "HOLY SEE",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 816,
+        "code": "HND",
+        "nameRu": "\u0413\u041e\u041d\u0414\u0423\u0420\u0410\u0421",
+        "nameKk": "\u0413\u041e\u041d\u0414\u0423\u0420\u0410\u0421",
+        "nameQq": "null",
+        "nameEn": "HONDURAS",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 817,
+        "code": "HKG",
+        "nameRu": "\u0413\u041e\u041d\u041a\u041e\u041d\u0413",
+        "nameKk": "\u0413\u041e\u041d\u041a\u041e\u041d\u0413",
+        "nameQq": "null",
+        "nameEn": "HONGKONG SAR",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 818,
+        "code": "HUN",
+        "nameRu": "\u0412\u0415\u041d\u0413\u0420\u0418\u042f",
+        "nameKk": "\u0412\u0415\u041d\u0413\u0420\u0418\u042f",
+        "nameQq": "null",
+        "nameEn": "HUNGARY",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 819,
+        "code": "ISL",
+        "nameRu": "\u0418\u0421\u041b\u0410\u041d\u0414\u0418\u042f",
+        "nameKk": "\u0418\u0421\u041b\u0410\u041d\u0414\u0418\u042f",
+        "nameQq": "null",
+        "nameEn": "ISLAND",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 820,
+        "code": "IND",
+        "nameRu": "\u0418\u041d\u0414\u0418\u042f",
+        "nameKk": "\u0418\u041d\u0414\u0418\u042f",
+        "nameQq": "null",
+        "nameEn": "INDIA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 821,
+        "code": "IDN",
+        "nameRu": "\u0418\u041d\u0414\u041e\u041d\u0415\u0417\u0418\u042f",
+        "nameKk": "\u0418\u041d\u0414\u041e\u041d\u0415\u0417\u0418\u042f",
+        "nameQq": "null",
+        "nameEn": "INDONESIA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 822,
+        "code": "IRN",
+        "nameRu": "\u0418\u0420\u0410\u041d (\u0418\u0421\u041b\u0410\u041c\u0421\u041a\u0410\u042f \u0420\u0415\u0421\u041f\u0423\u0411\u041b\u0418\u041a\u0410)",
+        "nameKk": "\u0418\u0420\u0410\u041d, \u0418\u0421\u041b\u0410\u041c\u0421\u041a\u0410\u042f \u0420\u0415\u0421\u041f\u0423\u0411\u041b\u0418\u041a\u0410",
+        "nameQq": "null",
+        "nameEn": "IRAN",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 823,
+        "code": "IRQ",
+        "nameRu": "\u0418\u0420\u0410\u041a",
+        "nameKk": "\u0418\u0420\u0410\u041a",
+        "nameQq": "null",
+        "nameEn": "IRAQ",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 824,
+        "code": "IRL",
+        "nameRu": "\u0418\u0420\u041b\u0410\u041d\u0414\u0418\u042f",
+        "nameKk": "\u0418\u0420\u041b\u0410\u041d\u0414\u0418\u042f",
+        "nameQq": "null",
+        "nameEn": "IRELAND",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 825,
+        "code": "ISR",
+        "nameRu": "\u0418\u0417\u0420\u0410\u0418\u041b\u042c",
+        "nameKk": "\u0418\u0417\u0420\u0410\u0418\u041b\u042c",
+        "nameQq": "null",
+        "nameEn": "ISRAEL",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 826,
+        "code": "ITA",
+        "nameRu": "\u0418\u0422\u0410\u041b\u0418\u042f",
+        "nameKk": "\u0418\u0422\u0410\u041b\u0418\u042f",
+        "nameQq": "null",
+        "nameEn": "ITALY",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 827,
+        "code": "CIV",
+        "nameRu": "\u041a\u041e\u0422 \u0414`\u0418\u0412\u0423\u0410\u0420",
+        "nameKk": "\u041a\u041e\u0422 \u0414`\u0418\u0412\u0423\u0410\u0420",
+        "nameQq": "null",
+        "nameEn": "COTE DIVOIRE",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 828,
+        "code": "JAM",
+        "nameRu": "\u042f\u041c\u0410\u0419\u041a\u0410",
+        "nameKk": "\u042f\u041c\u0410\u0419\u041a\u0410",
+        "nameQq": "null",
+        "nameEn": "JAMAICA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 829,
+        "code": "JPN",
+        "nameRu": "\u042f\u041f\u041e\u041d\u0418\u042f",
+        "nameKk": "\u042f\u041f\u041e\u041d\u0418\u042f",
+        "nameQq": "null",
+        "nameEn": "JAPAN",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 830,
+        "code": "KAZ",
+        "nameRu": "\u041a\u0410\u0417\u0410\u0425\u0421\u0422\u0410\u041d",
+        "nameKk": "\u041a\u0410\u0417\u0410\u0425\u0421\u0422\u0410\u041d",
+        "nameQq": "null",
+        "nameEn": "KAZAKHSTAN",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 831,
+        "code": "JOR",
+        "nameRu": "\u0418\u041e\u0420\u0414\u0410\u041d\u0418\u042f",
+        "nameKk": "\u0418\u041e\u0420\u0414\u0410\u041d\u0418\u042f",
+        "nameQq": "null",
+        "nameEn": "JORDAN",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 832,
+        "code": "KEN",
+        "nameRu": "\u041a\u0415\u041d\u0418\u042f",
+        "nameKk": "\u041a\u0415\u041d\u0418\u042f",
+        "nameQq": "null",
+        "nameEn": "KENYA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 833,
+        "code": "PRK",
+        "nameRu": "\u041a\u041e\u0420\u0415\u042f, \u041d\u0410\u0420\u041e\u0414\u041d\u041e-\u0414\u0415\u041c\u041e\u041a\u0420\u0410\u0422\u0418\u0427\u0415\u0421\u041a\u0410\u042f \u0420\u0415\u0421\u041f\u0423\u0411\u041b\u0418\u041a\u0410",
+        "nameKk": "\u041a\u041e\u0420\u0415\u042f, \u041d\u0410\u0420\u041e\u0414\u041d\u041e-\u0414\u0415\u041c\u041e\u041a\u0420\u0410\u0422\u0418\u0427\u0415\u0421\u041a\u0410\u042f \u0420\u0415\u0421\u041f\u0423\u0411\u041b\u0418\u041a\u0410",
+        "nameQq": "null",
+        "nameEn": "KOREA D P RP",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 834,
+        "code": "KOR",
+        "nameRu": "\u041a\u041e\u0420\u0415\u042f, \u0420\u0415\u0421\u041f\u0423\u0411\u041b\u0418\u041a\u0410",
+        "nameKk": "\u041a\u041e\u0420\u0415\u042f, \u0420\u0415\u0421\u041f\u0423\u0411\u041b\u0418\u041a\u0410",
+        "nameQq": "null",
+        "nameEn": "KOREA REP.",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 835,
+        "code": "KWT",
+        "nameRu": "\u041a\u0423\u0412\u0415\u0419\u0422",
+        "nameKk": "\u041a\u0423\u0412\u0415\u0419\u0422",
+        "nameQq": "null",
+        "nameEn": "KUWAIT",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 836,
+        "code": "KGZ",
+        "nameRu": "\u041a\u0418\u0420\u0413\u0418\u0417\u0418\u042f",
+        "nameKk": "\u041a\u0418\u0420\u0413\u0418\u0417\u0418\u042f",
+        "nameQq": "null",
+        "nameEn": "KYRGYZSTAN",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 837,
+        "code": "LAO",
+        "nameRu": "\u041b\u0410\u041e\u0421\u0421\u041a\u0410\u042f \u041d\u0410\u0420\u041e\u0414\u041d\u041e-\u0414\u0415\u041c\u041e\u041a\u0420\u0410\u0422\u0418\u0427\u0415\u0421\u041a\u0410\u042f \u0420\u0415\u0421\u041f\u0423\u0411\u041b\u0418\u041a\u0410",
+        "nameKk": "\u041b\u0410\u041e\u0421\u0421\u041a\u0410\u042f \u041d\u0410\u0420\u041e\u0414\u041d\u041e-\u0414\u0415\u041c\u041e\u041a\u0420\u0410\u0422\u0418\u0427\u0415\u0421\u041a\u0410\u042f \u0420\u0415\u0421\u041f\u0423\u0411\u041b\u0418\u041a\u0410",
+        "nameQq": "null",
+        "nameEn": "LAO P. DEM. R.",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 838,
+        "code": "LBN",
+        "nameRu": "\u041b\u0418\u0412\u0410\u041d",
+        "nameKk": "\u041b\u0418\u0412\u0410\u041d",
+        "nameQq": "null",
+        "nameEn": "LEBANON",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 839,
+        "code": "LSO",
+        "nameRu": "\u041b\u0415\u0421\u041e\u0422\u041e",
+        "nameKk": "\u041b\u0415\u0421\u041e\u0422\u041e",
+        "nameQq": "null",
+        "nameEn": "LESOTHO",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 840,
+        "code": "LVA",
+        "nameRu": "\u041b\u0410\u0422\u0412\u0418\u042f",
+        "nameKk": "\u041b\u0410\u0422\u0412\u0418\u042f",
+        "nameQq": "null",
+        "nameEn": "LATVIA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 841,
+        "code": "LBR",
+        "nameRu": "\u041b\u0418\u0411\u0415\u0420\u0418\u042f",
+        "nameKk": "\u041b\u0418\u0411\u0415\u0420\u0418\u042f",
+        "nameQq": "null",
+        "nameEn": "LIBERIA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 842,
+        "code": "LBY",
+        "nameRu": "\u041b\u0418\u0412\u0418\u042f",
+        "nameKk": "\u041b\u0418\u0412\u0418\u0419\u0421\u041a\u0410\u042f \u0410\u0420\u0410\u0411\u0421\u041a\u0410\u042f \u0414\u0416\u0410\u041c\u0410\u0425\u0418\u0420\u0418\u042f",
+        "nameQq": "null",
+        "nameEn": "LIBYA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 843,
+        "code": "LIE",
+        "nameRu": "\u041b\u0418\u0425\u0422\u0415\u041d\u0428\u0422\u0415\u0419\u041d",
+        "nameKk": "\u041b\u0418\u0425\u0422\u0415\u041d\u0428\u0422\u0415\u0419\u041d",
+        "nameQq": "null",
+        "nameEn": "LIECHTENSTEN",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 844,
+        "code": "LTU",
+        "nameRu": "\u041b\u0418\u0422\u0412\u0410",
+        "nameKk": "\u041b\u0418\u0422\u0412\u0410",
+        "nameQq": "null",
+        "nameEn": "LITHUANIA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 845,
+        "code": "LUX",
+        "nameRu": "\u041b\u042e\u041a\u0421\u0415\u041c\u0411\u0423\u0420\u0413",
+        "nameKk": "\u041b\u042e\u041a\u0421\u0415\u041c\u0411\u0423\u0420\u0413",
+        "nameQq": "null",
+        "nameEn": "LUXEMBOURG",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 846,
+        "code": "MAC",
+        "nameRu": "\u041c\u0410\u041a\u0410\u041e",
+        "nameKk": "\u041c\u0410\u041a\u0410\u041e",
+        "nameQq": "null",
+        "nameEn": "MACAO SAR",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 847,
+        "code": "MDG",
+        "nameRu": "\u041c\u0410\u0414\u0410\u0413\u0410\u0421\u041a\u0410\u0420",
+        "nameKk": "\u041c\u0410\u0414\u0410\u0413\u0410\u0421\u041a\u0410\u0420",
+        "nameQq": "null",
+        "nameEn": "MADAGASCAR",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 848,
+        "code": "MWI",
+        "nameRu": "\u041c\u0410\u041b\u0410\u0412\u0418",
+        "nameKk": "\u041c\u0410\u041b\u0410\u0412\u0418",
+        "nameQq": "null",
+        "nameEn": "MALAWI",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 849,
+        "code": "MYS",
+        "nameRu": "\u041c\u0410\u041b\u0410\u0419\u0417\u0418\u042f",
+        "nameKk": "\u041c\u0410\u041b\u0410\u0419\u0417\u0418\u042f",
+        "nameQq": "null",
+        "nameEn": "MALAYSIA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 850,
+        "code": "MDV",
+        "nameRu": "\u041c\u0410\u041b\u042c\u0414\u0418\u0412\u042b",
+        "nameKk": "\u041c\u0410\u041b\u042c\u0414\u0418\u0412\u042b",
+        "nameQq": "null",
+        "nameEn": "MALDIVES",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 851,
+        "code": "MLI",
+        "nameRu": "\u041c\u0410\u041b\u0418",
+        "nameKk": "\u041c\u0410\u041b\u0418",
+        "nameQq": "null",
+        "nameEn": "MALI",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 852,
+        "code": "MLT",
+        "nameRu": "\u041c\u0410\u041b\u042c\u0422\u0410",
+        "nameKk": "\u041c\u0410\u041b\u042c\u0422\u0410",
+        "nameQq": "null",
+        "nameEn": "MALTA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 853,
+        "code": "MTQ",
+        "nameRu": "\u041c\u0410\u0420\u0422\u0418\u041d\u0418\u041a\u0410",
+        "nameKk": "\u041c\u0410\u0420\u0422\u0418\u041d\u0418\u041a\u0410",
+        "nameQq": "null",
+        "nameEn": "MARTINIQUE",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 854,
+        "code": "MRT",
+        "nameRu": "\u041c\u0410\u0412\u0420\u0418\u0422\u0410\u041d\u0418\u042f",
+        "nameKk": "\u041c\u0410\u0412\u0420\u0418\u0422\u0410\u041d\u0418\u042f",
+        "nameQq": "null",
+        "nameEn": "MAURITANIA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 855,
+        "code": "MUS",
+        "nameRu": "\u041c\u0410\u0412\u0420\u0418\u041a\u0418\u0419",
+        "nameKk": "\u041c\u0410\u0412\u0420\u0418\u041a\u0418\u0419",
+        "nameQq": "null",
+        "nameEn": "MAURITIUS",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 856,
+        "code": "MEX",
+        "nameRu": "\u041c\u0415\u041a\u0421\u0418\u041a\u0410",
+        "nameKk": "\u041c\u0415\u041a\u0421\u0418\u041a\u0410",
+        "nameQq": "null",
+        "nameEn": "MEXICO",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 857,
+        "code": "MCO",
+        "nameRu": "\u041c\u041e\u041d\u0410\u041a\u041e",
+        "nameKk": "\u041c\u041e\u041d\u0410\u041a\u041e",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 858,
+        "code": "MNG",
+        "nameRu": "\u041c\u041e\u041d\u0413\u041e\u041b\u0418\u042f",
+        "nameKk": "\u041c\u041e\u041d\u0413\u041e\u041b\u0418\u042f",
+        "nameQq": "null",
+        "nameEn": "MONGOLIA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 859,
+        "code": "MDA",
+        "nameRu": "\u041c\u041e\u041b\u0414\u041e\u0412\u0410, \u0420\u0415\u0421\u041f\u0423\u0411\u041b\u0418\u041a\u0410",
+        "nameKk": "\u041c\u041e\u041b\u0414\u041e\u0412\u0410, \u0420\u0415\u0421\u041f\u0423\u0411\u041b\u0418\u041a\u0410",
+        "nameQq": "null",
+        "nameEn": "REP MOLDOVA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 860,
+        "code": "MNE",
+        "nameRu": "\u0427\u0415\u0420\u041d\u041e\u0413\u041e\u0420\u0418\u042f",
+        "nameKk": "\u0427\u0415\u0420\u041d\u041e\u0413\u041e\u0420\u0418\u042f",
+        "nameQq": "null",
+        "nameEn": "MONTENEGRO",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 861,
+        "code": "MSR",
+        "nameRu": "\u041c\u041e\u041d\u0422\u0421\u0415\u0420\u0420\u0410\u0422",
+        "nameKk": "\u041c\u041e\u041d\u0422\u0421\u0415\u0420\u0420\u0410\u0422",
+        "nameQq": "null",
+        "nameEn": "MONTSERRAT",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 862,
+        "code": "MAR",
+        "nameRu": "\u041c\u0410\u0420\u041e\u041a\u041a\u041e",
+        "nameKk": "\u041c\u0410\u0420\u041e\u041a\u041a\u041e",
+        "nameQq": "null",
+        "nameEn": "MOROCCO",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 863,
+        "code": "MOZ",
+        "nameRu": "\u041c\u041e\u0417\u0410\u041c\u0411\u0418\u041a",
+        "nameKk": "\u041c\u041e\u0417\u0410\u041c\u0411\u0418\u041a",
+        "nameQq": "null",
+        "nameEn": "MOZAMBIQUE",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 864,
+        "code": "OMN",
+        "nameRu": "\u041e\u041c\u0410\u041d",
+        "nameKk": "\u041e\u041c\u0410\u041d",
+        "nameQq": "null",
+        "nameEn": "OMAN",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 865,
+        "code": "NAM",
+        "nameRu": "\u041d\u0410\u041c\u0418\u0411\u0418\u042f",
+        "nameKk": "\u041d\u0410\u041c\u0418\u0411\u0418\u042f",
+        "nameQq": "null",
+        "nameEn": "NAMIBIA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 866,
+        "code": "NRU",
+        "nameRu": "\u041d\u0410\u0423\u0420\u0423",
+        "nameKk": "\u041d\u0410\u0423\u0420\u0423",
+        "nameQq": "null",
+        "nameEn": "NAURU",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 867,
+        "code": "NPL",
+        "nameRu": "\u041d\u0415\u041f\u0410\u041b",
+        "nameKk": "\u041d\u0415\u041f\u0410\u041b",
+        "nameQq": "null",
+        "nameEn": "NEPAL",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 868,
+        "code": "NLD",
+        "nameRu": "\u041d\u0418\u0414\u0415\u0420\u041b\u0410\u041d\u0414\u042b",
+        "nameKk": "\u041d\u0418\u0414\u0415\u0420\u041b\u0410\u041d\u0414\u042b",
+        "nameQq": "null",
+        "nameEn": "NETHERLANDS",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 869,
+        "code": "CUW",
+        "nameRu": "\u041a\u042e\u0420\u0410\u0421\u0410\u041e",
+        "nameKk": "\u041a\u042e\u0420\u0410\u0421\u0410\u041e",
+        "nameQq": "null",
+        "nameEn": "CURACAO",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 870,
+        "code": "ABW",
+        "nameRu": "\u0410\u0420\u0423\u0411\u0410",
+        "nameKk": "\u0410\u0420\u0423\u0411\u0410",
+        "nameQq": "null",
+        "nameEn": "ARUBA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 871,
+        "code": "SXM",
+        "nameRu": "\u0421\u0415\u041d-\u041c\u0410\u0420\u0422\u0415\u041d (\u043d\u0438\u0434\u0435\u0440\u043b\u0430\u043d\u0434\u0441\u043a\u0430\u044f \u0447\u0430\u0441\u0442\u044c)",
+        "nameKk": "\u0421\u0415\u041d-\u041c\u0410\u0420\u0422\u0415\u041d (\u043d\u0438\u0434\u0435\u0440\u043b\u0430\u043d\u0434\u0441\u043a\u0430\u044f \u0447\u0430\u0441\u0442\u044c)",
+        "nameQq": "null",
+        "nameEn": "ST. MAARTEN",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 872,
+        "code": "BES",
+        "nameRu": "\u0411\u041e\u041d\u042d\u0419\u0420, \u0421\u0418\u041d\u0422-\u042d\u0421\u0422\u0410\u0422\u0418\u0423\u0421 \u0418 \u0421\u0410\u0411\u0410",
+        "nameKk": "\u0411\u041e\u041d\u042d\u0419\u0420, \u0421\u0418\u041d\u0422-\u042d\u0421\u0422\u0410\u0422\u0418\u0423\u0421 \u0418 \u0421\u0410\u0411\u0410",
+        "nameQq": "null",
+        "nameEn": "BES IS",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 873,
+        "code": "NCL",
+        "nameRu": "\u041d\u041e\u0412\u0410\u042f \u041a\u0410\u041b\u0415\u0414\u041e\u041d\u0418\u042f",
+        "nameKk": "\u041d\u041e\u0412\u0410\u042f \u041a\u0410\u041b\u0415\u0414\u041e\u041d\u0418\u042f",
+        "nameQq": "null",
+        "nameEn": "NEW CALEDNIA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 874,
+        "code": "VUT",
+        "nameRu": "\u0412\u0410\u041d\u0423\u0410\u0422\u0423",
+        "nameKk": "\u0412\u0410\u041d\u0423\u0410\u0422\u0423",
+        "nameQq": "null",
+        "nameEn": "VANUATY",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 875,
+        "code": "NZL",
+        "nameRu": "\u041d\u041e\u0412\u0410\u042f \u0417\u0415\u041b\u0410\u041d\u0414\u0418\u042f",
+        "nameKk": "\u041d\u041e\u0412\u0410\u042f \u0417\u0415\u041b\u0410\u041d\u0414\u0418\u042f",
+        "nameQq": "null",
+        "nameEn": "NEW ZEALAND",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 876,
+        "code": "NIC",
+        "nameRu": "\u041d\u0418\u041a\u0410\u0420\u0410\u0413\u0423\u0410",
+        "nameKk": "\u041d\u0418\u041a\u0410\u0420\u0410\u0413\u0423\u0410",
+        "nameQq": "null",
+        "nameEn": "NICARAGUA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 877,
+        "code": "NER",
+        "nameRu": "\u041d\u0418\u0413\u0415\u0420",
+        "nameKk": "\u041d\u0418\u0413\u0415\u0420",
+        "nameQq": "null",
+        "nameEn": "NIGER",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 878,
+        "code": "NGA",
+        "nameRu": "\u041d\u0418\u0413\u0415\u0420\u0418\u042f",
+        "nameKk": "\u041d\u0418\u0413\u0415\u0420\u0418\u042f",
+        "nameQq": "null",
+        "nameEn": "NIGERIA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 879,
+        "code": "NIU",
+        "nameRu": "\u041d\u0418\u0423\u042d",
+        "nameKk": "\u041d\u0418\u0423\u042d",
+        "nameQq": "null",
+        "nameEn": "NIUE",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 880,
+        "code": "NFK",
+        "nameRu": "\u041e\u0421\u0422\u0420\u041e\u0412 \u041d\u041e\u0420\u0424\u041e\u041b\u041a",
+        "nameKk": "\u041e\u0421\u0422\u0420\u041e\u0412 \u041d\u041e\u0420\u0424\u041e\u041b\u041a",
+        "nameQq": "null",
+        "nameEn": "NORFOLK IS",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 881,
+        "code": "NOR",
+        "nameRu": "\u041d\u041e\u0420\u0412\u0415\u0413\u0418\u042f",
+        "nameKk": "\u041d\u041e\u0420\u0412\u0415\u0413\u0418\u042f",
+        "nameQq": "null",
+        "nameEn": "NORWAY",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 882,
+        "code": "MNP",
+        "nameRu": "\u0421\u0415\u0412\u0415\u0420\u041d\u042b\u0415 \u041c\u0410\u0420\u0418\u0410\u041d\u0421\u041a\u0418\u0415 \u041e\u0421\u0422\u0420\u041e\u0412\u0410",
+        "nameKk": "\u0421\u0415\u0412\u0415\u0420\u041d\u042b\u0415 \u041c\u0410\u0420\u0418\u0410\u041d\u0421\u041a\u0418\u0415 \u041e\u0421\u0422\u0420\u041e\u0412\u0410",
+        "nameQq": "null",
+        "nameEn": "N. MARIANA IS",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 883,
+        "code": "UMI",
+        "nameRu": "\u041c\u0410\u041b\u042b\u0415 \u0422\u0418\u0425\u041e\u041e\u041a\u0415\u0410\u041d\u0421\u041a\u0418\u0415 \u041e\u0422\u0414\u0410\u041b\u0415\u041d\u041d\u042b\u0415 \u041e\u0421\u0422\u0420\u041e\u0412\u0410 \u0421\u041e\u0415\u0414.\u0428\u0422\u0410\u0422\u041e\u0412",
+        "nameKk": "\u041c\u0410\u041b\u042b\u0415 \u0422\u0418\u0425\u041e\u041e\u041a\u0415\u0410\u041d\u0421\u041a\u0418\u0415 \u041e\u0422\u0414\u0410\u041b\u0415\u041d\u041d\u042b\u0415 \u041e\u0421\u0422\u0420\u041e\u0412\u0410 \u0421\u041e\u0415\u0414.\u0428\u0422\u0410\u0422\u041e\u0412",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 884,
+        "code": "FSM",
+        "nameRu": "\u041c\u0418\u041a\u0420\u041e\u041d\u0415\u0417\u0418\u042f, \u0424\u0415\u0414\u0415\u0420\u0410\u0422\u0418\u0412\u041d\u042b\u0415 \u0428\u0422\u0410\u0422\u042b",
+        "nameKk": "\u041c\u0418\u041a\u0420\u041e\u041d\u0415\u0417\u0418\u042f, \u0424\u0415\u0414\u0415\u0420\u0410\u0422\u0418\u0412\u041d\u042b\u0415 \u0428\u0422\u0410\u0422\u042b",
+        "nameQq": "null",
+        "nameEn": "MICRONESIA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 885,
+        "code": "MHL",
+        "nameRu": "\u041c\u0410\u0420\u0428\u0410\u041b\u041b\u041e\u0412\u042b \u041e\u0421\u0422\u0420\u041e\u0412\u0410",
+        "nameKk": "\u041c\u0410\u0420\u0428\u0410\u041b\u041b\u041e\u0412\u042b \u041e\u0421\u0422\u0420\u041e\u0412\u0410",
+        "nameQq": "null",
+        "nameEn": "MARSHALL IS",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 886,
+        "code": "PLW",
+        "nameRu": "\u041f\u0410\u041b\u0410\u0423",
+        "nameKk": "\u041f\u0410\u041b\u0410\u0423",
+        "nameQq": "null",
+        "nameEn": "PALAU",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 887,
+        "code": "PAK",
+        "nameRu": "\u041f\u0410\u041a\u0418\u0421\u0422\u0410\u041d",
+        "nameKk": "\u041f\u0410\u041a\u0418\u0421\u0422\u0410\u041d",
+        "nameQq": "null",
+        "nameEn": "PAKISTAN",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 888,
+        "code": "PAN",
+        "nameRu": "\u041f\u0410\u041d\u0410\u041c\u0410",
+        "nameKk": "\u041f\u0410\u041d\u0410\u041c\u0410",
+        "nameQq": "null",
+        "nameEn": "PANAMA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 889,
+        "code": "PNG",
+        "nameRu": "\u041f\u0410\u041f\u0423\u0410 \u041d\u041e\u0412\u0410\u042f \u0413\u0412\u0418\u041d\u0415\u042f",
+        "nameKk": "\u041f\u0410\u041f\u0423\u0410-\u041d\u041e\u0412\u0410\u042f \u0413\u0412\u0418\u041d\u0415\u042f",
+        "nameQq": "null",
+        "nameEn": "PAPUA N. GUIN",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 890,
+        "code": "PRY",
+        "nameRu": "\u041f\u0410\u0420\u0410\u0413\u0412\u0410\u0419",
+        "nameKk": "\u041f\u0410\u0420\u0410\u0413\u0412\u0410\u0419",
+        "nameQq": "null",
+        "nameEn": "PARAGUAY",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 891,
+        "code": "PER",
+        "nameRu": "\u041f\u0415\u0420\u0423",
+        "nameKk": "\u041f\u0415\u0420\u0423",
+        "nameQq": "null",
+        "nameEn": "PERU",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 892,
+        "code": "PHL",
+        "nameRu": "\u0424\u0418\u041b\u0418\u041f\u041f\u0418\u041d\u042b",
+        "nameKk": "\u0424\u0418\u041b\u0418\u041f\u041f\u0418\u041d\u042b",
+        "nameQq": "null",
+        "nameEn": "PHILIPPINES",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 893,
+        "code": "PCN",
+        "nameRu": "\u041f\u0418\u0422\u041a\u0415\u0420\u041d",
+        "nameKk": "\u041f\u0418\u0422\u041a\u0415\u0420\u041d",
+        "nameQq": "null",
+        "nameEn": "PITCAIRN",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 894,
+        "code": "POL",
+        "nameRu": "\u041f\u041e\u041b\u042c\u0428\u0410",
+        "nameKk": "\u041f\u041e\u041b\u042c\u0428\u0410",
+        "nameQq": "null",
+        "nameEn": "POLAND",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 895,
+        "code": "PRT",
+        "nameRu": "\u041f\u041e\u0420\u0422\u0423\u0413\u0410\u041b\u0418\u042f",
+        "nameKk": "\u041f\u041e\u0420\u0422\u0423\u0413\u0410\u041b\u0418\u042f",
+        "nameQq": "null",
+        "nameEn": "PORTUGAL",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 896,
+        "code": "GNB",
+        "nameRu": "\u0413\u0412\u0418\u041d\u0415\u042f-\u0411\u0418\u0421\u0410\u0423",
+        "nameKk": "\u0413\u0412\u0418\u041d\u0415\u042f-\u0411\u0418\u0421\u0410\u0423",
+        "nameQq": "null",
+        "nameEn": "GUINEABISSAU",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 898,
+        "code": "PRI",
+        "nameRu": "\u041f\u0423\u042d\u0420\u0422\u041e-\u0420\u0418\u041a\u041e",
+        "nameKk": "\u041f\u0423\u042d\u0420\u0422\u041e-\u0420\u0418\u041a\u041e",
+        "nameQq": "null",
+        "nameEn": "PUERTO RICO",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 899,
+        "code": "QAT",
+        "nameRu": "\u041a\u0410\u0422\u0410\u0420",
+        "nameKk": "\u041a\u0410\u0422\u0410\u0420",
+        "nameQq": "null",
+        "nameEn": "QATAR",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 900,
+        "code": "REU",
+        "nameRu": "\u0420\u0415\u042e\u041d\u042c\u041e\u041d",
+        "nameKk": "\u0420\u0415\u042e\u041d\u042c\u041e\u041d",
+        "nameQq": "null",
+        "nameEn": "REUNION",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 901,
+        "code": "ROU",
+        "nameRu": "\u0420\u0423\u041c\u042b\u041d\u0418\u042f",
+        "nameKk": "\u0420\u0423\u041c\u042b\u041d\u0418\u042f",
+        "nameQq": "null",
+        "nameEn": "ROMANIA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 902,
+        "code": "RUS",
+        "nameRu": "\u0420\u041e\u0421\u0421\u0418\u042f",
+        "nameKk": "\u0420\u041e\u0421\u0421\u0418\u042f",
+        "nameQq": "null",
+        "nameEn": "RUSSIAN FED",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 903,
+        "code": "RWA",
+        "nameRu": "\u0420\u0423\u0410\u041d\u0414\u0410",
+        "nameKk": "\u0420\u0423\u0410\u041d\u0414\u0410",
+        "nameQq": "null",
+        "nameEn": "RWANDA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 904,
+        "code": "BLM",
+        "nameRu": "\u0421\u0415\u041d-\u0411\u0410\u0420\u0422\u0415\u041b\u0415\u041c\u0418",
+        "nameKk": "\u0421\u0415\u041d-\u0411\u0410\u0420\u0422\u0415\u041b\u0415\u041c\u0418",
+        "nameQq": "null",
+        "nameEn": "ST. BARTHELEMY",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 905,
+        "code": "SHN",
+        "nameRu": "\u0421\u0412\u042f\u0422\u0410\u042f \u0415\u041b\u0415\u041d\u0410, \u041e\u0421\u0422\u0420\u041e\u0412 \u0412\u041e\u0417\u041d\u0415\u0421\u0415\u041d\u0418\u042f, \u0422\u0420\u0418\u0421\u0422\u0410\u041d-\u0414\u0410-\u041a\u0423\u041d\u042c\u042f",
+        "nameKk": "\u0421\u0412\u042f\u0422\u0410\u042f \u0415\u041b\u0415\u041d\u0410",
+        "nameQq": "null",
+        "nameEn": "ST. HELENA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 906,
+        "code": "KNA",
+        "nameRu": "\u0421\u0415\u041d\u0422-\u041a\u0418\u0422\u0421 \u0418 \u041d\u0415\u0412\u0418\u0421",
+        "nameKk": "\u0421\u0415\u041d\u0422-\u041a\u0418\u0422\u0421 \u0418 \u041d\u0415\u0412\u0418\u0421",
+        "nameQq": "null",
+        "nameEn": "ST. KITTS-NEV",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 907,
+        "code": "AIA",
+        "nameRu": "\u0410\u041d\u0413\u0418\u041b\u042c\u042f",
+        "nameKk": "\u0410\u041d\u0413\u0418\u041b\u042c\u042f",
+        "nameQq": "null",
+        "nameEn": "ANGUILLA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 908,
+        "code": "LCA",
+        "nameRu": "\u0421\u0415\u041d\u0422-\u041b\u042e\u0421\u0418\u042f",
+        "nameKk": "\u0421\u0415\u041d\u0422-\u041b\u042e\u0421\u0418\u042f",
+        "nameQq": "null",
+        "nameEn": "ST. LUCIA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 909,
+        "code": "MAF",
+        "nameRu": "\u0421\u0415\u041d-\u041c\u0410\u0420\u0422\u0415\u041d (\u0424\u0420\u0410\u041d\u0426\u0423\u0417\u0421\u041a\u0410\u042f \u0427\u0410\u0421\u0422\u042c)",
+        "nameKk": "\u0421\u0415\u041d-\u041c\u0410\u0420\u0422\u0415\u041d",
+        "nameQq": "null",
+        "nameEn": "ST. MARTIN",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 910,
+        "code": "SPM",
+        "nameRu": "\u0421\u0415\u041d\u0422-\u041f\u042c\u0415\u0420 \u0418 \u041c\u0418\u041a\u0415\u041b\u041e\u041d",
+        "nameKk": "\u0421\u0415\u041d\u0422-\u041f\u042c\u0415\u0420 \u0418 \u041c\u0418\u041a\u0415\u041b\u041e\u041d",
+        "nameQq": "null",
+        "nameEn": "ST. PIERRE, MQ",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 911,
+        "code": "VCT",
+        "nameRu": "\u0421\u0415\u041d\u0422-\u0412\u0418\u041d\u0421\u0415\u041d\u0422 \u0418 \u0413\u0420\u0415\u041d\u0410\u0414\u0418\u041d\u042b",
+        "nameKk": "\u0421\u0415\u041d\u0422-\u0412\u0418\u041d\u0421\u0415\u041d\u0422 \u0418 \u0413\u0420\u0415\u041d\u0410\u0414\u0418\u041d\u042b",
+        "nameQq": "null",
+        "nameEn": "ST. VINCENT, G",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 912,
+        "code": "SMR",
+        "nameRu": "\u0421\u0410\u041d-\u041c\u0410\u0420\u0418\u041d\u041e",
+        "nameKk": "\u0421\u0410\u041d-\u041c\u0410\u0420\u0418\u041d\u041e",
+        "nameQq": "null",
+        "nameEn": "SAN MARINO",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 913,
+        "code": "STP",
+        "nameRu": "\u0421\u0410\u041d-\u0422\u041e\u041c\u0415 \u0418 \u041f\u0420\u0418\u041d\u0421\u0418\u041f\u0418",
+        "nameKk": "\u0421\u0410\u041d-\u0422\u041e\u041c\u0415 \u0418 \u041f\u0420\u0418\u041d\u0421\u0418\u041f\u0418",
+        "nameQq": "null",
+        "nameEn": "SAO TOME PRN",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 914,
+        "code": "SAU",
+        "nameRu": "\u0421\u0410\u0423\u0414\u041e\u0412\u0421\u041a\u0410\u042f \u0410\u0420\u0410\u0412\u0418\u042f",
+        "nameKk": "\u0421\u0410\u0423\u0414\u041e\u0412\u0421\u041a\u0410\u042f \u0410\u0420\u0410\u0412\u0418\u042f",
+        "nameQq": "null",
+        "nameEn": "SAUDI ARABIA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 915,
+        "code": "SEN",
+        "nameRu": "\u0421\u0415\u041d\u0415\u0413\u0410\u041b",
+        "nameKk": "\u0421\u0415\u041d\u0415\u0413\u0410\u041b",
+        "nameQq": "null",
+        "nameEn": "SENEGAL",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 916,
+        "code": "SRB",
+        "nameRu": "\u0421\u0415\u0420\u0411\u0418\u042f",
+        "nameKk": "\u0421\u0415\u0420\u0411\u0418\u042f",
+        "nameQq": "null",
+        "nameEn": "SERBIA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 917,
+        "code": "SYC",
+        "nameRu": "\u0421\u0415\u0419\u0428\u0415\u041b\u042b",
+        "nameKk": "\u0421\u0415\u0419\u0428\u0415\u041b\u042b",
+        "nameQq": "null",
+        "nameEn": "SEYCHELLES",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 918,
+        "code": "SLE",
+        "nameRu": "\u0421\u042c\u0415\u0420\u0420\u0410-\u041b\u0415\u041e\u041d\u0415",
+        "nameKk": "\u0421\u042c\u0415\u0420\u0420\u0410-\u041b\u0415\u041e\u041d\u0415",
+        "nameQq": "null",
+        "nameEn": "SIERRA LTONE",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 919,
+        "code": "SGP",
+        "nameRu": "\u0421\u0418\u041d\u0413\u0410\u041f\u0423\u0420",
+        "nameKk": "\u0421\u0418\u041d\u0413\u0410\u041f\u0423\u0420",
+        "nameQq": "null",
+        "nameEn": "SINGAPORE",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 920,
+        "code": "SVK",
+        "nameRu": "\u0421\u041b\u041e\u0412\u0410\u041a\u0418\u042f",
+        "nameKk": "\u0421\u041b\u041e\u0412\u0410\u041a\u0418\u042f",
+        "nameQq": "null",
+        "nameEn": "SLOVAKIA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 921,
+        "code": "VNM",
+        "nameRu": "\u0412\u042c\u0415\u0422\u041d\u0410\u041c",
+        "nameKk": "\u0412\u042c\u0415\u0422\u041d\u0410\u041c",
+        "nameQq": "null",
+        "nameEn": "VIET NAM",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 922,
+        "code": "SVN",
+        "nameRu": "\u0421\u041b\u041e\u0412\u0415\u041d\u0418\u042f",
+        "nameKk": "\u0421\u041b\u041e\u0412\u0415\u041d\u0418\u042f",
+        "nameQq": "null",
+        "nameEn": "SLOVENIA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 923,
+        "code": "SOM",
+        "nameRu": "\u0421\u041e\u041c\u0410\u041b\u0418",
+        "nameKk": "\u0421\u041e\u041c\u0410\u041b\u0418",
+        "nameQq": "null",
+        "nameEn": "SOMALIA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 924,
+        "code": "ZAF",
+        "nameRu": "\u042e\u0416\u041d\u0410\u042f \u0410\u0424\u0420\u0418\u041a\u0410",
+        "nameKk": "\u042e\u0416\u041d\u0410\u042f \u0410\u0424\u0420\u0418\u041a\u0410",
+        "nameQq": "null",
+        "nameEn": "SOUTH AFRICA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 925,
+        "code": "ZWE",
+        "nameRu": "\u0417\u0418\u041c\u0411\u0410\u0411\u0412\u0415",
+        "nameKk": "\u0417\u0418\u041c\u0411\u0410\u0411\u0412\u0415",
+        "nameQq": "null",
+        "nameEn": "ZIMBABWE",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 926,
+        "code": "ESP",
+        "nameRu": "\u0418\u0421\u041f\u0410\u041d\u0418\u042f",
+        "nameKk": "\u0418\u0421\u041f\u0410\u041d\u0418\u042f",
+        "nameQq": "null",
+        "nameEn": "SPAIN",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 927,
+        "code": "SSD",
+        "nameRu": "\u042e\u0416\u041d\u042b\u0419 \u0421\u0423\u0414\u0410\u041d",
+        "nameKk": "\u042e\u0416\u041d\u042b\u0419 \u0421\u0423\u0414\u0410\u041d",
+        "nameQq": "null",
+        "nameEn": "SOUTH SUDAN",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 928,
+        "code": "SDN",
+        "nameRu": "\u0421\u0423\u0414\u0410\u041d",
+        "nameKk": "\u0421\u0423\u0414\u0410\u041d",
+        "nameQq": "null",
+        "nameEn": "SUDAN",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 929,
+        "code": "ESH",
+        "nameRu": "\u0417\u0410\u041f\u0410\u0414\u041d\u0410\u042f \u0421\u0410\u0425\u0410\u0420\u0410",
+        "nameKk": "\u0417\u0410\u041f\u0410\u0414\u041d\u0410\u042f \u0421\u0410\u0425\u0410\u0420\u0410",
+        "nameQq": "null",
+        "nameEn": "WESTN. SAHARA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 930,
+        "code": "SUR",
+        "nameRu": "\u0421\u0423\u0420\u0418\u041d\u0410\u041c",
+        "nameKk": "\u0421\u0423\u0420\u0418\u041d\u0410\u041c",
+        "nameQq": "null",
+        "nameEn": "SURINAME",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 931,
+        "code": "SJM",
+        "nameRu": "\u0428\u041f\u0418\u0426\u0411\u0415\u0420\u0413\u0415\u041d \u0418 \u042f\u041d \u041c\u0410\u0419\u0415\u041d",
+        "nameKk": "\u0428\u041f\u0418\u0426\u0411\u0415\u0420\u0413\u0415\u041d \u0418 \u042f\u041d \u041c\u0410\u0419\u0415\u041d",
+        "nameQq": "null",
+        "nameEn": "SVALBARD IS",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 932,
+        "code": "SWZ",
+        "nameRu": "\u042d\u0421\u0412\u0410\u0422\u0418\u041d\u0418",
+        "nameKk": "\u0421\u0412\u0410\u0417\u0418\u041b\u0415\u041d\u0414",
+        "nameQq": "null",
+        "nameEn": "SWAZILAND",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 933,
+        "code": "SWE",
+        "nameRu": "\u0428\u0412\u0415\u0426\u0418\u042f",
+        "nameKk": "\u0428\u0412\u0415\u0426\u0418\u042f",
+        "nameQq": "null",
+        "nameEn": "SWEDEN",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 934,
+        "code": "CHE",
+        "nameRu": "\u0428\u0412\u0415\u0419\u0426\u0410\u0420\u0418\u042f",
+        "nameKk": "\u0428\u0412\u0415\u0419\u0426\u0410\u0420\u0418\u042f",
+        "nameQq": "null",
+        "nameEn": "SWITZERLAND",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 935,
+        "code": "SYR",
+        "nameRu": "\u0421\u0418\u0420\u0418\u0419\u0421\u041a\u0410\u042f \u0410\u0420\u0410\u0411\u0421\u041a\u0410\u042f \u0420\u0415\u0421\u041f\u0423\u0411\u041b\u0418\u041a\u0410",
+        "nameKk": "\u0421\u0418\u0420\u0418\u0419\u0421\u041a\u0410\u042f \u0410\u0420\u0410\u0411\u0421\u041a\u0410\u042f \u0420\u0415\u0421\u041f\u0423\u0411\u041b\u0418\u041a\u0410",
+        "nameQq": "null",
+        "nameEn": "SYRIA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 936,
+        "code": "TJK",
+        "nameRu": "\u0422\u0410\u0414\u0416\u0418\u041a\u0418\u0421\u0422\u0410\u041d",
+        "nameKk": "\u0422\u0410\u0414\u0416\u0418\u041a\u0418\u0421\u0422\u0410\u041d",
+        "nameQq": "null",
+        "nameEn": "TAJIKISTAN",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 937,
+        "code": "THA",
+        "nameRu": "\u0422\u0410\u0418\u041b\u0410\u041d\u0414",
+        "nameKk": "\u0422\u0410\u0418\u041b\u0410\u041d\u0414",
+        "nameQq": "null",
+        "nameEn": "THAILAND",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 938,
+        "code": "TGO",
+        "nameRu": "\u0422\u041e\u0413\u041e",
+        "nameKk": "\u0422\u041e\u0413\u041e",
+        "nameQq": "null",
+        "nameEn": "TOGO",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 939,
+        "code": "TKL",
+        "nameRu": "\u0422\u041e\u041a\u0415\u041b\u0410\u0423",
+        "nameKk": "\u0422\u041e\u041a\u0415\u041b\u0410\u0423",
+        "nameQq": "null",
+        "nameEn": "TOKELAU",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 940,
+        "code": "TON",
+        "nameRu": "\u0422\u041e\u041d\u0413\u0410",
+        "nameKk": "\u0422\u041e\u041d\u0413\u0410",
+        "nameQq": "null",
+        "nameEn": "TONGA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 941,
+        "code": "TTO",
+        "nameRu": "\u0422\u0420\u0418\u041d\u0418\u0414\u0410\u0414 \u0418 \u0422\u041e\u0411\u0410\u0413\u041e",
+        "nameKk": "\u0422\u0420\u0418\u041d\u0418\u0414\u0410\u0414 \u0418 \u0422\u041e\u0411\u0410\u0413\u041e",
+        "nameQq": "null",
+        "nameEn": "TRINIDAD TBG",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 942,
+        "code": "ARE",
+        "nameRu": "\u041e\u0411\u042a\u0415\u0414\u0418\u041d\u0415\u041d\u041d\u042b\u0415 \u0410\u0420\u0410\u0411\u0421\u041a\u0418\u0415 \u042d\u041c\u0418\u0420\u0410\u0422\u042b",
+        "nameKk": "\u041e\u0411\u042a\u0415\u0414\u0418\u041d\u0415\u041d\u041d\u042b\u0415 \u0410\u0420\u0410\u0411\u0421\u041a\u0418\u0415 \u042d\u041c\u0418\u0420\u0410\u0422\u042b",
+        "nameQq": "null",
+        "nameEn": "UNTD ARAB EM",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 943,
+        "code": "TUN",
+        "nameRu": "\u0422\u0423\u041d\u0418\u0421",
+        "nameKk": "\u0422\u0423\u041d\u0418\u0421",
+        "nameQq": "null",
+        "nameEn": "TUNISIA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 944,
+        "code": "TUR",
+        "nameRu": "\u0422\u0423\u0420\u0426\u0418\u042f",
+        "nameKk": "\u0422\u0423\u0420\u0426\u0418\u042f",
+        "nameQq": "null",
+        "nameEn": "TURKEY",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 945,
+        "code": "TKM",
+        "nameRu": "\u0422\u0423\u0420\u041a\u041c\u0415\u041d\u0418\u0421\u0422\u0410\u041d",
+        "nameKk": "\u0422\u0423\u0420\u041a\u041c\u0415\u041d\u0418\u042f",
+        "nameQq": "null",
+        "nameEn": "TURKMENISTAN",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 946,
+        "code": "TCA",
+        "nameRu": "\u041e\u0421\u0422\u0420\u041e\u0412\u0410 \u0422\u0415\u0420\u041a\u0421 \u0418 \u041a\u0410\u0419\u041a\u041e\u0421",
+        "nameKk": "\u041e\u0421\u0422\u0420\u041e\u0412\u0410 \u0422\u0415\u0420\u041a\u0421 \u0418 \u041a\u0410\u0419\u041a\u041e\u0421",
+        "nameQq": "null",
+        "nameEn": "TURKS, CAICOS",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 947,
+        "code": "TUV",
+        "nameRu": "\u0422\u0423\u0412\u0410\u041b\u0423",
+        "nameKk": "\u0422\u0423\u0412\u0410\u041b\u0423",
+        "nameQq": "null",
+        "nameEn": "TUVALU",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 948,
+        "code": "UGA",
+        "nameRu": "\u0423\u0413\u0410\u041d\u0414\u0410",
+        "nameKk": "\u0423\u0413\u0410\u041d\u0414\u0410",
+        "nameQq": "null",
+        "nameEn": "UGANDA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 949,
+        "code": "UKR",
+        "nameRu": "\u0423\u041a\u0420\u0410\u0418\u041d\u0410",
+        "nameKk": "\u0423\u041a\u0420\u0410\u0418\u041d\u0410",
+        "nameQq": "null",
+        "nameEn": "UKRAINE",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 950,
+        "code": "MKD",
+        "nameRu": "\u0421\u0415\u0412\u0415\u0420\u041d\u0410\u042f \u041c\u0410\u041a\u0415\u0414\u041e\u041d\u0418\u042f",
+        "nameKk": "\u0420\u0415\u0421\u041f\u0423\u0411\u041b\u0418\u041a\u0410 \u041c\u0410\u041a\u0415\u0414\u041e\u041d\u0418\u042f",
+        "nameQq": "null",
+        "nameEn": "TFYROM",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 951,
+        "code": "EGY",
+        "nameRu": "\u0415\u0413\u0418\u041f\u0415\u0422",
+        "nameKk": "\u0415\u0413\u0418\u041f\u0415\u0422",
+        "nameQq": "null",
+        "nameEn": "EGYPT",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 952,
+        "code": "GBR",
+        "nameRu": "\u0421\u041e\u0415\u0414\u0418\u041d\u0415\u041d\u041d\u041e\u0415 \u041a\u041e\u0420\u041e\u041b\u0415\u0412\u0421\u0422\u0412\u041e",
+        "nameKk": "\u0421\u041e\u0415\u0414\u0418\u041d\u0415\u041d\u041d\u041e\u0415 \u041a\u041e\u0420\u041e\u041b\u0415\u0412\u0421\u0422\u0412\u041e",
+        "nameQq": "null",
+        "nameEn": "UK",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 954,
+        "code": "GGY",
+        "nameRu": "\u0413\u0415\u0420\u041d\u0421\u0418",
+        "nameKk": "\u0413\u0415\u0420\u041d\u0421\u0418",
+        "nameQq": "null",
+        "nameEn": "GUERNSEY",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 955,
+        "code": "JEY",
+        "nameRu": "\u0414\u0416\u0415\u0420\u0421\u0418",
+        "nameKk": "\u0414\u0416\u0415\u0420\u0421\u0418",
+        "nameQq": "null",
+        "nameEn": "JERSEY",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 956,
+        "code": "IMN",
+        "nameRu": "\u041e\u0421\u0422\u0420\u041e\u0412 \u041c\u042d\u041d",
+        "nameKk": "\u041e\u0421\u0422\u0420\u041e\u0412 \u041c\u042d\u041d",
+        "nameQq": "null",
+        "nameEn": "ISLE OF MAN",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 957,
+        "code": "TZA",
+        "nameRu": "\u0422\u0410\u041d\u0417\u0410\u041d\u0418\u042f, \u041e\u0411\u042a\u0415\u0414\u0418\u041d\u0415\u041d\u041d\u0410\u042f \u0420\u0415\u0421\u041f\u0423\u0411\u041b\u0418\u041a\u0410",
+        "nameKk": "\u0422\u0410\u041d\u0417\u0410\u041d\u0418\u042f, \u041e\u0411\u042a\u0415\u0414\u0418\u041d\u0415\u041d\u041d\u0410\u042f \u0420\u0415\u0421\u041f\u0423\u0411\u041b\u0418\u041a\u0410",
+        "nameQq": "null",
+        "nameEn": "TANZINIA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 959,
+        "code": "VIR",
+        "nameRu": "\u0412\u0418\u0420\u0413\u0418\u041d\u0421\u041a\u0418\u0415 \u041e\u0421\u0422\u0420\u041e\u0412\u0410 (\u0421\u0428\u0410)",
+        "nameKk": "\u0412\u0418\u0420\u0413\u0418\u041d\u0421\u041a\u0418\u0415 \u041e\u0421\u0422\u0420\u041e\u0412\u0410, \u0421\u0428\u0410",
+        "nameQq": "null",
+        "nameEn": "US. VIRGIN IS",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 960,
+        "code": "BFA",
+        "nameRu": "\u0411\u0423\u0420\u041a\u0418\u041d\u0410-\u0424\u0410\u0421\u041e",
+        "nameKk": "\u0411\u0423\u0420\u041a\u0418\u041d\u0410-\u0424\u0410\u0421\u041e",
+        "nameQq": "null",
+        "nameEn": "BURKINA FASO",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 961,
+        "code": "URY",
+        "nameRu": "\u0423\u0420\u0423\u0413\u0412\u0410\u0419",
+        "nameKk": "\u0423\u0420\u0423\u0413\u0412\u0410\u0419",
+        "nameQq": "null",
+        "nameEn": "URUGUAY",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 962,
+        "code": "UZB",
+        "nameRu": "\u0423\u0417\u0411\u0415\u041a\u0418\u0421\u0422\u0410\u041d",
+        "nameKk": "\u0423\u0417\u0411\u0415\u041a\u0418\u0421\u0422\u0410\u041d",
+        "nameQq": "null",
+        "nameEn": "UZBEKISTAN",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 963,
+        "code": "VEN",
+        "nameRu": "\u0412\u0415\u041d\u0415\u0421\u0423\u042d\u041b\u0410 (\u0411\u041e\u041b\u0418\u0412\u0410\u0420\u0418\u0410\u041d\u0421\u041a\u0410\u042f \u0420\u0415\u0421\u041f\u0423\u0411\u041b\u0418\u041a\u0410)",
+        "nameKk": "\u0412\u0415\u041d\u0415\u0421\u0423\u042d\u041b\u0410",
+        "nameQq": "null",
+        "nameEn": "VENEZUELA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 964,
+        "code": "WLF",
+        "nameRu": "\u0423\u041e\u041b\u041b\u0418\u0421 \u0418 \u0424\u0423\u0422\u0423\u041d\u0410",
+        "nameKk": "\u0423\u041e\u041b\u041b\u0418\u0421 \u0418 \u0424\u0423\u0422\u0423\u041d\u0410",
+        "nameQq": "null",
+        "nameEn": "WALLIS FUT. I",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 965,
+        "code": "WSM",
+        "nameRu": "\u0421\u0410\u041c\u041e\u0410",
+        "nameKk": "\u0421\u0410\u041c\u041e\u0410",
+        "nameQq": "null",
+        "nameEn": "SAMOA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 966,
+        "code": "YEM",
+        "nameRu": "\u0419\u0415\u041c\u0415\u041d",
+        "nameKk": "\u0419\u0415\u041c\u0415\u041d",
+        "nameQq": "null",
+        "nameEn": "YEMEN",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 967,
+        "code": "ZMB",
+        "nameRu": "\u0417\u0410\u041c\u0411\u0418\u042f",
+        "nameKk": "\u0417\u0410\u041c\u0411\u0418\u042f",
+        "nameQq": "null",
+        "nameEn": "ZAMBIA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 968,
+        "code": "ABH",
+        "nameRu": "\u0410\u0411\u0425\u0410\u0417\u0418\u042f",
+        "nameKk": "\u0410\u0411\u0425\u0410\u0417\u0418\u042f",
+        "nameQq": "null",
+        "nameEn": "Abkhazia",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 969,
+        "code": "OST",
+        "nameRu": "\u042e\u0416\u041d\u0410\u042f \u041e\u0421\u0415\u0422\u0418\u042f",
+        "nameKk": "\u042e\u0416\u041d\u0410\u042f \u041e\u0421\u0415\u0422\u0418\u042f",
+        "nameQq": "null",
+        "nameEn": "South Ossetia",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 970,
+        "code": "000",
+        "nameRu": "\u0414\u041b\u042f \u041b\u0418\u0426 \u0411\u0415\u0417 \u0413\u0420\u0410\u0416\u0414\u0410\u041d\u0421\u0422\u0412\u0410",
+        "nameKk": "\u0414\u041b\u042f \u041b\u0418\u0426 \u0411\u0415\u0417 \u0413\u0420\u0410\u0416\u0414\u0410\u041d\u0421\u0422\u0412\u0410",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 971,
+        "code": "AFG",
+        "nameRu": "\u0410\u0424\u0413\u0410\u041d\u0418\u0421\u0422\u0410\u041d",
+        "nameKk": "\u0410\u0424\u0413\u0410\u041d\u0418\u0421\u0422\u0410\u041d",
+        "nameQq": "null",
+        "nameEn": "AFGANISTAN",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 972,
+        "code": "ALB",
+        "nameRu": "\u0410\u041b\u0411\u0410\u041d\u0418\u042f",
+        "nameKk": "\u0410\u041b\u0411\u0410\u041d\u0418\u042f",
+        "nameQq": "null",
+        "nameEn": "ALBANIA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 973,
+        "code": "ATA",
+        "nameRu": "\u0410\u041d\u0422\u0410\u0420\u041a\u0422\u0418\u0414\u0410",
+        "nameKk": "\u0410\u041d\u0422\u0410\u0420\u041a\u0422\u0418\u0414\u0410",
+        "nameQq": "null",
+        "nameEn": "Antarctica",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 974,
+        "code": "DZA",
+        "nameRu": "\u0410\u041b\u0416\u0418\u0420",
+        "nameKk": "\u0410\u041b\u0416\u0418\u0420",
+        "nameQq": "null",
+        "nameEn": "ALGERIA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 975,
+        "code": "ASM",
+        "nameRu": "\u0410\u041c\u0415\u0420\u0418\u041a\u0410\u041d\u0421\u041a\u041e\u0415 \u0421\u0410\u041c\u041e\u0410",
+        "nameKk": "\u0410\u041c\u0415\u0420\u0418\u041a\u0410\u041d\u0421\u041a\u041e\u0415 \u0421\u0410\u041c\u041e\u0410",
+        "nameQq": "null",
+        "nameEn": "AMER SAMOA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 976,
+        "code": "AND",
+        "nameRu": "\u0410\u041d\u0414\u041e\u0420\u0420\u0410",
+        "nameKk": "\u0410\u041d\u0414\u041e\u0420\u0420\u0410",
+        "nameQq": "null",
+        "nameEn": "ANDORRA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 977,
+        "code": "AGO",
+        "nameRu": "\u0410\u041d\u0413\u041e\u041b\u0410",
+        "nameKk": "\u0410\u041d\u0413\u041e\u041b\u0410",
+        "nameQq": "null",
+        "nameEn": "ANGOLA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 978,
+        "code": "ATG",
+        "nameRu": "\u0410\u041d\u0422\u0418\u0413\u0423\u0410 \u0418 \u0411\u0410\u0420\u0411\u0423\u0414\u0410",
+        "nameKk": "\u0410\u041d\u0422\u0418\u0413\u0423\u0410 \u0418 \u0411\u0410\u0420\u0411\u0423\u0414\u0410",
+        "nameQq": "null",
+        "nameEn": "ANTIGUA, BARB",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 979,
+        "code": "AZE",
+        "nameRu": "\u0410\u0417\u0415\u0420\u0411\u0410\u0419\u0414\u0416\u0410\u041d",
+        "nameKk": "\u0410\u0417\u0415\u0420\u0411\u0410\u0419\u0414\u0416\u0410\u041d",
+        "nameQq": "null",
+        "nameEn": "AZERBAIJAN",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 980,
+        "code": "ARG",
+        "nameRu": "\u0410\u0420\u0413\u0415\u041d\u0422\u0418\u041d\u0410",
+        "nameKk": "\u0410\u0420\u0413\u0415\u041d\u0422\u0418\u041d\u0410",
+        "nameQq": "null",
+        "nameEn": "ARGENTINA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 981,
+        "code": "AUS",
+        "nameRu": "\u0410\u0412\u0421\u0422\u0420\u0410\u041b\u0418\u042f",
+        "nameKk": "\u0410\u0412\u0421\u0422\u0420\u0410\u041b\u0418\u042f",
+        "nameQq": "null",
+        "nameEn": "AUSTRALIA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 982,
+        "code": "AUT",
+        "nameRu": "\u0410\u0412\u0421\u0422\u0420\u0418\u042f",
+        "nameKk": "\u0410\u0412\u0421\u0422\u0420\u0418\u042f",
+        "nameQq": "null",
+        "nameEn": "AUSTRIA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 983,
+        "code": "BHS",
+        "nameRu": "\u0411\u0410\u0413\u0410\u041c\u042b",
+        "nameKk": "\u0411\u0410\u0413\u0410\u041c\u042b",
+        "nameQq": "null",
+        "nameEn": "BAHAMAS",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 984,
+        "code": "BHR",
+        "nameRu": "\u0411\u0410\u0425\u0420\u0415\u0419\u041d",
+        "nameKk": "\u0411\u0410\u0425\u0420\u0415\u0419\u041d",
+        "nameQq": "null",
+        "nameEn": "BAHRAIN",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 985,
+        "code": "BGD",
+        "nameRu": "\u0411\u0410\u041d\u0413\u041b\u0410\u0414\u0415\u0428",
+        "nameKk": "\u0411\u0410\u041d\u0413\u041b\u0410\u0414\u0415\u0428",
+        "nameQq": "null",
+        "nameEn": "BANGLADESH",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 986,
+        "code": "ARM",
+        "nameRu": "\u0410\u0420\u041c\u0415\u041d\u0418\u042f",
+        "nameKk": "\u0410\u0420\u041c\u0415\u041d\u0418\u042f",
+        "nameQq": "null",
+        "nameEn": "ARMENIA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 987,
+        "code": "BRB",
+        "nameRu": "\u0411\u0410\u0420\u0411\u0410\u0414\u041e\u0421",
+        "nameKk": "\u0411\u0410\u0420\u0411\u0410\u0414\u041e\u0421",
+        "nameQq": "null",
+        "nameEn": "BARBADOS",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 988,
+        "code": "BEL",
+        "nameRu": "\u0411\u0415\u041b\u042c\u0413\u0418\u042f",
+        "nameKk": "\u0411\u0415\u041b\u042c\u0413\u0418\u042f",
+        "nameQq": "null",
+        "nameEn": "Belgium",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 989,
+        "code": "BMU",
+        "nameRu": "\u0411\u0415\u0420\u041c\u0423\u0414\u042b",
+        "nameKk": "\u0411\u0415\u0420\u041c\u0423\u0414\u042b",
+        "nameQq": "null",
+        "nameEn": "BERMUDA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 990,
+        "code": "BTN",
+        "nameRu": "\u0411\u0423\u0422\u0410\u041d",
+        "nameKk": "\u0411\u0423\u0422\u0410\u041d",
+        "nameQq": "null",
+        "nameEn": "BHUTAN",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 991,
+        "code": "BOL",
+        "nameRu": "\u0411\u041e\u041b\u0418\u0412\u0418\u042f, \u041c\u041d\u041e\u0413\u041e\u041d\u0410\u0426\u0418\u041e\u041d\u0410\u041b\u042c\u041d\u041e\u0415 \u0413\u041e\u0421\u0423\u0414\u0410\u0420\u0421\u0422\u0412\u041e",
+        "nameKk": "\u0411\u041e\u041b\u0418\u0412\u0418\u042f",
+        "nameQq": "null",
+        "nameEn": "BOLIVIA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 992,
+        "code": "BIH",
+        "nameRu": "\u0411\u041e\u0421\u041d\u0418\u042f \u0418 \u0413\u0415\u0420\u0426\u0415\u0413\u041e\u0412\u0418\u041d\u0410",
+        "nameKk": "\u0411\u041e\u0421\u041d\u0418\u042f \u0418 \u0413\u0415\u0420\u0426\u0415\u0413\u041e\u0412\u0418\u041d\u0410",
+        "nameQq": "null",
+        "nameEn": "BOSNIA HERZG",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 993,
+        "code": "BWA",
+        "nameRu": "\u0411\u041e\u0422\u0421\u0412\u0410\u041d\u0410",
+        "nameKk": "\u0411\u041e\u0422\u0421\u0412\u0410\u041d\u0410",
+        "nameQq": "null",
+        "nameEn": "BOTSWANA",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 994,
+        "code": "BVT",
+        "nameRu": "\u041e\u0421\u0422\u0420\u041e\u0412 \u0411\u0423\u0412\u0415",
+        "nameKk": "\u041e\u0421\u0422\u0420\u041e\u0412 \u0411\u0423\u0412\u0415",
+        "nameQq": "null",
+        "nameEn": "Bouvet Island",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 995,
+        "code": "BRA",
+        "nameRu": "\u0411\u0420\u0410\u0417\u0418\u041b\u0418\u042f",
+        "nameKk": "\u0411\u0420\u0410\u0417\u0418\u041b\u0418\u042f",
+        "nameQq": "null",
+        "nameEn": "BRAZIL",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 996,
+        "code": "BLZ",
+        "nameRu": "\u0411\u0415\u041b\u0418\u0417",
+        "nameKk": "\u0411\u0415\u041b\u0418\u0417",
+        "nameQq": "null",
+        "nameEn": "BELIZE",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 997,
+        "code": "IOT",
+        "nameRu": "\u0411\u0420\u0418\u0422\u0410\u041d\u0421\u041a\u0410\u042f \u0422\u0415\u0420\u0420\u0418\u0422\u041e\u0420\u0418\u042f \u0412 \u0418\u041d\u0414\u0418\u0419\u0421\u041a\u041e\u041c \u041e\u041a\u0415\u0410\u041d\u0415",
+        "nameKk": "\u0411\u0420\u0418\u0422\u0410\u041d\u0421\u041a\u0410\u042f \u0422\u0415\u0420\u0420\u0418\u0422\u041e\u0420\u0418\u042f \u0412 \u0418\u041d\u0414\u0418\u0419\u0421\u041a\u041e\u041c \u041e\u041a\u0415\u0410\u041d\u0415",
+        "nameQq": "null",
+        "nameEn": "null",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 998,
+        "code": "SLB",
+        "nameRu": "\u0421\u041e\u041b\u041e\u041c\u041e\u041d\u041e\u0412\u042b \u041e\u0421\u0422\u0420\u041e\u0412\u0410",
+        "nameKk": "\u0421\u041e\u041b\u041e\u041c\u041e\u041d\u041e\u0412\u042b \u041e\u0421\u0422\u0420\u041e\u0412\u0410",
+        "nameQq": "null",
+        "nameEn": "SOLOMON IS",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 999,
+        "code": "VGB",
+        "nameRu": "\u0412\u0418\u0420\u0413\u0418\u041d\u0421\u041a\u0418\u0415 \u041e\u0421\u0422\u0420\u041e\u0412\u0410 (\u0411\u0420\u0418\u0422\u0410\u041d\u0421\u041a\u0418\u0415)",
+        "nameKk": "\u0412\u0418\u0420\u0413\u0418\u041d\u0421\u041a\u0418\u0415 \u041e\u0421\u0422\u0420\u041e\u0412\u0410, \u0411\u0420\u0418\u0422\u0410\u041d\u0421\u041a\u0418\u0415",
+        "nameQq": "null",
+        "nameEn": "BR. VIRGIN IS",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 1000,
+        "code": "BRN",
+        "nameRu": "\u0411\u0420\u0423\u041d\u0415\u0419-\u0414\u0410\u0420\u0423\u0421\u0421\u0410\u041b\u0410\u041c",
+        "nameKk": "\u0411\u0420\u0423\u041d\u0415\u0419-\u0414\u0410\u0420\u0423\u0421\u0421\u0410\u041b\u0410\u041c",
+        "nameQq": "null",
+        "nameEn": "BRUNEI DARSM",
+        "index": "null",
+        "attrs": {}
+    },
+    {
+        "id": 146,
+        "code": "ANT",
+        "nameRu": "\u041d\u0438\u0434\u0435\u0440\u043b\u0430\u043d\u0434\u0441\u043a\u0438\u0435 \u0410\u043d\u0442\u0438\u043b\u044c\u0441\u043a\u0438\u0435 \u043e\u0441\u0442\u0440\u043e\u0432\u0430",
+        "nameKk": "\u041d\u0438\u0434\u0435\u0440\u043b\u0430\u043d\u0434\u0441\u043a\u0438\u0435 \u0410\u043d\u0442\u0438\u043b\u044c\u0441\u043a\u0438\u0435 \u043e\u0441\u0442\u0440\u043e\u0432\u0430",
+        "nameQq": "null",
+        "nameEn": "Netherlands Antilles",
+        "index": "null",
+        "attrs": {}
+    }
+]
