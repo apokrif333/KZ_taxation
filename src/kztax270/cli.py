@@ -19,6 +19,7 @@ from kztax270.config import (
 from kztax270.form270.json_builder import BrokerBankInfo, Form270JsonBuilder, Form270Owner
 from kztax270.reference.nbk import ensure_nbk_rates_current, upsert_nbk_average_annual_rates_xlsx
 from kztax270.reference.repositories import ReferenceDataStore
+from kztax270.reference.securities import ensure_aix_instruments_current
 from kztax270.transfers import InteractiveTransferInFifoResolver
 
 from .pipeline import AccountPipeline, ClientPipeline
@@ -40,20 +41,18 @@ def build_parser() -> argparse.ArgumentParser:
     update_nbk = sub.add_parser("update-nbk-rates", help="Update data/nb_rates.xlsx from NBK if previous year is missing")
     update_nbk.add_argument("--path", default="data/nb_rates.xlsx")
 
-    run_account = sub.add_parser("run-account", help="Run one broker account pipeline")
+    update_aix = sub.add_parser("update-aix-list", help="Update data/aix_instruments.xlsx from AIX if previous year is missing")
+    update_aix.add_argument("--path", default="data/aix_instruments.xlsx")
+
+    run_account = sub.add_parser("run-account", help="Create an Excel audit workbook for one broker account")
     run_account.add_argument("broker")
     run_account.add_argument("account_id")
-    run_account.add_argument("tax_year", type=int, nargs="?", help="Deprecated positional Form270 year.")
-    run_account.add_argument("--form-year", type=int, default=None, help="Form270 JSON year. Not needed for Excel-only audit.")
     run_account.add_argument("--raw-root", default="data/raw")
     run_account.add_argument("--processed-root", default="data/processed")
     run_account.add_argument("--output-root", default="data/output")
     run_account.add_argument("--nbk-rates", default="data/nb_rates.xlsx")
     run_account.add_argument("--reference-root", default="reference")
     run_account.add_argument("--template", default="data/templates/270 new template.json")
-    run_account.add_argument("--taxpayer-code", default=None)
-    run_account.add_argument("--no-excel", action="store_true")
-    run_account.add_argument("--no-json", action="store_true", help="Generate only the account audit dataset/workbook.")
 
     fill_270 = sub.add_parser("fill-270", help="Fill Form270 JSON from data/processed audit workbook")
     fill_270.add_argument("broker")
@@ -120,10 +119,12 @@ def main(argv: list[str] | None = None) -> int:
         print(f"nbk_rates={args.path}")
         print(f"updated={updated}")
         return 0
+    if args.command == "update-aix-list":
+        updated = ensure_aix_instruments_current(Path(args.path))
+        print(f"aix_instruments={args.path}")
+        print(f"updated={updated}")
+        return 0
     if args.command == "run-account":
-        form_year = args.form_year if args.form_year is not None else args.tax_year
-        if not args.no_json and form_year is None:
-            raise SystemExit("--form-year is required unless --no-json is used")
         paths = ProjectPaths(
             raw_data=Path(args.raw_root),
             processed_data=Path(args.processed_root),
@@ -132,16 +133,13 @@ def main(argv: list[str] | None = None) -> int:
             reference_data=Path(args.reference_root),
             form270_template=Path(args.template),
         )
-        taxpayer = {"taxpayerCode": args.taxpayer_code} if args.taxpayer_code else None
         result = AccountPipeline(
             paths,
             transfer_in_resolver=InteractiveTransferInFifoResolver(paths.processed_data, raw_root=paths.raw_data),
         ).run_account(
             AccountConfig(broker=args.broker, account_id=args.account_id),
-            tax_year=form_year,
-            taxpayer=taxpayer,
-            write_excel=not args.no_excel,
-            write_json=not args.no_json,
+            write_excel=True,
+            write_json=False,
         )
         if result.workbook_path:
             print(f"workbook={result.workbook_path}")

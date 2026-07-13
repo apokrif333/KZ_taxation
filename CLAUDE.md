@@ -62,10 +62,10 @@ kztax270 init-reference --root reference
 kztax270 update-nbk-rates --path data/nb_rates.xlsx
 
 # Run one broker account (Excel audit only)
-kztax270 run-account ib U1717377 --form-year 2024 --no-json
+kztax270 run-account ib U1717377
 
-# Run one broker account (Excel + Form 270 JSON)
-kztax270 run-account ib U1717377 --form-year 2024
+# Fill Form 270 JSON from processed Excel workbooks using the TOML config
+kztax270 run-270 configs/form270.toml
 
 # Run all accounts for a configured client
 kztax270 run-client configs/my_client.toml client_demo

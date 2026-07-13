@@ -12,8 +12,10 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
 from kztax270.canonical.schema import AccountMetadata, CanonicalDataset, RawReportTotals
+from kztax270.form270.json_builder import DEFAULT_BROKER_BANK_INFO
 from kztax270.reconciliation.models import ReconciliationMetric
 from kztax270.reference.fx import AnnualFxRateProvider
+from kztax270.reference.securities import AixInstrumentProvider, OffshoreJurisdictionProvider
 from kztax270.transfers import TransferInFifoLot, TransferInFifoResolver, TransferInRequest
 
 from .base import BrokerReport, ParseResult
@@ -37,6 +39,25 @@ IB_SECTION_TRADES = "Trades"
 ISIN_RE = re.compile(r"(?<!\w)([A-Z]{2}[A-Z0-9]{10})(?!\w)")
 SYMBOL_ISIN_RE = re.compile(r"^([^()]+)\(([^)]+)\)")
 
+FLAG_PREFERENTIAL = "preferential"
+FLAG_NON_PREFERENTIAL = "non-preferential"
+FLAG_OFFSHORE = "offshore"
+
+EXCHANGE_OUTOFKZ = "outofKZ"
+EXCHANGE_AIX = "AIX"
+EXCHANGE_KASE = "KASE"
+US_LISTING_EXCHANGES = {
+    "AMEX",
+    "ARCA",
+    "BATS",
+    "CBOE",
+    "IEX",
+    "ISE",
+    "NASDAQ",
+    "NYSE",
+    "NYSEARCA",
+}
+
 
 @dataclass(slots=True)
 class ParsedIbReport:
@@ -57,6 +78,7 @@ class FifoOpenLot:
     isin: str | None
     currency: str
     country: str | None
+    exchange: str | None
     date_time: datetime | None
     raw_quantity: Decimal
     raw_amount: Decimal
@@ -191,6 +213,7 @@ def build_canonical_dataset(
     )
     synthetic_corporate_action_trades = _build_synthetic_corporate_action_trades(corporate_actions, instrument_lookup)
     internal_trades = _sort_trades_by_datetime([*raw_internal_trades, *synthetic_corporate_action_trades])
+    _apply_broker_country_to_forex_trades(internal_trades, "ib")
     dataset.tables["Trades"] = _canonical_trade_rows(internal_trades)
     dataset.tables["_BrokerTradeRealizedPL"] = _build_broker_trade_realized_pl(internal_trades)
     fifo_input_trades = [
@@ -360,16 +383,28 @@ def _extract_symbol_isin(description: str | None) -> tuple[str | None, str | Non
     if not description:
         return None, None, None
     match = SYMBOL_ISIN_RE.match(description)
-    if match:
+    if match and _looks_security_identifier(match.group(2)):
         symbol = match.group(1).strip()
         isin = match.group(2).strip()
     else:
-        symbol = None
+        symbol = _leading_dividend_symbol(description)
         isin_match = ISIN_RE.search(description)
         isin = isin_match.group(1) if isin_match else None
     dividend_type_match = re.search(r"\(([^)]+)\)\s*$", description)
     dividend_type = dividend_type_match.group(1) if dividend_type_match else None
     return symbol, isin, dividend_type
+
+
+def _leading_dividend_symbol(description: str) -> str | None:
+    match = re.match(r"\s*([A-Z0-9._/-]+)\s+(?:Cash\s+Dividend|Dividend)\b", description, re.IGNORECASE)
+    return match.group(1).strip() if match else None
+
+
+def _looks_security_identifier(value: str | None) -> bool:
+    text = _string_or_none(value)
+    if not text:
+        return False
+    return bool(ISIN_RE.fullmatch(text) or re.fullmatch(r"[A-Z0-9]{6,12}", text))
 
 
 def _country_from_instrument(asset_type: str | None, security_id: str | None, listing_exchange: str | None) -> str | None:
@@ -378,7 +413,8 @@ def _country_from_instrument(asset_type: str | None, security_id: str | None, li
         return "BE" if country == "XS" else country
     if asset_type and "Option" in asset_type:
         return "US"
-    if listing_exchange in {"CBOE", "ISE"}:
+    exchange = _string_or_none(listing_exchange)
+    if exchange and exchange.upper() in US_LISTING_EXCHANGES:
         return "US"
     return None
 
@@ -404,8 +440,9 @@ def _build_instruments(reports: Sequence[ParsedIbReport], account_id: str) -> li
         description = _string_or_none(row.get("Description"))
         security_id = _string_or_none(row.get("Security ID"))
         listing_exchange = _string_or_none(row.get("Listing Exch"))
-        isin = _normalize_security_id_to_isin(security_id, country_by_cusip)
-        country = _country_from_instrument(asset_type, isin or security_id, listing_exchange)
+        country_hint = _country_from_instrument(asset_type, security_id, listing_exchange)
+        isin = _normalize_security_id_to_isin(security_id, country_by_cusip, country_hint=country_hint)
+        country = _country_from_instrument(asset_type, isin or security_id, listing_exchange) or country_hint
         cusip = _string_or_none(row.get("CUSIP")) or (_cusip_from_isin(isin) if isin else None)
         key = (symbol, description, row.get("Conid"), security_id, year)
         if key in seen:
@@ -446,14 +483,21 @@ def _build_instruments(reports: Sequence[ParsedIbReport], account_id: str) -> li
     return instruments
 
 
-def _normalize_security_id_to_isin(security_id: str | None, country_by_cusip: Mapping[str, str]) -> str | None:
+def _normalize_security_id_to_isin(
+    security_id: str | None,
+    country_by_cusip: Mapping[str, str],
+    *,
+    country_hint: str | None = None,
+) -> str | None:
     if not security_id:
         return None
     security_id = security_id.strip()
     if ISIN_RE.fullmatch(security_id):
         return security_id
-    if len(security_id) == 9 and security_id in country_by_cusip:
-        return _add_isin_check_digit(country_by_cusip[security_id] + security_id)
+    if len(security_id) == 9 and re.fullmatch(r"[A-Z0-9]{9}", security_id):
+        country = country_by_cusip.get(security_id) or _string_or_none(country_hint)
+        if country and re.fullmatch(r"[A-Z]{2}", country):
+            return _add_isin_check_digit(country + security_id)
     if len(security_id) == 11 and re.fullmatch(r"[A-Z]{2}[A-Z0-9]{9}", security_id):
         return _add_isin_check_digit(security_id)
     return None
@@ -1545,6 +1589,7 @@ def _build_initial_fifo_lots(
                 isin=isin,
                 currency=currency,
                 country=_string_or_none(country),
+                exchange=_string_or_none(instrument.get("listing_exchange")),
                 date_time=prior_lot_dt,
                 raw_quantity=prior_quantity,
                 raw_amount=abs(quantity * prior_price * multiplier),
@@ -2028,6 +2073,7 @@ def _open_incoming_transfer_lot(
         isin=_string_or_none(transfer.get("_converted_isin") or transfer.get("isin")),
         currency=str(transfer.get("currency") or ""),
         country=_string_or_none(transfer.get("_converted_country") or transfer.get("country")),
+        exchange=_string_or_none(transfer.get("_converted_exchange") or transfer.get("exchange")),
         date_time=enter_dt,
         raw_quantity=raw_quantity,
         raw_amount=abs(price * quantity * multiplier),
@@ -2195,7 +2241,7 @@ def _build_fx_fifo_rows(
                 "symbol": _string_or_none(trade.get("symbol")),
                 "isin": None,
                 "currency": _string_or_none(trade.get("currency")),
-                "country": None,
+                "country": _string_or_none(trade.get("country")),
                 "position_type": "fx",
                 "_opening_lot_status": "matched",
                 "enter_date": None,
@@ -2217,6 +2263,8 @@ def _build_fx_fifo_rows(
                 "kzt_rate": str(rate) if rate is not None else None,
                 "exit_amount_kzt": _amount_kzt(exit_amount, rate),
                 "acquisition_cost_with_commission_kzt": None,
+                "pnl_before_commission_kzt": _amount_kzt(pnl, rate),
+                "pnl_after_all_commissions_kzt": _amount_kzt(pnl_after_commission, rate),
                 "pnl_kzt": _amount_kzt(pnl_after_commission, rate),
                 "source_trade_id": _string_or_none(trade.get("trade_id")),
                 "entry_trade_id": None,
@@ -2241,6 +2289,7 @@ def _open_lot(
         isin=_string_or_none(trade.get("isin")),
         currency=str(trade.get("currency") or ""),
         country=_string_or_none(trade.get("country")),
+        exchange=_string_or_none(trade.get("exchange")),
         date_time=trade_dt,
         raw_quantity=_decimal(trade.get("quantity")),
         raw_amount=_decimal(trade.get("amount")),
@@ -2477,6 +2526,7 @@ def _close_unknown_opening_lot(
         "isin": _string_or_none(exit_trade.get("isin")),
         "currency": _string_or_none(exit_trade.get("currency")),
         "country": _string_or_none(exit_trade.get("country")),
+        "exchange": _string_or_none(exit_trade.get("exchange")),
         "position_type": position_type,
         "_opening_lot_status": opening_status,
         "enter_date": inferred_enter_dt.isoformat(sep=" ") if inferred_enter_dt else None,
@@ -2498,6 +2548,8 @@ def _close_unknown_opening_lot(
         "kzt_rate": str(rate) if rate is not None else None,
         "exit_amount_kzt": _amount_kzt(exit_gross, rate),
         "acquisition_cost_with_commission_kzt": _amount_kzt(implied_acquisition_cost, rate),
+        "pnl_before_commission_kzt": None,
+        "pnl_after_all_commissions_kzt": _amount_kzt(broker_pnl_after_all_commissions, rate),
         "pnl_kzt": _amount_kzt(tax_pnl, rate),
         "source_trade_id": _string_or_none(exit_trade.get("trade_id")),
         "entry_trade_id": entry_trade_id,
@@ -2587,9 +2639,15 @@ def _close_fifo_lot(
     entry_commission = abs(opening.commission_per_unit * quantity)
     exit_commission = abs(exit_commission_per_unit * quantity)
     allocated_commission = entry_commission + exit_commission
+    is_derivative = _is_derivative_record(
+        {
+            "asset_type": opening.asset_type,
+            "symbol": _string_or_none(exit_trade.get("symbol")) or opening.symbol,
+        }
+    )
     if position_type == "long":
         pnl_before_commission = exit_gross - entry_gross
-        acquisition_cost_with_commission = entry_gross + entry_commission
+        acquisition_cost_with_commission = entry_gross if is_derivative else entry_gross + entry_commission
         pnl = exit_gross - acquisition_cost_with_commission
     else:
         pnl_before_commission = entry_gross - exit_gross
@@ -2609,6 +2667,7 @@ def _close_fifo_lot(
         "isin": opening.isin,
         "currency": opening.currency,
         "country": opening.country,
+        "exchange": _string_or_none(exit_trade.get("exchange")) or opening.exchange,
         "position_type": position_type,
         "_opening_lot_status": opening_lot_status,
         "enter_date": opening.date_time.isoformat(sep=" ") if opening.date_time else None,
@@ -2630,6 +2689,8 @@ def _close_fifo_lot(
         "kzt_rate": str(rate) if rate is not None else None,
         "exit_amount_kzt": _amount_kzt(exit_gross, rate),
         "acquisition_cost_with_commission_kzt": _amount_kzt(acquisition_cost_with_commission, rate),
+        "pnl_before_commission_kzt": _amount_kzt(pnl_before_commission, rate),
+        "pnl_after_all_commissions_kzt": _amount_kzt(pnl_after_all_commissions, rate),
         "pnl_kzt": _amount_kzt(pnl, rate),
         "source_trade_id": _string_or_none(exit_trade.get("trade_id")),
         "entry_trade_id": opening.trade_id,
@@ -2783,15 +2844,50 @@ def _build_cash_balances(
     return rows
 
 
-def _build_years_results(dataset: CanonicalDataset) -> list[dict[str, Any]]:
+def _apply_broker_country_to_forex_trades(trades: Sequence[Mapping[str, Any]], broker_code: str) -> None:
+    country = _broker_registration_country(broker_code)
+    if not country:
+        return
+    for trade in trades:
+        if _is_broker_country_forex_trade(trade) and isinstance(trade, dict):
+            trade["country"] = country
+
+
+def _broker_registration_country(broker_code: str) -> str | None:
+    normalized = str(broker_code or "").strip().lower()
+    normalized = {
+        "freedom_broker": "freedom",
+        "freedom_bank": "freedom",
+    }.get(normalized, normalized)
+    info = DEFAULT_BROKER_BANK_INFO.get(normalized)
+    return _string_or_none(info.get("country")) if info else None
+
+
+def _is_broker_country_forex_trade(record: Mapping[str, Any]) -> bool:
+    asset_type = str(record.get("asset_type") or record.get("Asset_Type") or "").strip().lower()
+    symbol = str(record.get("symbol") or record.get("Symbol") or "").strip().upper()
+    return asset_type in {"forex", "fx spot", "fx_spot", "fx-spot", "currency"} or "FOREX" in asset_type or ".FX" in symbol
+
+
+def _build_years_results(
+    dataset: CanonicalDataset,
+    *,
+    aix_provider: AixInstrumentProvider | None = None,
+    offshore_provider: OffshoreJurisdictionProvider | None = None,
+) -> list[dict[str, Any]]:
+    aix_provider = aix_provider or AixInstrumentProvider.from_xlsx()
+    offshore_provider = offshore_provider or OffshoreJurisdictionProvider.from_xlsx()
     instrument_flags = _instrument_tax_flags(dataset)
     rows: list[dict[str, Any]] = []
     pnl_groups: dict[tuple[Any, ...], dict[str, Decimal]] = defaultdict(
         lambda: {
             "pnl": Decimal("0"),
             "pnl_kzt": Decimal("0"),
+            "only_profit": Decimal("0"),
+            "only_profit_kzt": Decimal("0"),
             "withhold_kzt": Decimal("0"),
             "foreign_tax_credit_kzt": Decimal("0"),
+            "taxable_proceeds_kzt": Decimal("0"),
         }
     )
     amount_groups: dict[tuple[Any, ...], dict[str, Decimal]] = defaultdict(
@@ -2807,11 +2903,19 @@ def _build_years_results(dataset: CanonicalDataset) -> list[dict[str, Any]]:
 
     for record in dataset.tables.get("Fifo", []):
         year = _record_year(record, "exit_date")
-        if str(record.get("asset_type") or "").lower() == "forex":
+        flags = _record_tax_flags(
+            record,
+            instrument_flags,
+            year=year,
+            aix_provider=aix_provider,
+            offshore_provider=offshore_provider,
+        )
+        if _is_derivative_record(record):
+            table_name = "Yearly Derivatives"
+        elif _is_fx_trade(record):
             flags = _issuer_outside_kz_flags()
             table_name = "Yearly FX Trades"
         else:
-            flags = _record_tax_flags(record, instrument_flags)
             table_name = (
                 "Yearly Bonds Redemption"
                 if _is_bond_redemption_fifo_row(record)
@@ -2819,12 +2923,27 @@ def _build_years_results(dataset: CanonicalDataset) -> list[dict[str, Any]]:
             )
         key = _years_result_key(table_name, year, record, flags)
         values = pnl_groups[key]
-        values["pnl"] += _decimal(record.get("pnl"))
-        values["pnl_kzt"] += _decimal(record.get("pnl_kzt"))
+        pnl = _decimal(record.get("pnl"))
+        pnl_kzt = _decimal(record.get("pnl_kzt"))
+        tax_pnl = _derivative_tax_pnl(record)
+        tax_pnl_kzt = _derivative_tax_pnl_kzt(record)
+        values["pnl"] += pnl
+        values["pnl_kzt"] += pnl_kzt
+        if table_name == "Yearly Derivatives" and tax_pnl_kzt > 0:
+            values["only_profit"] += tax_pnl
+            values["only_profit_kzt"] += tax_pnl_kzt
+        if table_name == "Yearly Trades" and _tax_source_flag(flags) == FLAG_OFFSHORE:
+            values["taxable_proceeds_kzt"] += _taxable_exit_proceeds_kzt(record)
 
     for record in dataset.tables.get("_TradeWithholdingTax", []):
         year = _record_year(record, "date")
-        flags = _record_tax_flags(record, instrument_flags)
+        flags = _record_tax_flags(
+            record,
+            instrument_flags,
+            year=year,
+            aix_provider=aix_provider,
+            offshore_provider=offshore_provider,
+        )
         if flags.get("issuer_outside_kz_flag") is None:
             flags = _issuer_outside_kz_flags()
         key = _years_result_key("Yearly Trades", year, record, flags)
@@ -2833,7 +2952,12 @@ def _build_years_results(dataset: CanonicalDataset) -> list[dict[str, Any]]:
         values["withhold_kzt"] += withholding_kzt
         values["foreign_tax_credit_kzt"] += withholding_kzt
 
-    for key, values in _build_dividend_year_groups(dataset.tables.get("Dividends", []), instrument_flags).items():
+    for key, values in _build_dividend_year_groups(
+        dataset.tables.get("Dividends", []),
+        instrument_flags,
+        aix_provider=aix_provider,
+        offshore_provider=offshore_provider,
+    ).items():
         amount_groups[key]["amount"] += values["amount"]
         amount_groups[key]["amount_kzt"] += values["amount_kzt"]
         amount_groups[key]["withhold_kzt"] += values["withhold_kzt"]
@@ -2842,11 +2966,30 @@ def _build_years_results(dataset: CanonicalDataset) -> list[dict[str, Any]]:
     for sheet_name, table_name in (("Interest", "Yearly Interest"), ("Coupons", "Yearly Coupons")):
         for record in dataset.tables.get(sheet_name, []):
             year = _record_year(record, "date")
-            flags = _issuer_outside_kz_flags() if sheet_name == "Interest" else _record_tax_flags(record, instrument_flags)
-            key = _years_result_key(table_name, year, record, flags)
-            values = amount_groups[key]
+            flags = (
+                _issuer_outside_kz_flags()
+                if sheet_name == "Interest"
+                else _record_tax_flags(
+                    record,
+                    instrument_flags,
+                    year=year,
+                    aix_provider=aix_provider,
+                    offshore_provider=offshore_provider,
+                )
+            )
             amount = _decimal(record.get("gross_amount"))
             amount_kzt = _decimal(record.get("gross_amount_kzt"))
+            if sheet_name == "Interest" and _is_swap_interest_record(record):
+                key = _years_result_key("Yearly Derivatives", year, record, flags)
+                values = pnl_groups[key]
+                values["pnl"] += amount
+                values["pnl_kzt"] += amount_kzt
+                if amount_kzt > 0:
+                    values["only_profit"] += amount
+                    values["only_profit_kzt"] += amount_kzt
+                continue
+            key = _years_result_key(table_name, year, record, flags)
+            values = amount_groups[key]
             values["amount"] += amount
             values["amount_kzt"] += amount_kzt
             if sheet_name == "Interest" and amount > 0:
@@ -2857,33 +3000,40 @@ def _build_years_results(dataset: CanonicalDataset) -> list[dict[str, Any]]:
             values["foreign_tax_credit_kzt"] += withholding_kzt
 
     for key in sorted(pnl_groups, key=_years_result_sort_key):
-        table_name, year, flag, country, currency = key
+        table_name, year, flag, country, exchange, currency = key
         values = pnl_groups[key]
         pnl = values["pnl"]
         pnl_kzt = values["pnl_kzt"]
+        only_profit = values["only_profit"]
+        only_profit_kzt = values["only_profit_kzt"]
         withhold_kzt = values["withhold_kzt"]
         foreign_tax_credit_kzt = values["foreign_tax_credit_kzt"]
-        taxable_pnl_kzt = max(pnl_kzt, Decimal("0"))
-        is_kz_issuer_trade = table_name == "Yearly Trades" and flag == "Issuer_KZ"
-        tax_kzt = (
-            Decimal("0")
-            if table_name in {"Yearly Bonds Redemption", "Yearly FX Trades"} or is_kz_issuer_trade
-            else taxable_pnl_kzt * Decimal("0.10")
+        display_pnl_kzt = values["taxable_proceeds_kzt"] if table_name == "Yearly Trades" and flag == FLAG_OFFSHORE else pnl_kzt
+        taxable_pnl_kzt = max(display_pnl_kzt, Decimal("0"))
+        exempt = table_name in {"Yearly Bonds Redemption", "Yearly FX Trades"} or (
+            table_name == "Yearly Trades" and flag == FLAG_PREFERENTIAL
         )
-        tax_kzt_withhold = (
-            Decimal("0")
-            if table_name in {"Yearly Bonds Redemption", "Yearly FX Trades"} or is_kz_issuer_trade
-            else max(tax_kzt + foreign_tax_credit_kzt, Decimal("0"))
-        )
+        if exempt:
+            tax_kzt = Decimal("0")
+        elif table_name == "Yearly Trades" and flag == FLAG_OFFSHORE:
+            tax_kzt = values["taxable_proceeds_kzt"] * Decimal("0.10")
+        elif table_name == "Yearly Derivatives":
+            tax_kzt = max(only_profit_kzt, Decimal("0")) * Decimal("0.10")
+        else:
+            tax_kzt = taxable_pnl_kzt * Decimal("0.10")
+        tax_kzt_withhold = Decimal("0") if exempt else max(tax_kzt + foreign_tax_credit_kzt, Decimal("0"))
         rows.append(
             {
                 "table": table_name,
                 "year": year,
                 "flag": flag,
                 "country": country,
+                "exchange": exchange,
                 "currency": currency,
                 "pnl": _money_text(pnl),
-                "pnl_kzt": _money_text(pnl_kzt),
+                "pnl_kzt": _money_text(display_pnl_kzt),
+                "only_profit": _money_text(only_profit),
+                "only_profit_kzt": _money_text(only_profit_kzt),
                 "withhold_kzt": _money_text(withhold_kzt),
                 "tax_kzt": _money_text(tax_kzt),
                 "tax_kzt_withhold": _money_text(tax_kzt_withhold),
@@ -2891,7 +3041,7 @@ def _build_years_results(dataset: CanonicalDataset) -> list[dict[str, Any]]:
         )
 
     for key in sorted(amount_groups, key=_years_result_sort_key):
-        table_name, year, flag, country, currency = key
+        table_name, year, flag, country, exchange, currency = key
         values = amount_groups[key]
         amount = values["amount"]
         amount_kzt = values["amount_kzt"]
@@ -2908,6 +3058,7 @@ def _build_years_results(dataset: CanonicalDataset) -> list[dict[str, Any]]:
                     "year": year,
                     "flag": flag,
                     "country": country,
+                    "exchange": exchange,
                     "currency": currency,
                     "amount": _money_text(amount),
                     "amount_kzt": _money_text(amount_kzt),
@@ -2917,13 +3068,13 @@ def _build_years_results(dataset: CanonicalDataset) -> list[dict[str, Any]]:
                 }
             )
             continue
-        is_kz_unreported_income = table_name in {"Yearly Coupons", "Yearly Dividends"} and flag == "Issuer_KZ"
-        displayed_amount_kzt = Decimal("0") if is_kz_unreported_income else amount_kzt
-        displayed_withhold_kzt = Decimal("0") if is_kz_unreported_income else withhold_kzt
-        tax_kzt = Decimal("0") if table_name == "Yearly Coupons" or is_kz_unreported_income else taxable_amount_kzt * Decimal("0.10")
+        is_preferential_unreported_income = table_name in {"Yearly Coupons", "Yearly Dividends"} and flag == FLAG_PREFERENTIAL
+        displayed_amount_kzt = Decimal("0") if is_preferential_unreported_income else amount_kzt
+        displayed_withhold_kzt = Decimal("0") if is_preferential_unreported_income else withhold_kzt
+        tax_kzt = Decimal("0") if table_name == "Yearly Coupons" or is_preferential_unreported_income else taxable_amount_kzt * Decimal("0.10")
         tax_kzt_withhold = (
             Decimal("0")
-            if amount_kzt <= 0 or table_name == "Yearly Coupons" or is_kz_unreported_income
+            if amount_kzt <= 0 or table_name == "Yearly Coupons" or is_preferential_unreported_income
             else max(tax_kzt + foreign_tax_credit_kzt, Decimal("0"))
         )
         rows.append(
@@ -2932,6 +3083,7 @@ def _build_years_results(dataset: CanonicalDataset) -> list[dict[str, Any]]:
                 "year": year,
                 "flag": flag,
                 "country": country,
+                "exchange": exchange,
                 "currency": currency,
                 "amount": _money_text(amount),
                 "amount_kzt": _money_text(displayed_amount_kzt),
@@ -2953,9 +3105,71 @@ def _is_bond_redemption_fifo_row(record: Mapping[str, Any]) -> bool:
     return corporate_action_type == "redemption" and "bond" in asset_type
 
 
+def _is_derivative_record(record: Mapping[str, Any]) -> bool:
+    asset_type = str(record.get("asset_type") or "").lower()
+    symbol = str(record.get("symbol") or "").upper()
+    description = str(record.get("description") or "").lower()
+    financing_kind = str(record.get("financing_kind") or "").lower()
+    if financing_kind == "swap":
+        return True
+    if ".SWAP" in symbol or description.startswith("swap reward"):
+        return True
+    return any(
+        token in asset_type
+        for token in (
+            "option",
+            "future",
+            "futures",
+            "fx_spot",
+            "fx spot",
+            "swap",
+            "derivative",
+            "\u043e\u043f\u0446\u0438\u043e\u043d",
+            "\u0444\u044c\u044e\u0447\u0435\u0440",
+            "\u0441\u0432\u043e\u043f",
+        )
+    )
+
+
+def _derivative_tax_pnl(record: Mapping[str, Any]) -> Decimal:
+    if record.get("pnl_before_commission") not in (None, ""):
+        return _decimal(record.get("pnl_before_commission"))
+    return _decimal(record.get("pnl"))
+
+
+def _derivative_tax_pnl_kzt(record: Mapping[str, Any]) -> Decimal:
+    if record.get("pnl_before_commission_kzt") not in (None, ""):
+        return _decimal(record.get("pnl_before_commission_kzt"))
+    if record.get("pnl_before_commission") not in (None, ""):
+        rate = _decimal(record.get("kzt_rate"))
+        if rate != 0:
+            return _decimal(record.get("pnl_before_commission")) * rate
+    return _decimal(record.get("pnl_kzt"))
+
+
+def _taxable_exit_proceeds_kzt(record: Mapping[str, Any]) -> Decimal:
+    if record.get("exit_amount_kzt") not in (None, ""):
+        return abs(_decimal(record.get("exit_amount_kzt")))
+    exit_amount = abs(_decimal(record.get("exit_amount")))
+    rate = _decimal(record.get("kzt_rate"))
+    if exit_amount == 0 or rate == 0:
+        return Decimal("0")
+    return exit_amount * rate
+
+
+def _is_swap_interest_record(record: Mapping[str, Any]) -> bool:
+    if str(record.get("financing_kind") or "").lower() == "swap":
+        return True
+    description = str(record.get("description") or "").lower()
+    return description.startswith("swap reward")
+
+
 def _build_dividend_year_groups(
     records: Sequence[Mapping[str, Any]],
     instrument_flags: Mapping[str, Mapping[str, Any]],
+    *,
+    aix_provider: AixInstrumentProvider,
+    offshore_provider: OffshoreJurisdictionProvider,
 ) -> dict[tuple[Any, ...], dict[str, Decimal]]:
     instrument_groups: dict[tuple[Any, ...], list[Mapping[str, Any]]] = defaultdict(list)
     for record in records:
@@ -2982,7 +3196,13 @@ def _build_dividend_year_groups(
     )
     for (year, _instrument_key, currency), group_records in instrument_groups.items():
         representative = _dividend_group_representative(group_records)
-        flags = _record_tax_flags(representative, instrument_flags)
+        flags = _record_tax_flags(
+            representative,
+            instrument_flags,
+            year=year,
+            aix_provider=aix_provider,
+            offshore_provider=offshore_provider,
+        )
         key = _years_result_key("Yearly Dividends", year, {**representative, "currency": currency}, flags)
         gross_amount = sum((_decimal(record.get("gross_amount")) for record in group_records), Decimal("0"))
         gross_amount_kzt = sum((_decimal(record.get("gross_amount_kzt")) for record in group_records), Decimal("0"))
@@ -3078,23 +3298,35 @@ def _instrument_tax_flags(dataset: CanonicalDataset) -> dict[str, dict[str, Any]
     result: dict[str, dict[str, Any]] = {}
     for instrument in dataset.tables.get("Instruments", []):
         flags = {
+            "isin": _string_or_none(instrument.get("isin")),
+            "symbol": _string_or_none(instrument.get("symbol")),
             "issuer_country": _string_or_none(instrument.get("issuer_country") or instrument.get("country")),
+            "exchange": _string_or_none(instrument.get("listing_exchange")),
             "issuer_outside_kz_flag": _bool_or_none(instrument.get("issuer_outside_kz_flag")),
             "offshore_flag": _bool_or_none(instrument.get("offshore_flag")),
             "preferential_tax_flag": _bool_or_none(instrument.get("preferential_tax_flag")),
         }
         for key in (instrument.get("isin"), instrument.get("symbol"), instrument.get("security_id")):
             if key:
-                result[str(key)] = flags
+                result[str(key)] = dict(flags)
     return result
 
 
-def _record_tax_flags(record: Mapping[str, Any], instrument_flags: Mapping[str, Mapping[str, Any]]) -> dict[str, Any]:
+def _record_tax_flags(
+    record: Mapping[str, Any],
+    instrument_flags: Mapping[str, Mapping[str, Any]],
+    *,
+    year: int | None,
+    aix_provider: AixInstrumentProvider,
+    offshore_provider: OffshoreJurisdictionProvider,
+) -> dict[str, Any]:
     flags: dict[str, Any] = {}
     for key in (record.get("isin"), record.get("symbol")):
         if key and str(key) in instrument_flags:
             flags.update(instrument_flags[str(key)])
             break
+    isin = _string_or_none(record.get("isin") or flags.get("isin"))
+    symbol = _string_or_none(record.get("symbol") or flags.get("symbol"))
     issuer_country = _string_or_none(record.get("issuer_country") or record.get("country") or flags.get("issuer_country"))
     offshore_flag = _bool_or_none(record.get("offshore_flag"))
     preferential_tax_flag = _bool_or_none(record.get("preferential_tax_flag") or record.get("kase_aix_preferential_flag"))
@@ -3107,16 +3339,59 @@ def _record_tax_flags(record: Mapping[str, Any], instrument_flags: Mapping[str, 
         issuer_outside_kz_flag = _bool_or_none(flags.get("issuer_outside_kz_flag"))
     if issuer_outside_kz_flag is None and issuer_country is not None:
         issuer_outside_kz_flag = issuer_country != "KZ"
+    offshore_flag = bool(offshore_flag) or offshore_provider.is_offshore_isin(isin)
+    exchange_bucket = _exchange_bucket(record, flags, year=year, aix_provider=aix_provider)
+    preferential_tax_flag = (
+        not offshore_flag
+        and (
+            bool(preferential_tax_flag)
+            or exchange_bucket in {EXCHANGE_AIX, EXCHANGE_KASE}
+            or _is_kz_security(isin, symbol, _string_or_none(record.get("exchange") or flags.get("exchange")))
+        )
+    )
     return {
+        "isin": isin,
+        "symbol": symbol,
         "issuer_country": issuer_country,
         "issuer_outside_kz_flag": issuer_outside_kz_flag,
         "offshore_flag": offshore_flag,
         "preferential_tax_flag": preferential_tax_flag,
+        "exchange_bucket": exchange_bucket,
     }
 
 
-def _issuer_outside_kz_flags() -> dict[str, bool]:
-    return {"issuer_outside_kz_flag": True, "offshore_flag": False, "preferential_tax_flag": False}
+def _issuer_outside_kz_flags() -> dict[str, Any]:
+    return {
+        "issuer_outside_kz_flag": True,
+        "offshore_flag": False,
+        "preferential_tax_flag": False,
+        "exchange_bucket": EXCHANGE_OUTOFKZ,
+    }
+
+
+def _exchange_bucket(
+    record: Mapping[str, Any],
+    flags: Mapping[str, Any],
+    *,
+    year: int | None,
+    aix_provider: AixInstrumentProvider,
+) -> str:
+    isin = _string_or_none(record.get("isin") or flags.get("isin"))
+    symbol = _string_or_none(record.get("symbol") or flags.get("symbol"))
+    exchange = _string_or_none(record.get("exchange") or flags.get("exchange"))
+    normalized_exchange = str(exchange or "").strip().upper()
+    if aix_provider.is_listed(isin, year) or normalized_exchange == EXCHANGE_AIX:
+        return EXCHANGE_AIX
+    if _is_kz_security(isin, symbol, exchange):
+        return EXCHANGE_KASE
+    return EXCHANGE_OUTOFKZ
+
+
+def _is_kz_security(isin: str | None, symbol: str | None, exchange: str | None) -> bool:
+    normalized_isin = str(isin or "").strip().upper()
+    normalized_symbol = str(symbol or "").strip().upper()
+    normalized_exchange = str(exchange or "").strip().upper()
+    return normalized_isin.startswith("KZ") or ".KZ" in normalized_symbol or normalized_exchange == EXCHANGE_KASE
 
 
 def _years_result_key(
@@ -3126,30 +3401,35 @@ def _years_result_key(
     flags: Mapping[str, Any],
 ) -> tuple[Any, ...]:
     country = _string_or_none(record.get("country")) if table_name == "Yearly Dividends" else None
+    exchange = _string_or_none(flags.get("exchange_bucket")) if table_name in {"Yearly Trades", "Yearly Derivatives"} else None
     return (
         table_name,
         year,
         _tax_source_flag(flags),
         country,
+        exchange,
         _string_or_none(record.get("currency")),
     )
 
 
 def _years_result_sort_key(key: tuple[Any, ...]) -> tuple[Any, ...]:
-    table_name, year, flag, country, currency = key
-    return (str(table_name or ""), -1 if year is None else int(year), str(flag or ""), str(country or ""), str(currency or ""))
+    table_name, year, flag, country, exchange, currency = key
+    return (
+        str(table_name or ""),
+        -1 if year is None else int(year),
+        str(flag or ""),
+        str(country or ""),
+        str(exchange or ""),
+        str(currency or ""),
+    )
 
 
 def _tax_source_flag(flags: Mapping[str, Any]) -> str:
-    if flags.get("preferential_tax_flag") is True:
-        return "Preferential"
     if flags.get("offshore_flag") is True:
-        return "Offshore"
-    if flags.get("issuer_outside_kz_flag") is True:
-        return "Issuer_Outside_KZ"
-    if flags.get("issuer_outside_kz_flag") is False:
-        return "Issuer_KZ"
-    return "Unclassified"
+        return FLAG_OFFSHORE
+    if flags.get("preferential_tax_flag") is True:
+        return FLAG_PREFERENTIAL
+    return FLAG_NON_PREFERENTIAL
 
 
 def _record_year(record: Mapping[str, Any], *date_fields: str) -> int | None:

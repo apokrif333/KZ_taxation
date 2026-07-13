@@ -21,6 +21,7 @@ from .discovery import DiscoveryRule, discover_raw_reports
 from .ib import (
     ISIN_RE,
     _amount_kzt,
+    _apply_broker_country_to_forex_trades,
     _annual_rate,
     _build_broker_trade_realized_pl,
     _build_fifo_and_positions,
@@ -279,6 +280,7 @@ def build_canonical_dataset(
 
     transfers, transfer_totals_by_currency = _build_transfers(reports, instrument_lookup)
     internal_trades = _sort_trades_by_datetime(_build_trades(reports, instrument_lookup))
+    _apply_broker_country_to_forex_trades(internal_trades, "exante")
     fifo_input_trades = [trade for trade in internal_trades if not _is_fx_trade(trade)]
     dataset.tables["Trades"] = _canonical_trade_rows(internal_trades)
     dataset.tables["_BrokerTradeRealizedPL"] = _build_broker_trade_realized_pl(internal_trades)
@@ -1438,6 +1440,8 @@ def _asset_type(value: Any, symbol_id: str | None = None) -> str | None:
         return "Equity and Index Options"
     if normalized in {"FUTURE", "FUTURES"}:
         return "Futures"
+    if normalized in {"FX_SPOT", "FX SPOT"}:
+        return "FX Spot"
     if normalized in {"FOREX", "FX"}:
         return "Forex"
     if normalized in {"BOND", "BONDS"}:

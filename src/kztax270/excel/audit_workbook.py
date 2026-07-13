@@ -152,6 +152,7 @@ def write_years_results_sheet(writer: Any, records: Sequence[Mapping[str, Any]])
             key=lambda row: (
                 -1 if row.get("year") in (None, "") else int(row.get("year")),
                 str(row.get("flag") or ""),
+                str(row.get("exchange") or ""),
                 str(row.get("currency") or ""),
             ),
         )

@@ -13,6 +13,7 @@ from kztax270.canonical.schema import CanonicalDataset
 from kztax270.reconciliation.engine import ReconciliationEngine
 from kztax270.reconciliation.models import ReconciliationMetric, ReconciliationSeverity
 from kztax270.reference.fx import AnnualFxRateProvider
+from kztax270.reference.securities import AixInstrumentProvider, OffshoreJurisdictionProvider
 from kztax270.transfers import TransferInFifoLot, TransferInRequest
 
 
@@ -61,6 +62,22 @@ Dividends,Header,Currency,Date,Description,Amount
 Dividends,Data,USD,2025-03-06,SPTL(78464A664) Cash Dividend USD 0.083059 per Share (Ordinary Dividend),97.84
 Withholding Tax,Header,Currency,Date,Description,Amount,Code
 Withholding Tax,Data,USD,2025-03-06,SPTL(78464A664) Cash Dividend USD 0.083059 per Share - US Tax,-14.68,
+Cash Report,Header,Currency Summary,Currency,Total,Securities,Futures,
+Cash Report,Data,Ending Cash,USD,0,0,0,
+Open Positions,Header,DataDiscriminator,Asset Category,Currency,Symbol,Quantity,Mult,Cost Price,Cost Basis,Close Price,Value,Unrealized P/L,Code
+"""
+
+
+BARE_SYMBOL_DIVIDEND_IB_CSV = """Statement,Header,Field Name,Field Value
+Statement,Data,Period,"January 1, 2018 - December 31, 2018"
+Account Information,Header,Field Name,Field Value
+Account Information,Data,Account,UBARE
+Account Information,Data,Base Currency,USD
+Financial Instrument Information,Header,Asset Category,Symbol,Description,Conid,Security ID,Underlying,Listing Exch,Multiplier,Type,Code
+Financial Instrument Information,Data,Stocks,IEF,ISHARES 7-10 YEAR TREASURY BOND ETF,1,464287440,IEF,NASDAQ,1,ETF,
+Dividends,Header,Currency,Date,Description,Amount
+Dividends,Data,USD,2018-03-07,IEF Cash Dividend USD 0.070 per Share (Ordinary Dividend),14.98
+Withholding Tax,Header,Currency,Date,Description,Amount,Code
 Cash Report,Header,Currency Summary,Currency,Total,Securities,Futures,
 Cash Report,Data,Ending Cash,USD,0,0,0,
 Open Positions,Header,DataDiscriminator,Asset Category,Currency,Symbol,Quantity,Mult,Cost Price,Cost Basis,Close Price,Value,Unrealized P/L,Code
@@ -548,6 +565,24 @@ class InteractiveBrokersParserTests(unittest.TestCase):
         self.assertEqual(dividends[0]["gross_amount_kzt"], "51032.3656")
         self.assertNotEqual(dividends[0]["country"], "78")
 
+    def test_dividend_bare_symbol_description_resolves_to_isin_from_instruments(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            raw_root = Path(tmp) / "raw"
+            ib_root = raw_root / "ib"
+            ib_root.mkdir(parents=True)
+            (ib_root / "UBARE_2018_2018.csv").write_text(BARE_SYMBOL_DIVIDEND_IB_CSV, encoding="utf-8")
+
+            parser = InteractiveBrokersParser(AnnualFxRateProvider({(2018, "USD"): Decimal("344.71")}))
+            result = parser.parse_reports(parser.discover_reports(raw_root, "UBARE"), "UBARE")
+
+        dividends = result.dataset.tables["Dividends"]
+        self.assertEqual(len(dividends), 1)
+        self.assertEqual(dividends[0]["symbol"], "IEF")
+        self.assertEqual(dividends[0]["isin"], "US4642874402")
+        self.assertEqual(dividends[0]["country"], "US")
+        self.assertEqual(dividends[0]["gross_amount"], "14.98")
+        self.assertEqual(dividends[0]["gross_amount_kzt"], "5163.7558")
+
     def test_options_keep_broker_quantity_price_and_use_multiplier_for_amounts(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             raw_root = Path(tmp) / "raw"
@@ -584,9 +619,18 @@ class InteractiveBrokersParserTests(unittest.TestCase):
         self.assertEqual(fifo["exit_multiplier"], "100")
         self.assertEqual(fifo["enter_amount"], "264")
         self.assertEqual(fifo["exit_amount"], "304.00")
-        self.assertEqual(fifo["acquisition_cost_with_commission"], "265.00")
-        self.assertEqual(fifo["pnl"], "39.00")
+        self.assertEqual(fifo["acquisition_cost_with_commission"], "264.00")
+        self.assertEqual(fifo["pnl"], "40.00")
         self.assertEqual(fifo["pnl_after_all_commissions"], "38.00")
+        derivative_rows = [row for row in result.dataset.tables["Years_Results"] if row["table"] == "Yearly Derivatives"]
+        self.assertEqual(len(derivative_rows), 1)
+        self.assertEqual(derivative_rows[0]["flag"], "non-preferential")
+        self.assertEqual(derivative_rows[0]["exchange"], "outofKZ")
+        self.assertEqual(derivative_rows[0]["pnl"], "40.00")
+        self.assertEqual(derivative_rows[0]["pnl_kzt"], "20000.00")
+        self.assertEqual(derivative_rows[0]["only_profit"], "40.00")
+        self.assertEqual(derivative_rows[0]["only_profit_kzt"], "20000.00")
+        self.assertEqual(derivative_rows[0]["tax_kzt"], "2000.00")
 
     def test_missing_opening_lot_is_visible_in_unprocessed_and_reconciliation(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -751,7 +795,7 @@ class InteractiveBrokersParserTests(unittest.TestCase):
         self.assertEqual(yearly_dividends[0]["tax_kzt"], "1000.00")
         self.assertEqual(yearly_dividends[0]["tax_kzt_withhold"], "0.00")
 
-    def test_yearly_interest_and_fx_are_issuer_outside_kz(self) -> None:
+    def test_yearly_interest_and_fx_are_non_preferential(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             raw_root = Path(tmp) / "raw"
             ib_root = raw_root / "ib"
@@ -762,14 +806,18 @@ class InteractiveBrokersParserTests(unittest.TestCase):
             fx_result = parser.parse_reports(parser.discover_reports(raw_root, "UFX"), "UFX")
 
         fx_rows = [row for row in fx_result.dataset.tables["Years_Results"] if row["table"] == "Yearly FX Trades"]
-        self.assertEqual(fx_rows[0]["flag"], "Issuer_Outside_KZ")
+        self.assertEqual(fx_rows[0]["flag"], "non-preferential")
         self.assertEqual(fx_rows[0]["pnl"], "10.00")
+        self.assertEqual(fx_rows[0]["pnl_kzt"], "4700.00")
         self.assertEqual(fx_rows[0]["tax_kzt"], "0.00")
+        self.assertFalse(any(row["table"] == "Yearly Derivatives" for row in fx_result.dataset.tables["Years_Results"]))
         self.assertNotIn("FxTrades", fx_result.dataset.tables)
         fx_trade_rows = [row for row in fx_result.dataset.tables["Trades"] if row["asset_type"] == "Forex"]
         self.assertEqual(len(fx_trade_rows), 2)
+        self.assertTrue(all(row["country"] == "USA" for row in fx_trade_rows))
         fx_fifo_rows = [row for row in fx_result.dataset.tables["Fifo"] if row["asset_type"] == "Forex"]
         self.assertEqual(len(fx_fifo_rows), 2)
+        self.assertTrue(all(row["country"] == "USA" for row in fx_fifo_rows))
         self.assertEqual(fx_fifo_rows[0]["source_trade_id"], fx_trade_rows[0]["trade_id"])
         self.assertEqual(fx_fifo_rows[0]["pnl_before_commission"], "5")
         self.assertEqual(fx_fifo_rows[0]["pnl_after_all_commissions"], "4")
@@ -796,7 +844,7 @@ class InteractiveBrokersParserTests(unittest.TestCase):
             interest_result = parser.parse_reports(parser.discover_reports(raw_root, "U1"), "U1")
 
         interest_rows = [row for row in interest_result.dataset.tables["Years_Results"] if row["table"] == "Yearly Interest"]
-        self.assertEqual(interest_rows[0]["flag"], "Issuer_Outside_KZ")
+        self.assertEqual(interest_rows[0]["flag"], "non-preferential")
 
     def test_security_transfer_out_uses_fifo_cost_basis_and_skips_total_rows(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1189,6 +1237,81 @@ class InteractiveBrokersParserTests(unittest.TestCase):
         self.assertEqual(trade_rows[0]["pnl"], "30.00")
         self.assertEqual(trade_rows[0]["pnl_kzt"], "14100.00")
         self.assertIsNone(trade_rows[0]["country"])
+        self.assertEqual(trade_rows[0]["flag"], "non-preferential")
+        self.assertEqual(trade_rows[0]["exchange"], "outofKZ")
+
+    def test_aix_security_is_preferential_and_offshore_tax_uses_proceeds(self) -> None:
+        dataset = CanonicalDataset.empty("ib", "UCLASS")
+        dataset.tables["Fifo"] = [
+            {
+                "exit_date": "2024-01-01 10:00:00",
+                "asset_type": "Stocks",
+                "symbol": "AIXTEST",
+                "isin": "US0000000001",
+                "country": "US",
+                "currency": "USD",
+                "pnl": "100",
+                "pnl_kzt": "47000",
+                "exit_amount_kzt": "470000",
+            },
+            {
+                "exit_date": "2024-02-01 10:00:00",
+                "asset_type": "Stocks",
+                "symbol": "OFFSHORE",
+                "isin": "BS0000000001",
+                "country": "BS",
+                "currency": "USD",
+                "pnl": "-10",
+                "pnl_kzt": "-4700",
+                "exit_amount": "1000",
+                "kzt_rate": "470",
+            },
+        ]
+        yearly = ib_module._build_years_results(
+            dataset,
+            aix_provider=AixInstrumentProvider({2024: frozenset({"US0000000001"})}),
+            offshore_provider=OffshoreJurisdictionProvider(frozenset({"BS"})),
+        )
+        trade_rows = {(row["flag"], row["exchange"]): row for row in yearly if row["table"] == "Yearly Trades"}
+        self.assertEqual(trade_rows[("preferential", "AIX")]["tax_kzt"], "0.00")
+        self.assertEqual(trade_rows[("offshore", "outofKZ")]["pnl"], "-10.00")
+        self.assertEqual(trade_rows[("offshore", "outofKZ")]["pnl_kzt"], "470000.00")
+        self.assertEqual(trade_rows[("offshore", "outofKZ")]["tax_kzt"], "47000.00")
+
+    def test_yearly_derivatives_tax_only_profitable_fifo_rows(self) -> None:
+        dataset = CanonicalDataset.empty("ib", "UDER")
+        dataset.tables["Fifo"] = [
+            {
+                "exit_date": "2024-01-01 10:00:00",
+                "asset_type": "Equity and Index Options",
+                "symbol": "SPY 19JAN24 100 C",
+                "currency": "USD",
+                "pnl": "1",
+                "pnl_kzt": "100",
+            },
+            {
+                "exit_date": "2024-01-02 10:00:00",
+                "asset_type": "Equity and Index Options",
+                "symbol": "SPY 19JAN24 100 P",
+                "currency": "USD",
+                "pnl": "-0.8",
+                "pnl_kzt": "-80",
+            },
+        ]
+        yearly = ib_module._build_years_results(
+            dataset,
+            aix_provider=AixInstrumentProvider({}),
+            offshore_provider=OffshoreJurisdictionProvider(frozenset()),
+        )
+        derivative_rows = [row for row in yearly if row["table"] == "Yearly Derivatives"]
+        self.assertEqual(len(derivative_rows), 1)
+        self.assertEqual(derivative_rows[0]["flag"], "non-preferential")
+        self.assertEqual(derivative_rows[0]["exchange"], "outofKZ")
+        self.assertEqual(derivative_rows[0]["pnl"], "0.20")
+        self.assertEqual(derivative_rows[0]["pnl_kzt"], "20.00")
+        self.assertEqual(derivative_rows[0]["only_profit"], "1.00")
+        self.assertEqual(derivative_rows[0]["only_profit_kzt"], "100.00")
+        self.assertEqual(derivative_rows[0]["tax_kzt"], "10.00")
 
     def test_yearly_bonds_redemption_is_not_taxable(self) -> None:
         dataset = CanonicalDataset.empty("ib", "UCORP")
@@ -1253,7 +1376,7 @@ class InteractiveBrokersParserTests(unittest.TestCase):
         yearly = ib_module._build_years_results(dataset)
         coupon_rows = [row for row in yearly if row["table"] == "Yearly Coupons"]
         self.assertEqual(len(coupon_rows), 1)
-        self.assertEqual(coupon_rows[0]["flag"], "Issuer_KZ")
+        self.assertEqual(coupon_rows[0]["flag"], "preferential")
         self.assertEqual(coupon_rows[0]["amount"], "100.00")
         self.assertEqual(coupon_rows[0]["amount_kzt"], "0.00")
         self.assertEqual(coupon_rows[0]["withhold_kzt"], "0.00")
@@ -1289,7 +1412,7 @@ class InteractiveBrokersParserTests(unittest.TestCase):
         yearly = ib_module._build_years_results(dataset)
         dividend_rows = [row for row in yearly if row["table"] == "Yearly Dividends"]
         self.assertEqual(len(dividend_rows), 1)
-        self.assertEqual(dividend_rows[0]["flag"], "Issuer_KZ")
+        self.assertEqual(dividend_rows[0]["flag"], "preferential")
         self.assertEqual(dividend_rows[0]["amount"], "100.00")
         self.assertEqual(dividend_rows[0]["amount_kzt"], "0.00")
         self.assertEqual(dividend_rows[0]["withhold_kzt"], "0.00")

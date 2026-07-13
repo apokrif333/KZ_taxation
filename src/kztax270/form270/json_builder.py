@@ -12,6 +12,8 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
+import pandas as pd
+
 from kztax270.canonical.schema import CanonicalDataset
 
 
@@ -19,17 +21,20 @@ ZERO = Decimal("0")
 HALF = Decimal("0.5")
 SECURITIES_ASSET_CODE = "3"
 DERIVATIVE_ASSET_CODE = "4"
+SECURITIES_ASSET_NAME = "ценные бумаги"
+DERIVATIVE_ASSET_NAME = "производные финансовые инструменты"
 OPERATION_PURCHASE = "Покупка"
 OPERATION_EXCHANGE_ACQUIRED = "Приобретено путем обмена"
 OPERATION_EXCHANGE_DISPOSED = "Отчуждено путем обмена"
 OPERATION_SALE = "Продажа"
 OPERATION_GRATUITOUS = "Безвозмездно полученное (за исключением наследства)"
 OPERATION_OTHER = "Другой способ"
-BOND_REDEMPTION_OTHER_TEXT = "Полученное по долговым обязательствам"
+BOND_REDEMPTION_OTHER_TEXT = "Погашение"
 REFERENCE_TEMPLATES_DIR = Path(__file__).resolve().parents[3] / "data" / "templates"
 COUNTRY_CODES_FILE = "ThreeSymbolsISOCountres.json"
 CURRENCY_CODES_FILE = "ThreeSymbolsCurrency.json"
 TRADES_TYPES_FILE = "TradesTypes.json"
+ASSET_TYPES_FILE = "AssetsTypes.json"
 SOURCE_OWN_FUNDS = (
     "собственные средства (денежные средства, полученный доход с момента представления "
     "первоначальной Декларации об активах и обязательствах)"
@@ -41,12 +46,15 @@ COUNTRY_ISO3_BY_ISO2 = {
     "BS": "BHS",
     "CA": "CAN",
     "CH": "CHE",
+    "CY": "CYP",
+    "CYPRUS": "CYP",
     "GB": "GBR",
     "IE": "IRL",
     "IL": "ISR",
     "JE": "JEY",
     "KY": "CYM",
     "KZ": "KAZ",
+    "KAZAKHSTAN": "KAZ",
     "LU": "LUX",
     "MH": "MHL",
     "MU": "MUS",
@@ -54,9 +62,11 @@ COUNTRY_ISO3_BY_ISO2 = {
     "PA": "PAN",
     "PR": "PRI",
     "RU": "RUS",
+    "RUSSIA": "RUS",
     "SG": "SGP",
     "TW": "TWN",
     "US": "USA",
+    "UNITED STATES": "USA",
 }
 
 COUNTRY_NAME_RU_BY_CODE = {
@@ -68,6 +78,8 @@ COUNTRY_NAME_RU_BY_CODE = {
     "CAN": "Канада",
     "CH": "Швейцария",
     "CHE": "Швейцария",
+    "CY": "Кипр",
+    "CYP": "Кипр",
     "GB": "Великобритания",
     "GBR": "Великобритания",
     "IE": "Ирландия",
@@ -104,6 +116,9 @@ COUNTRY_NAME_RU_BY_CODE = {
 
 DEFAULT_BROKER_BANK_INFO: dict[str, dict[str, str]] = {
     "ib": {"code": "IBKRUS33XXX", "name": "Interactive Brokers LLC", "country": "USA"},
+    "exante": {"code": "EXAEMTM1", "name": "EXT LTD", "country": "Cyprus"},
+    "tsifra": {"code": "FRFLRUMM", "name": "ООО «Цифра брокер»", "country": "Russia"},
+    "freedom": {"code": "KCJBKZKX", "name": "Freedom Finance Global PLC", "country": "Kazakhstan"},
 }
 
 YEARS_HEADER_ALIASES = {
@@ -343,14 +358,17 @@ def _build_application_01(
     if not rows:
         return None
 
-    trades_kz = _sum_positive(rows, "pnl_kzt", table="Yearly Trades", flags={"Issuer_KZ"})
-    trades_foreign = _sum_positive(rows, "pnl_kzt", table="Yearly Trades", exclude_flags={"Issuer_KZ"})
+    preferential_flags = {"preferential", "Issuer_KZ", "Preferential"}
+    trades_kz = _sum_positive(rows, "pnl_kzt", table="Yearly Trades", flags=preferential_flags)
+    trades_foreign = _sum_positive(rows, "pnl_kzt", table="Yearly Trades", exclude_flags=preferential_flags)
     dividends = _sum_positive(rows, "amount_kzt", table="Yearly Dividends")
-    dividend_corrections = _sum_positive(rows, "amount_kzt", table="Yearly Dividends", flags={"Issuer_KZ", "Preferential"})
+    dividend_corrections = _sum_positive(rows, "amount_kzt", table="Yearly Dividends", flags=preferential_flags)
     interest = _sum_positive(rows, "only_profit_kzt", table="Yearly Interest")
     coupons = _sum_positive(rows, "amount_kzt", table="Yearly Coupons")
+    bond_redemptions = _sum_positive(rows, "pnl_kzt", table="Yearly Bonds Redemption")
     corp_actions = _sum_positive(rows, "pnl_kzt", table="Yearly Corp Actions")
     repos = _sum_positive(rows, "pnl_kzt", table="Yearly Repo")
+    derivatives = _sum_positive(rows, "only_profit_kzt", table="Yearly Derivatives")
     swaps = _sum_positive(rows, "pnl_kzt", table="Yearly Swaps")
     other = _sum_positive(rows, "pnl_kzt", table="Yearly SpinOff_Redemp")
 
@@ -361,8 +379,10 @@ def _build_application_01(
         "dividend_corrections": dividend_corrections,
         "interest": interest,
         "coupons": coupons,
+        "bond_redemptions": bond_redemptions,
         "corp_actions": corp_actions,
         "repos": repos,
+        "derivatives": derivatives,
         "swaps": swaps,
         "other": other,
         "foreign_tax_credit": _foreign_tax_credit(rows),
@@ -372,11 +392,11 @@ def _build_application_01(
 
     a1 = values["trades_kz"] + values["trades_foreign"]
     b_1_4 = values["dividends"]
-    b_1_5 = values["interest"] + values["coupons"] + values["corp_actions"] + values["repos"]
-    b_1_9 = values["swaps"] + values["other"]
+    b_1_5 = values["interest"] + values["coupons"] + values["bond_redemptions"] + values["corp_actions"] + values["repos"]
+    b_1_9 = values["derivatives"] + values["swaps"] + values["other"]
     b1 = b_1_4 + b_1_5 + b_1_9
     d_total = a1 + b1
-    e1 = values["trades_kz"] + values["coupons"] + values["corp_actions"] + values["dividend_corrections"]
+    e1 = values["trades_kz"] + values["coupons"] + values["bond_redemptions"] + values["corp_actions"] + values["dividend_corrections"]
     g = d_total - e1
     h = g * Decimal("0.10")
     i = values["foreign_tax_credit"]
@@ -444,7 +464,7 @@ def _build_application_04_b(
         parsed_date = _parse_date(row.get("date_time"))
         if parsed_date is None or parsed_date.year != tax_year:
             continue
-        if _is_excluded_security(row) or _is_forex(row):
+        if not _is_application_04_property_asset(row):
             continue
         country = _country_from_row(row)
         if country == "KZ":
@@ -497,6 +517,7 @@ def _build_application_04_b(
                 "index": index - 1,
             }
         )
+
     return rows
 
 
@@ -524,8 +545,12 @@ def _build_application_04_c(
         balances_by_currency[currency] = balances_by_currency.get(currency, ZERO) + amount
 
     rows = []
-    for index, (currency, amount) in enumerate(sorted(balances_by_currency.items()), start=1):
+    for currency, amount in sorted(balances_by_currency.items()):
         balance = amount * HALF if split else amount
+        rounded_balance = _round_int(balance)
+        if rounded_balance <= 1:
+            continue
+        index = len(rows) + 1
         rows.append(
             {
                 "A": _row_no(index),
@@ -533,7 +558,7 @@ def _build_application_04_c(
                 "C": bank_info.name,
                 "D": _country_code_for_form(bank_info.country),
                 "E": currency,
-                "F": _decimal_json(balance, places=2),
+                "F": rounded_balance,
                 "index": index - 1,
             }
         )
@@ -818,10 +843,27 @@ def _signed_trade_amount(row: Mapping[str, Any]) -> Decimal:
 
 
 def _asset_kind_code(row: Mapping[str, Any]) -> str:
+    if _is_derivative_asset(row):
+        return _reference_code_or_original(DERIVATIVE_ASSET_NAME, ASSET_TYPES_FILE) or DERIVATIVE_ASSET_CODE
+    return _reference_code_or_original(SECURITIES_ASSET_NAME, ASSET_TYPES_FILE) or SECURITIES_ASSET_CODE
+
+
+def _is_application_04_property_asset(row: Mapping[str, Any]) -> bool:
+    if _is_excluded_security(row):
+        return False
+    if _is_derivative_asset(row):
+        return True
     asset_type = str(row.get("asset_type") or row.get("Asset_Type") or "").lower()
-    if any(token in asset_type for token in ("option", "future", "derivative", "опцион", "фьюч")):
-        return DERIVATIVE_ASSET_CODE
-    return SECURITIES_ASSET_CODE
+    return any(token in asset_type for token in ("stock", "stocks", "share", "shares", "bond", "bonds", "акци", "облига"))
+
+
+def _is_derivative_asset(row: Mapping[str, Any]) -> bool:
+    asset_type = str(row.get("asset_type") or row.get("Asset_Type") or "").lower()
+    symbol = str(row.get("symbol") or row.get("Symbol") or "").upper()
+    return (
+        any(token in asset_type for token in ("option", "future", "futures", "derivative", "forex", "fx spot", "fx_spot", "currency", "опцион", "фьюч"))
+        or ".FX" in symbol
+    )
 
 
 def _application_04_operation(row: Mapping[str, Any], quantity: Decimal) -> tuple[str, str | None]:
@@ -833,10 +875,15 @@ def _application_04_operation(row: Mapping[str, Any], quantity: Decimal) -> tupl
             return _trade_type_code_for_form(operation), None
         if action_type in {"spinoff", "spin_off", "enrolment_of_rights", "rights"}:
             return _trade_type_code_for_form(OPERATION_GRATUITOUS), None
-        if action_type in {"maturity", "full_call", "redemption"}:
+        if action_type in {"maturity", "full_call", "redemption"} and _is_bond_asset(row):
             return _trade_type_code_for_form(OPERATION_OTHER), BOND_REDEMPTION_OTHER_TEXT
     operation = OPERATION_PURCHASE if quantity > ZERO else OPERATION_SALE
     return _trade_type_code_for_form(operation), None
+
+
+def _is_bond_asset(row: Mapping[str, Any]) -> bool:
+    asset_type = str(row.get("asset_type") or row.get("Asset_Type") or "").lower()
+    return any(token in asset_type for token in ("bond", "bonds", "облига"))
 
 
 def _is_excluded_security(row: Mapping[str, Any]) -> bool:

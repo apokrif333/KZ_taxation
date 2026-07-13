@@ -175,22 +175,24 @@ def _match_transfer_out_lots(
         grouped.setdefault((_text(row.get("date")) or None, _text(row.get("currency")) or None), []).append(row)
 
     exact_quantity_groups = [
-        group_rows
+        (group_rows, scale)
         for group_rows in grouped.values()
-        if abs(sum((_decimal(row.get("quantity")) for row in group_rows), Decimal("0")) - abs(request.quantity))
-        <= Decimal("0.0001")
-        and _is_not_after_transfer_in(group_rows, request)
+        for scale in (_matching_quantity_scale(group_rows, request),)
+        if scale is not None and _is_not_after_transfer_in(group_rows, request)
     ]
     if not exact_quantity_groups:
         return []
 
-    selected = min(exact_quantity_groups, key=lambda group_rows: _transfer_date_distance(group_rows, request))
+    selected, quantity_scale = min(
+        exact_quantity_groups,
+        key=lambda item: _transfer_date_distance(item[0], request),
+    )
     lots: list[TransferInFifoLot] = []
     for row in selected:
         lots.append(
             TransferInFifoLot(
-                quantity=_decimal(row.get("quantity")),
-                price=_decimal(row.get("price")),
+                quantity=_decimal(row.get("quantity")) * quantity_scale,
+                price=_decimal(row.get("price")) / quantity_scale,
                 enter_date=_parse_datetime(row.get("enter_date")),
                 source_broker=broker,
                 source_file=str(workbook_path),
@@ -198,6 +200,26 @@ def _match_transfer_out_lots(
             )
         )
     return lots
+
+
+def _matching_quantity_scale(
+    group_rows: Sequence[Mapping[str, Any]],
+    request: TransferInRequest,
+) -> Decimal | None:
+    source_quantity = sum((_decimal(row.get("quantity")) for row in group_rows), Decimal("0"))
+    requested_quantity = abs(request.quantity)
+    if abs(source_quantity - requested_quantity) <= Decimal("0.0001"):
+        return Decimal("1")
+    if _is_debt_asset(request.asset_type):
+        for scale in (Decimal("100"),):
+            if abs(source_quantity * scale - requested_quantity) <= Decimal("0.0001"):
+                return scale
+    return None
+
+
+def _is_debt_asset(asset_type: str | None) -> bool:
+    text = _text(asset_type).lower()
+    return any(token in text for token in ("bond", "bill", "note", "debt", "облиг"))
 
 
 def _resolve_workbook_path(processed_root: Path, broker: str, file_name: str, raw_root: Path | None = None) -> Path:
@@ -326,4 +348,3 @@ def _text(value: Any) -> str:
     if str(value).lower() in {"nan", "nat"}:
         return ""
     return str(value).strip()
-

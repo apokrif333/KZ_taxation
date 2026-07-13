@@ -20,6 +20,7 @@ from .discovery import DiscoveryRule, discover_raw_reports
 from .ib import (
     ISIN_RE,
     _amount_kzt,
+    _apply_broker_country_to_forex_trades,
     _annual_rate,
     _build_broker_trade_realized_pl,
     _build_fifo_and_positions,
@@ -208,6 +209,7 @@ def build_canonical_dataset(
     trades = _apply_identity_changes_to_trades(trades, corporate_actions, instrument_lookup)
     synthetic_trades = _build_corporate_action_trades(corporate_actions, instrument_lookup)
     internal_trades = _sort_trades_by_datetime([*trades, *synthetic_trades])
+    _apply_broker_country_to_forex_trades(internal_trades, BROKER_CODE)
     dataset.tables["Trades"] = _canonical_trade_rows([trade for trade in internal_trades if trade.get("_event_type") != "split"])
 
     transfers, transfer_totals_by_currency = _build_transfers(reports, instrument_lookup, internal_trades)
@@ -1934,6 +1936,7 @@ def _financing_interest_row(
     return {
         "date": close_dt.date().isoformat() if close_dt else None,
         "description": description,
+        "financing_kind": kind,
         "currency": currency,
         "gross_amount": _money_text(gross_amount),
         "withholding_tax": "0.00",

@@ -131,27 +131,20 @@ $env:PYTHONPATH="src"
 python -m kztax270 run-client configs/accounts.example.toml client_demo
 ```
 
-Запустить один IB счёт только как account audit analysis по всем raw-годам, без JSON и без Excel:
-
-```powershell
-$env:PYTHONPATH="src"
-python -m kztax270 run-account ib U1717377 --no-json --no-excel
-```
-
 Создать Excel audit workbook по всем raw-годам счёта:
 
 ```powershell
 $env:PYTHONPATH="src"
-python -m kztax270 run-account ib U1717377 --no-json
+python -m kztax270 run-account ib U1717377
 ```
 
 Для Excel нужны `pandas` и `openpyxl`.
 
-Создать Form270 JSON draft за конкретный год:
+Заполнить Form270 JSON из Excel по настройкам `configs/form270.toml`:
 
 ```powershell
 $env:PYTHONPATH="src"
-python -m kztax270 run-account ib U1717377 --form-year 2024 --no-excel --taxpayer-code 000000000000
+python -m kztax270 run-270 configs/form270.toml
 ```
 
 На текущем этапе запуск полного клиента требует legacy-зависимостей и корректных raw-файлов. Налоговый движок пока stub: он сохраняет структуру pipeline, но не заявляет готовность финального расчёта формы 270.00.

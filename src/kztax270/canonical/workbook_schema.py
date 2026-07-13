@@ -139,6 +139,7 @@ CANONICAL_WORKBOOK_SHEETS: tuple[SheetDefinition, ...] = (
             "isin",
             "currency",
             "country",
+            "exchange",
             "position_type",
             "enter_date",
             "enter_quantity",
@@ -159,6 +160,8 @@ CANONICAL_WORKBOOK_SHEETS: tuple[SheetDefinition, ...] = (
             "kzt_rate",
             "exit_amount_kzt",
             "acquisition_cost_with_commission_kzt",
+            "pnl_before_commission_kzt",
+            "pnl_after_all_commissions_kzt",
             "pnl_kzt",
             "source_trade_id",
         ),
@@ -188,6 +191,7 @@ CANONICAL_WORKBOOK_SHEETS: tuple[SheetDefinition, ...] = (
         (
             "date",
             "description",
+            "financing_kind",
             "currency",
             "gross_amount",
             "withholding_tax",
@@ -240,6 +244,7 @@ CANONICAL_WORKBOOK_SHEETS: tuple[SheetDefinition, ...] = (
             "year",
             "flag",
             "country",
+            "exchange",
             "currency",
             "pnl",
             "pnl_kzt",
@@ -299,7 +304,8 @@ CANONICAL_REQUIRED_COLUMNS: dict[str, tuple[str, ...]] = {
 }
 
 YEARS_RESULTS_TABLE_COLUMNS: dict[str, tuple[str, ...]] = {
-    "Yearly Trades": ("year", "flag", "currency", "pnl", "pnl_kzt", "withhold_kzt", "tax_kzt", "tax_kzt_withhold"),
+    "Yearly Trades": ("year", "flag", "exchange", "currency", "pnl", "pnl_kzt", "withhold_kzt", "tax_kzt", "tax_kzt_withhold"),
+    "Yearly Derivatives": ("year", "flag", "exchange", "currency", "pnl", "pnl_kzt", "only_profit", "only_profit_kzt", "tax_kzt"),
     "Yearly Bonds Redemption": ("year", "flag", "currency", "pnl", "pnl_kzt", "tax_kzt"),
     "Yearly FX Trades": ("year", "flag", "currency", "pnl", "pnl_kzt", "tax_kzt"),
     "Yearly Dividends": (

@@ -107,6 +107,46 @@ class TransferFifoSourceTests(unittest.TestCase):
         self.assertEqual([lot.quantity for lot in lots], [Decimal("25"), Decimal("50")])
         self.assertEqual([lot.price for lot in lots], [Decimal("91"), Decimal("92")])
 
+    def test_matches_bond_transfer_out_when_source_uses_price_per_100_quantity_scale(self) -> None:
+        import pandas as pd  # type: ignore
+
+        with tempfile.TemporaryDirectory() as tmp:
+            workbook_path = Path(tmp) / "freedom_source.xlsx"
+            pd.DataFrame(
+                [
+                    {
+                        "Date": "2023-10-23",
+                        "Transfer_Type": "security",
+                        "Direction": "out",
+                        "Asset_Type": "Bonds",
+                        "Symbol": "B.0.061324.BND",
+                        "ISIN": "US912797FS14",
+                        "Currency": "USD",
+                        "Quantity": 2000,
+                        "Price": 95.73635,
+                        "Enter_Date": "2023-07-13 16:52:52",
+                    },
+                ]
+            ).to_excel(workbook_path, sheet_name="Transfers", index=False)
+
+            lots = load_transfer_out_lots_from_audit_workbook(
+                workbook_path,
+                TransferInRequest(
+                    transfer_date=date(2023, 10, 23),
+                    symbol="912797FS1",
+                    isin="US912797FS14",
+                    quantity=Decimal("200000"),
+                    currency="USD",
+                    asset_type="Treasury Bills",
+                ),
+                broker="freedom",
+            )
+
+        self.assertEqual(len(lots), 1)
+        self.assertEqual(lots[0].quantity, Decimal("200000"))
+        self.assertEqual(lots[0].price, Decimal("0.9573635"))
+        self.assertEqual(lots[0].enter_date.isoformat(sep=" "), "2023-07-13 16:52:52")
+
     def test_matches_closest_prior_transfer_out_day_and_rejects_future_out(self) -> None:
         import pandas as pd  # type: ignore
 

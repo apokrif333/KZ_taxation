@@ -13,14 +13,9 @@ email = "alex.ah@list.ru"
 ogd_residence = ""
 ogd_location = ""
 
-[form270.banks.ib]
-code = "IBKRUS33XXX"
-name = "Interactive Brokers LLC"
-country = "USA"
-
 [[form270.forms]]
-broker = "ib"
-account_id = "U1717377"
+broker = "exante"
+account_id = "HXR2208.001"
 fio1 = "Ашихмин"
 fio2 = "Алексей"
 fio3 = "Михайлович"

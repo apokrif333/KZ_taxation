@@ -20,6 +20,7 @@ from .discovery import DiscoveryRule, discover_raw_reports
 from .ib import (
     ISIN_RE,
     _amount_kzt,
+    _apply_broker_country_to_forex_trades,
     _annual_rate,
     _build_broker_trade_realized_pl,
     _build_fifo_and_positions,
@@ -139,6 +140,7 @@ def build_canonical_dataset(
     dataset.tables["Dividends"] = _build_dividends(reports, instrument_lookup, fx_provider, dataset.warnings)
     transfers, transfer_totals_by_currency = _build_transfers(reports, instrument_lookup)
     internal_trades = _sort_trades_by_datetime(_build_trades(reports, instrument_lookup))
+    _apply_broker_country_to_forex_trades(internal_trades, "tsifra")
     dataset.tables["Trades"] = _canonical_trade_rows(internal_trades)
     dataset.tables["_BrokerTradeRealizedPL"] = _build_broker_trade_realized_pl(internal_trades)
     fifo_rows, fifo_positions, transfer_rows = _build_fifo_and_positions(

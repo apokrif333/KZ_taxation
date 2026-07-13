@@ -76,6 +76,17 @@ SELL_ONLY_EXANTE_CSV = '''"Costs and Charges Report: 2024-01-01 - 2024-12-31"
 '''
 
 
+DERIVATIVES_EXANTE_CSV = '''"Costs and Charges Report: 2024-01-01 - 2024-12-31"
+"Account"\t"EXD"
+""
+"Time"\t"Account ID"\t"Side"\t"Symbol ID"\t"ISIN"\t"Type"\t"Price"\t"Currency"\t"Quantity"\t"Commission"\t"Commission Currency"\t"P&L"\t"Traded Volume"\t"Order Id"\t"Order pos"\t"Value Date"\t"Unique Transaction Identifier (UTI)"\t"Trade type"\t"Exchange Order ID"
+"2024-01-10 10:00:00"\t"EXD"\t"buy"\t"MES.CME.Z2024"\t"None"\t"FUTURE"\t"100"\t"USD"\t"1"\t"2"\t"USD"\t"0"\t"100"\t"fut-open"\t"1"\t""\t""\t""\t""
+"2024-01-11 10:00:00"\t"EXD"\t"sell"\t"MES.CME.Z2024"\t"None"\t"FUTURE"\t"110"\t"USD"\t"1"\t"3"\t"USD"\t"10"\t"110"\t"fut-close"\t"1"\t""\t""\t""\t""
+"2024-02-19 08:25:14"\t"EXD"\t"sell"\t"EUR/USD.E.FX"\t"None"\t"FX_SPOT"\t"1.53"\t"USD"\t"1000"\t"0.2"\t"USD"\t"0"\t"1530"\t"fx-open"\t"1"\t""\t""\t""\t""
+"2024-02-20 08:25:14"\t"EXD"\t"buy"\t"EUR/USD.E.FX"\t"None"\t"FX_SPOT"\t"1.52"\t"USD"\t"1000"\t"0.3"\t"USD"\t"10"\t"1520"\t"fx-close"\t"1"\t""\t""\t""\t""
+'''
+
+
 HXR_TRANSFER_KSPI_OPTION_EXANTE_CSV = '''"Costs and Charges Report: 2022-01-01 - 2023-12-31"
 "Account"\t"HXR2208.001"
 ""
@@ -207,6 +218,9 @@ class ExanteParserTests(unittest.TestCase):
 
         self.assertFalse(any(row["asset_type"] == "Forex" for row in dataset.tables["Positions"]))
         self.assertTrue(any(row.get("position_type") == "fx" for row in dataset.tables["Fifo"]))
+        fx_trades = [row for row in dataset.tables["Trades"] if row["asset_type"] == "Forex"]
+        self.assertEqual(len(fx_trades), 1)
+        self.assertEqual(fx_trades[0]["country"], "Cyprus")
 
         reconciliation = ReconciliationEngine().reconcile_dataset(dataset)
         non_info = [item for item in reconciliation if item.severity != ReconciliationSeverity.INFO]
@@ -251,6 +265,50 @@ class ExanteParserTests(unittest.TestCase):
         self.assertEqual(Decimal(fifo["pnl"]), Decimal("-20"))
         self.assertEqual(Decimal(fifo["pnl_after_all_commissions"]), Decimal("-21"))
 
+    def test_exante_futures_and_fx_spot_yearly_derivatives_use_pnl_before_commission_tax_base(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            raw_root = Path(tmp) / "raw"
+            broker_root = raw_root / "exante"
+            broker_root.mkdir(parents=True)
+            path = broker_root / "Custom_EXD.csv"
+            path.write_text(DERIVATIVES_EXANTE_CSV, encoding="utf-16")
+
+            parser = ExanteParser(fx_provider=AnnualFxRateProvider({(2024, "USD"): Decimal("500")}))
+            result = parser.parse_reports(parser.discover_reports(raw_root, "EXD"), "EXD")
+
+        future_fifo = next(row for row in result.dataset.tables["Fifo"] if row["asset_type"] == "Futures")
+        self.assertEqual(future_fifo["pnl_before_commission"], "10")
+        self.assertEqual(future_fifo["pnl"], "10")
+        self.assertEqual(future_fifo["pnl_after_all_commissions"], "5")
+        fx_fifo = next(row for row in result.dataset.tables["Fifo"] if row["asset_type"] == "FX Spot")
+        fx_trade_rows = [row for row in result.dataset.tables["Trades"] if row["asset_type"] == "FX Spot"]
+        self.assertEqual(len(fx_trade_rows), 2)
+        self.assertTrue(all(row["country"] == "Cyprus" for row in fx_trade_rows))
+        self.assertEqual(fx_fifo["country"], "Cyprus")
+        self.assertEqual(fx_fifo["position_type"], "short")
+        self.assertEqual(fx_fifo["enter_date"], "2024-02-19 08:25:14")
+        self.assertEqual(fx_fifo["enter_quantity"], "1000")
+        self.assertEqual(fx_fifo["enter_price"], "1.53")
+        self.assertEqual(fx_fifo["enter_amount"], "1530")
+        self.assertEqual(fx_fifo["exit_date"], "2024-02-20 08:25:14")
+        self.assertEqual(fx_fifo["exit_quantity"], "1000")
+        self.assertEqual(fx_fifo["exit_price"], "1.52")
+        self.assertEqual(fx_fifo["exit_amount"], "1520.00")
+        self.assertEqual(fx_fifo["pnl_before_commission"], "10.00")
+        self.assertEqual(fx_fifo["pnl"], "9.8000")
+        self.assertEqual(fx_fifo["pnl_after_all_commissions"], "9.5000")
+
+        derivative_rows = [
+            row for row in result.dataset.tables["Years_Results"] if row["table"] == "Yearly Derivatives"
+        ]
+        self.assertEqual(len(derivative_rows), 1)
+        self.assertEqual(derivative_rows[0]["pnl"], "19.80")
+        self.assertEqual(derivative_rows[0]["pnl_kzt"], "9900.00")
+        self.assertEqual(derivative_rows[0]["only_profit"], "20.00")
+        self.assertEqual(derivative_rows[0]["only_profit_kzt"], "10000.00")
+        self.assertEqual(derivative_rows[0]["tax_kzt"], "1000.00")
+        self.assertFalse(any(row["table"] == "Yearly FX Trades" for row in result.dataset.tables["Years_Results"]))
+
     def test_hxr_security_transfer_kspi_isin_and_option_expiration(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             raw_root = Path(tmp) / "raw"
@@ -287,7 +345,7 @@ class ExanteParserTests(unittest.TestCase):
         option_fifo = [row for row in dataset.tables["Fifo"] if row["symbol"] == "SPY.CBOE.30M2023.P350"]
         self.assertEqual(len(option_fifo), 1)
         self.assertEqual(option_fifo[0]["exit_price"], "0")
-        self.assertEqual(option_fifo[0]["pnl"], "-301.0")
+        self.assertEqual(option_fifo[0]["pnl"], "-300.0")
         self.assertFalse(any(row["symbol"] == "SPY" for row in dataset.tables["Trades"]))
         self.assertFalse(any(row["reason"] == "unhandled_exante_transaction" for row in dataset.tables["Unprocessed"]))
 

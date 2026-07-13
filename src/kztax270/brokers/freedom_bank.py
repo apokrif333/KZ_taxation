@@ -18,6 +18,7 @@ from kztax270.transfers import TransferInFifoLot, TransferInRequest
 from .base import BrokerReport, ParseResult
 from .discovery import DiscoveryRule, discover_raw_reports
 from .ib import (
+    _apply_broker_country_to_forex_trades,
     _build_broker_trade_realized_pl,
     _build_fifo_and_positions,
     _build_unprocessed_rows,
@@ -139,6 +140,7 @@ def build_canonical_dataset(
     dataset.tables["Instruments"] = [instrument] if instrument else []
 
     internal_trades = _sort_trades_by_datetime(_build_trades(reports))
+    _apply_broker_country_to_forex_trades(internal_trades, BROKER_CODE)
     transfers = _build_transfers(reports)
     transfers.extend(_build_summary_position_adjustments(reports))
     dataset.tables["Trades"] = _canonical_trade_rows(internal_trades)

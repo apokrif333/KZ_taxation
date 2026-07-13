@@ -111,14 +111,30 @@ class FreedomParserTests(unittest.TestCase):
         self.assertEqual(result.dataset.tables["Fifo"], [])
         self.assertEqual(len(result.dataset.tables["Interest"]), 2)
         by_id = {row["_financing_trade_id"]: row for row in result.dataset.tables["Interest"]}
+        self.assertEqual(by_id["swap-1"]["financing_kind"], "swap")
         self.assertEqual(by_id["swap-1"]["gross_amount"], "11.84")
         self.assertEqual(by_id["swap-1"]["commission"], "0.50")
         self.assertIn("SWAP reward swap-1 SWAP.US", by_id["swap-1"]["description"])
         self.assertIn("open_price=100", by_id["swap-1"]["description"])
         self.assertIn("close_price=101.234", by_id["swap-1"]["description"])
+        self.assertEqual(by_id["repo-1"]["financing_kind"], "repo")
         self.assertEqual(by_id["repo-1"]["gross_amount"], "5.00")
         self.assertEqual(by_id["repo-1"]["commission"], "0.00")
         self.assertIn("REPO reward repo-1 REPO.US", by_id["repo-1"]["description"])
+        yearly_derivatives = [row for row in result.dataset.tables["Years_Results"] if row["table"] == "Yearly Derivatives"]
+        self.assertEqual(len(yearly_derivatives), 1)
+        self.assertEqual(yearly_derivatives[0]["flag"], "non-preferential")
+        self.assertEqual(yearly_derivatives[0]["exchange"], "outofKZ")
+        self.assertEqual(yearly_derivatives[0]["pnl"], "11.84")
+        self.assertEqual(yearly_derivatives[0]["pnl_kzt"], "5552.96")
+        self.assertEqual(yearly_derivatives[0]["only_profit"], "11.84")
+        self.assertEqual(yearly_derivatives[0]["only_profit_kzt"], "5552.96")
+        self.assertEqual(yearly_derivatives[0]["tax_kzt"], "555.30")
+        yearly_interest = [row for row in result.dataset.tables["Years_Results"] if row["table"] == "Yearly Interest"]
+        self.assertEqual(len(yearly_interest), 1)
+        self.assertEqual(yearly_interest[0]["amount"], "5.00")
+        self.assertEqual(yearly_interest[0]["only_profit"], "5.00")
+        self.assertEqual(yearly_interest[0]["tax_kzt"], "234.50")
 
     def test_ignores_legacy_trading_report_and_resolves_transfer_in_lots(self) -> None:
         import pandas as pd  # type: ignore
@@ -886,7 +902,7 @@ class FreedomParserTests(unittest.TestCase):
         self.assertEqual(dividend["tax"], "0.00")
         self.assertEqual(dividend["tax_kzt"], "0.00")
         yearly = next(row for row in result.dataset.tables["Years_Results"] if row["table"] == "Yearly Dividends")
-        self.assertEqual(yearly["flag"], "Issuer_KZ")
+        self.assertEqual(yearly["flag"], "preferential")
         self.assertEqual(yearly["amount"], "5.55")
         self.assertEqual(yearly["amount_kzt"], "0.00")
         self.assertEqual(yearly["withhold_kzt"], "0.00")
@@ -1000,10 +1016,12 @@ class FreedomParserTests(unittest.TestCase):
 
         fx_trade = next(row for row in result.dataset.tables["Trades"] if row["symbol"] == "KZT/USD")
         self.assertEqual(fx_trade["asset_type"], "Forex")
+        self.assertEqual(fx_trade["country"], "Kazakhstan")
         self.assertFalse(any("/" in str(row.get("symbol") or "") for row in result.dataset.tables["Positions"]))
         pnl_metric_prefix = ReconciliationMetric.PNL_AFTER_ALL_COMMISSIONS_BY_INSTRUMENT.value
         self.assertFalse(any(key.startswith(pnl_metric_prefix) and "US02376R1023" in key for key in result.raw_totals.totals_by_metric_currency))
-        self.assertTrue(any(row["asset_type"] == "Forex" and row["symbol"] == "KZT/USD" for row in result.dataset.tables["Fifo"]))
+        fx_fifo = next(row for row in result.dataset.tables["Fifo"] if row["asset_type"] == "Forex" and row["symbol"] == "KZT/USD")
+        self.assertEqual(fx_fifo["country"], "Kazakhstan")
 
     def test_kz_issuer_trades_do_not_accrue_capital_gain_tax(self) -> None:
         import pandas as pd  # type: ignore
@@ -1053,6 +1071,8 @@ class FreedomParserTests(unittest.TestCase):
 
         yearly_trades = [row for row in result.dataset.tables["Years_Results"] if row["table"] == "Yearly Trades"]
         self.assertEqual(len(yearly_trades), 1)
+        self.assertEqual(yearly_trades[0]["flag"], "preferential")
+        self.assertEqual(yearly_trades[0]["exchange"], "KASE")
         self.assertEqual(yearly_trades[0]["pnl"], "50.00")
         self.assertEqual(yearly_trades[0]["tax_kzt"], "0.00")
         self.assertEqual(yearly_trades[0]["tax_kzt_withhold"], "0.00")
