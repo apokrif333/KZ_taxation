@@ -825,12 +825,30 @@ def _sum_positive(
 
 
 def _foreign_tax_credit(rows: Sequence[Mapping[str, Any]]) -> Decimal:
+    """Return foreign-tax credit, pooling dividends by tax year and country.
+
+    ``rows`` are already filtered to one tax year by ``_build_application_01``.
+    Dividend flags do not split the pool: preferential and taxable dividends
+    from the same country share one withholding total and one 10% limit.
+    """
+
     total = ZERO
+    dividend_groups: dict[str, dict[str, Decimal]] = {}
     for row in rows:
+        if row.get("table") == "Yearly Dividends" and "withhold_kzt" in row:
+            country = _country_code_for_form(_str_or_none(row.get("country"))) or "UNKNOWN"
+            values = dividend_groups.setdefault(country, {"amount_kzt": ZERO, "withhold_kzt": ZERO})
+            values["amount_kzt"] += _decimal(row.get("amount_kzt"))
+            values["withhold_kzt"] += _decimal(row.get("withhold_kzt"))
+            continue
         tax = _decimal(row.get("tax_kzt"))
         tax_after_withhold = _decimal(row.get("tax_kzt_withhold"))
         if "tax_kzt_withhold" in row and tax > tax_after_withhold:
             total += tax - tax_after_withhold
+    for values in dividend_groups.values():
+        kazakhstan_tax_limit = max(values["amount_kzt"], ZERO) * Decimal("0.10")
+        foreign_tax_withheld = max(-values["withhold_kzt"], ZERO)
+        total += min(foreign_tax_withheld, kazakhstan_tax_limit)
     return total
 
 

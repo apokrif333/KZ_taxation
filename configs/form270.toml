@@ -14,8 +14,8 @@ ogd_residence = ""
 ogd_location = ""
 
 [[form270.forms]]
-broker = "exante"
-account_id = "HXR2208.001"
+broker = "freedom"
+account_id = "744347"
 fio1 = "Ашихмин"
 fio2 = "Алексей"
 fio3 = "Михайлович"

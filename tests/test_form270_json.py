@@ -217,6 +217,47 @@ class Form270JsonTests(unittest.TestCase):
         self.assertEqual(app["_G"], 1000)
         self.assertEqual(app["_H"], 100)
 
+    def test_foreign_tax_credit_groups_dividends_by_country_across_preferential_flags(self) -> None:
+        dataset = CanonicalDataset.empty("exante", "HXR2208.001")
+        dataset.tables["Years_Results"] = [
+            {
+                "table": "Yearly Dividends",
+                "year": 2023,
+                "flag": "non-preferential",
+                "country": "US",
+                "amount_kzt": "407644.54",
+                "withhold_kzt": "-122332.15",
+                "tax_kzt": "40764.45",
+                "tax_kzt_withhold": "0",
+            },
+            {
+                "table": "Yearly Dividends",
+                "year": 2023,
+                "flag": "preferential_kase",
+                "country": "USA",
+                "amount_kzt": "1373.49",
+                "withhold_kzt": "-419.81",
+                "tax_kzt": "0",
+                "tax_kzt_withhold": "0",
+            },
+            {
+                "table": "Yearly Dividends",
+                "year": 2023,
+                "flag": "non-preferential",
+                "country": "TW",
+                "amount_kzt": "19192.40",
+                "withhold_kzt": "-4033.78",
+                "tax_kzt": "1919.24",
+                "tax_kzt_withhold": "0",
+            },
+        ]
+
+        form = _builder().build_account_draft(dataset, tax_year=2023)
+        app = form["fnoContent"]["application_01"]
+
+        self.assertEqual(app["E"]["_E1"], 1373)
+        self.assertEqual(app["_I"], 42821)
+
     def test_builder_split_halves_amounts_and_sets_second_owner_iin(self) -> None:
         dataset = _dataset_with_application_04_rows()
         dataset.tables["Years_Results"] = [
