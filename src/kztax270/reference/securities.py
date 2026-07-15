@@ -3,16 +3,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Mapping
 
-AIX_API_URL = (
-    "https://market-backend.aixkz.com/api/table/mw-main-records?"
-    "search=&instrument=&listing_between_start={year}-01-01&listing_between_end={year}-12-31&is_etf_etn=true"
-)
+AIX_API_URL = "https://market-backend.aixkz.com/api/table/mw-main-records?&is_etf_etn=true"
 AIX_COLUMNS = (
     "year",
+    "snapshot_type",
     "isin",
     "secCode",
     "shortName",
@@ -29,72 +27,77 @@ DEFAULT_OFFSHORE_LIST_PATH = Path("data/offshore_list.xlsx")
 
 
 def ensure_aix_instruments_current(path: Path = DEFAULT_AIX_INSTRUMENTS_PATH, today: date | None = None) -> bool:
-    """Ensure the local AIX instrument workbook contains previous-year listings."""
+    """Ensure the local AIX instrument snapshot was refreshed for the previous year."""
 
     check_date = today or date.today()
     required_year = check_date.year - 1
     current = read_aix_instruments_dataframe(path) if path.exists() else _empty_aix_dataframe()
-    if _contains_year(current, required_year):
+    existing_years = set(_existing_years(current))
+    is_full_snapshot = current["snapshot_type"].eq("full").all()
+    if existing_years == {required_year} and is_full_snapshot:
         return False
 
-    start_year = min([2023, required_year, *_existing_years(current)])
-    updated = fetch_aix_instruments(current, start_year, required_year)
+    updated = fetch_aix_instruments(required_year)
     path.parent.mkdir(parents=True, exist_ok=True)
     updated.to_excel(path, index=False)
     if not _contains_year(updated, required_year):
-        raise RuntimeError(f"AIX instrument list for {required_year} is missing after update attempt.")
+        raise RuntimeError(f"AIX instrument snapshot for {required_year} is missing after update attempt.")
     return True
 
 
 def read_aix_instruments_dataframe(path: Path) -> Any:
     pd = _pandas()
     df = pd.read_excel(path, engine="openpyxl")
-    if "year" not in df.columns or "isin" not in df.columns:
-        raise ValueError(f"AIX instruments workbook {path} is missing required columns: ['year', 'isin']")
+    required_columns = {"year", "isin", "listingDate"}
+    missing_columns = required_columns - set(df.columns)
+    if missing_columns:
+        raise ValueError(f"AIX instruments workbook {path} is missing required columns: {sorted(missing_columns)}")
     return _normalize_aix_dataframe(df)
 
 
-def fetch_aix_instruments(existing: Any, start_year: int, end_year: int) -> Any:
+def fetch_aix_instruments(snapshot_year: int) -> Any:
+    """Download one complete AIX instrument snapshot and mark it with its refresh year."""
+
     pd = _pandas()
     requests = _requests()
-    frames = [_normalize_aix_dataframe(existing)]
-    for year in range(start_year, end_year + 1):
-        response = requests.get(AIX_API_URL.format(year=year), timeout=30)
-        response.raise_for_status()
-        rows = response.json()
-        if not isinstance(rows, list):
-            continue
-        frame = pd.DataFrame(rows)
-        if frame.empty:
-            continue
-        frame["year"] = year
-        frames.append(_normalize_aix_dataframe(frame))
-    return _sort_aix_dataframe(pd.concat(frames, ignore_index=True))
+    response = requests.get(AIX_API_URL, timeout=30)
+    response.raise_for_status()
+    rows = response.json()
+    if not isinstance(rows, list) or not rows:
+        raise RuntimeError("AIX returned an empty or invalid instrument snapshot.")
+    frame = pd.DataFrame(rows)
+    frame["year"] = snapshot_year
+    frame["snapshot_type"] = "full"
+    return _sort_aix_dataframe(frame)
 
 
 @dataclass(frozen=True, slots=True)
 class AixInstrumentProvider:
-    listed_by_year: Mapping[int, frozenset[str]]
+    listing_dates: Mapping[str, date]
 
     @classmethod
     def from_xlsx(cls, path: Path = DEFAULT_AIX_INSTRUMENTS_PATH) -> "AixInstrumentProvider":
         if not path.exists():
             return cls({})
         df = read_aix_instruments_dataframe(path)
-        listed: dict[int, set[str]] = {}
+        listing_dates: dict[str, date] = {}
         for record in df.to_dict(orient="records"):
             isin = _normalize_isin(record.get("isin"))
-            year = _int_or_none(record.get("year"))
-            if isin is None or year is None:
+            listing_date = _date_or_none(record.get("listingDate"))
+            if isin is None or listing_date is None:
                 continue
-            listed.setdefault(year, set()).add(isin)
-        return cls({year: frozenset(values) for year, values in listed.items()})
+            previous_date = listing_dates.get(isin)
+            if previous_date is None or listing_date < previous_date:
+                listing_dates[isin] = listing_date
+        return cls(listing_dates)
 
-    def is_listed(self, isin: str | None, year: int | None) -> bool:
+    def is_listed(self, isin: str | None, capital_gain_date: Any) -> bool:
         normalized = _normalize_isin(isin)
-        if normalized is None or year is None:
+        gain_date = _date_or_none(capital_gain_date)
+        listing_date = self.listing_dates.get(normalized) if normalized is not None else None
+        if listing_date is None or gain_date is None:
             return False
-        return any(normalized in values for listing_year, values in self.listed_by_year.items() if listing_year <= year)
+        return gain_date >= listing_date
 
 
 @dataclass(frozen=True, slots=True)
@@ -135,6 +138,22 @@ def _normalize_aix_dataframe(df: Any) -> Any:
     result = result.dropna(subset=["year", "isin"])
     result["year"] = result["year"].astype(int)
     return result.drop_duplicates(subset=["year", "isin"], keep="last")
+
+
+def _date_or_none(value: Any) -> date | None:
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text or text.lower() in {"none", "nan", "nat"}:
+        return None
+    try:
+        return date.fromisoformat(text[:10])
+    except ValueError:
+        return None
 
 
 def _sort_aix_dataframe(df: Any) -> Any:
@@ -185,15 +204,6 @@ def _is_yes(value: Any) -> bool:
 def _normalize_isin(value: Any) -> str | None:
     text = str(value or "").strip().upper()
     return text if len(text) >= 2 else None
-
-
-def _int_or_none(value: Any) -> int | None:
-    if value in (None, ""):
-        return None
-    try:
-        return int(value)
-    except Exception:
-        return None
 
 
 def _pandas() -> Any:

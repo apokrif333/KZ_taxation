@@ -1,6 +1,6 @@
 ﻿from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 import tempfile
 import unittest
@@ -13,6 +13,7 @@ from kztax270.canonical.schema import CanonicalDataset
 from kztax270.reconciliation.engine import ReconciliationEngine
 from kztax270.reconciliation.models import ReconciliationMetric, ReconciliationSeverity
 from kztax270.reference.fx import AnnualFxRateProvider
+from kztax270.reference.kase_aix import KaseAixDividendProvider
 from kztax270.reference.securities import AixInstrumentProvider, OffshoreJurisdictionProvider
 from kztax270.transfers import TransferInFifoLot, TransferInRequest
 
@@ -722,6 +723,39 @@ class InteractiveBrokersParserTests(unittest.TestCase):
         self.assertNotIn("exit_calculation_price", pre_split)
         self.assertNotIn(post_split["enter_quantity"], {"0.25", "0.5"})
 
+    def test_exchange_preferential_dividend_keeps_amounts_and_zeroes_tax(self) -> None:
+        dataset = CanonicalDataset.empty("ib", "UPREF")
+        dataset.tables["Instruments"] = [{"symbol": "TEST", "isin": "US0000000001"}]
+        dataset.tables["Dividends"] = [
+            {
+                "pay_date": date(2024, 6, 1),
+                "date": date(2024, 6, 1),
+                "symbol": "TEST",
+                "country": "US",
+                "currency": "USD",
+                "gross_amount": "100",
+                "gross_amount_kzt": "45000",
+                "withholding_tax": "-15",
+                "tax": "10",
+                "kzt_rate": "450",
+            }
+        ]
+
+        rows = ib_module._build_years_results(
+            dataset,
+            aix_provider=AixInstrumentProvider({}),
+            dividend_provider=KaseAixDividendProvider({("US0000000001", 2024): "preferential_kase"}),
+            offshore_provider=OffshoreJurisdictionProvider(frozenset()),
+        )
+        row = next(item for item in rows if item["table"] == "Yearly Dividends")
+
+        self.assertEqual(row["flag"], "preferential_kase")
+        self.assertEqual(row["amount"], "100.00")
+        self.assertEqual(row["amount_kzt"], "45000.00")
+        self.assertEqual(row["withhold_kzt"], "-6750.00")
+        self.assertEqual(row["tax_kzt"], "0.00")
+        self.assertEqual(row["tax_kzt_withhold"], "0.00")
+
     def test_dividend_withholding_revert_offsets_same_year_only(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             raw_root = Path(tmp) / "raw"
@@ -1269,7 +1303,7 @@ class InteractiveBrokersParserTests(unittest.TestCase):
         ]
         yearly = ib_module._build_years_results(
             dataset,
-            aix_provider=AixInstrumentProvider({2024: frozenset({"US0000000001"})}),
+            aix_provider=AixInstrumentProvider({"US0000000001": date(2024, 1, 1)}),
             offshore_provider=OffshoreJurisdictionProvider(frozenset({"BS"})),
         )
         trade_rows = {(row["flag"], row["exchange"]): row for row in yearly if row["table"] == "Yearly Trades"}
@@ -1277,6 +1311,41 @@ class InteractiveBrokersParserTests(unittest.TestCase):
         self.assertEqual(trade_rows[("offshore", "outofKZ")]["pnl"], "-10.00")
         self.assertEqual(trade_rows[("offshore", "outofKZ")]["pnl_kzt"], "470000.00")
         self.assertEqual(trade_rows[("offshore", "outofKZ")]["tax_kzt"], "47000.00")
+
+    def test_aix_capital_gain_is_preferential_only_after_listing_date(self) -> None:
+        dataset = CanonicalDataset.empty("ib", "UAIXDATE")
+        dataset.tables["Fifo"] = [
+            {
+                "exit_date": "2024-01-31 10:00:00",
+                "asset_type": "Stocks",
+                "symbol": "AIXTEST.AIX.KZ",
+                "isin": "US0000000001",
+                "exchange": "AIX",
+                "currency": "USD",
+                "pnl": "100",
+                "pnl_kzt": "47000",
+            },
+            {
+                "exit_date": "2024-02-01 10:00:00",
+                "asset_type": "Stocks",
+                "symbol": "AIXTEST.AIX.KZ",
+                "isin": "US0000000001",
+                "exchange": "AIX",
+                "currency": "USD",
+                "pnl": "200",
+                "pnl_kzt": "94000",
+            },
+        ]
+
+        yearly = ib_module._build_years_results(
+            dataset,
+            aix_provider=AixInstrumentProvider({"US0000000001": date(2024, 2, 1)}),
+            offshore_provider=OffshoreJurisdictionProvider(frozenset()),
+        )
+        trade_rows = {(row["flag"], row["exchange"]): row for row in yearly if row["table"] == "Yearly Trades"}
+
+        self.assertEqual(trade_rows[("non-preferential", "outofKZ")]["tax_kzt"], "4700.00")
+        self.assertEqual(trade_rows[("preferential", "AIX")]["tax_kzt"], "0.00")
 
     def test_yearly_derivatives_tax_only_profitable_fifo_rows(self) -> None:
         dataset = CanonicalDataset.empty("ib", "UDER")

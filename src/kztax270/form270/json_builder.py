@@ -363,6 +363,18 @@ def _build_application_01(
     trades_foreign = _sum_positive(rows, "pnl_kzt", table="Yearly Trades", exclude_flags=preferential_flags)
     dividends = _sum_positive(rows, "amount_kzt", table="Yearly Dividends")
     dividend_corrections = _sum_positive(rows, "amount_kzt", table="Yearly Dividends", flags=preferential_flags)
+    preferential_kase_dividends = _sum_positive(
+        rows,
+        "amount_kzt",
+        table="Yearly Dividends",
+        flags={"preferential_kase"},
+    )
+    preferential_aix_dividends = _sum_positive(
+        rows,
+        "amount_kzt",
+        table="Yearly Dividends",
+        flags={"preferential_aix"},
+    )
     interest = _sum_positive(rows, "only_profit_kzt", table="Yearly Interest")
     coupons = _sum_positive(rows, "amount_kzt", table="Yearly Coupons")
     bond_redemptions = _sum_positive(rows, "pnl_kzt", table="Yearly Bonds Redemption")
@@ -377,6 +389,8 @@ def _build_application_01(
         "trades_foreign": trades_foreign,
         "dividends": dividends,
         "dividend_corrections": dividend_corrections,
+        "preferential_kase_dividends": preferential_kase_dividends,
+        "preferential_aix_dividends": preferential_aix_dividends,
         "interest": interest,
         "coupons": coupons,
         "bond_redemptions": bond_redemptions,
@@ -396,8 +410,17 @@ def _build_application_01(
     b_1_9 = values["derivatives"] + values["swaps"] + values["other"]
     b1 = b_1_4 + b_1_5 + b_1_9
     d_total = a1 + b1
-    e1 = values["trades_kz"] + values["coupons"] + values["bond_redemptions"] + values["corp_actions"] + values["dividend_corrections"]
-    g = d_total - e1
+    e1 = (
+        values["trades_kz"]
+        + values["coupons"]
+        + values["bond_redemptions"]
+        + values["corp_actions"]
+        + values["dividend_corrections"]
+        + values["preferential_kase_dividends"]
+    )
+    e4 = values["preferential_aix_dividends"]
+    e_total = e1 + e4
+    g = d_total - e_total
     h = g * Decimal("0.10")
     i = values["foreign_tax_credit"]
     k = h - i
@@ -438,11 +461,11 @@ def _build_application_01(
         "_C": None,
         "_D": _round_int(d_total),
         "E": {
-            "_E": _round_int(e1),
+            "_E": _round_int(e_total),
             "_E1": _round_int(e1),
             "_E2": None,
             "_E3": None,
-            "_E4": None,
+            "_E4": _amount_or_none(e4),
         },
         "F": {"F": None, "_F1": None, "_F2": None},
         "_G": _round_int(g),

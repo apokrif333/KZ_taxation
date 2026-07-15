@@ -15,6 +15,11 @@ from kztax270.canonical.schema import AccountMetadata, CanonicalDataset, RawRepo
 from kztax270.form270.json_builder import DEFAULT_BROKER_BANK_INFO
 from kztax270.reconciliation.models import ReconciliationMetric
 from kztax270.reference.fx import AnnualFxRateProvider
+from kztax270.reference.kase_aix import (
+    KaseAixDividendProvider,
+    PREFERENTIAL_AIX,
+    PREFERENTIAL_KASE,
+)
 from kztax270.reference.securities import AixInstrumentProvider, OffshoreJurisdictionProvider
 from kztax270.transfers import TransferInFifoLot, TransferInFifoResolver, TransferInRequest
 
@@ -40,6 +45,8 @@ ISIN_RE = re.compile(r"(?<!\w)([A-Z]{2}[A-Z0-9]{10})(?!\w)")
 SYMBOL_ISIN_RE = re.compile(r"^([^()]+)\(([^)]+)\)")
 
 FLAG_PREFERENTIAL = "preferential"
+FLAG_PREFERENTIAL_AIX = PREFERENTIAL_AIX
+FLAG_PREFERENTIAL_KASE = PREFERENTIAL_KASE
 FLAG_NON_PREFERENTIAL = "non-preferential"
 FLAG_OFFSHORE = "offshore"
 
@@ -2873,9 +2880,11 @@ def _build_years_results(
     dataset: CanonicalDataset,
     *,
     aix_provider: AixInstrumentProvider | None = None,
+    dividend_provider: KaseAixDividendProvider | None = None,
     offshore_provider: OffshoreJurisdictionProvider | None = None,
 ) -> list[dict[str, Any]]:
     aix_provider = aix_provider or AixInstrumentProvider.from_xlsx()
+    dividend_provider = dividend_provider or KaseAixDividendProvider.from_xlsx()
     offshore_provider = offshore_provider or OffshoreJurisdictionProvider.from_xlsx()
     instrument_flags = _instrument_tax_flags(dataset)
     rows: list[dict[str, Any]] = []
@@ -2906,7 +2915,6 @@ def _build_years_results(
         flags = _record_tax_flags(
             record,
             instrument_flags,
-            year=year,
             aix_provider=aix_provider,
             offshore_provider=offshore_provider,
         )
@@ -2940,7 +2948,6 @@ def _build_years_results(
         flags = _record_tax_flags(
             record,
             instrument_flags,
-            year=year,
             aix_provider=aix_provider,
             offshore_provider=offshore_provider,
         )
@@ -2956,6 +2963,7 @@ def _build_years_results(
         dataset.tables.get("Dividends", []),
         instrument_flags,
         aix_provider=aix_provider,
+        dividend_provider=dividend_provider,
         offshore_provider=offshore_provider,
     ).items():
         amount_groups[key]["amount"] += values["amount"]
@@ -2972,7 +2980,6 @@ def _build_years_results(
                 else _record_tax_flags(
                     record,
                     instrument_flags,
-                    year=year,
                     aix_provider=aix_provider,
                     offshore_provider=offshore_provider,
                 )
@@ -3069,12 +3076,20 @@ def _build_years_results(
             )
             continue
         is_preferential_unreported_income = table_name in {"Yearly Coupons", "Yearly Dividends"} and flag == FLAG_PREFERENTIAL
+        is_exchange_preferential_dividend = table_name == "Yearly Dividends" and flag in {
+            FLAG_PREFERENTIAL_AIX,
+            FLAG_PREFERENTIAL_KASE,
+        }
         displayed_amount_kzt = Decimal("0") if is_preferential_unreported_income else amount_kzt
         displayed_withhold_kzt = Decimal("0") if is_preferential_unreported_income else withhold_kzt
-        tax_kzt = Decimal("0") if table_name == "Yearly Coupons" or is_preferential_unreported_income else taxable_amount_kzt * Decimal("0.10")
+        tax_kzt = (
+            Decimal("0")
+            if table_name == "Yearly Coupons" or is_preferential_unreported_income or is_exchange_preferential_dividend
+            else taxable_amount_kzt * Decimal("0.10")
+        )
         tax_kzt_withhold = (
             Decimal("0")
-            if amount_kzt <= 0 or table_name == "Yearly Coupons" or is_preferential_unreported_income
+            if amount_kzt <= 0 or table_name == "Yearly Coupons" or is_preferential_unreported_income or is_exchange_preferential_dividend
             else max(tax_kzt + foreign_tax_credit_kzt, Decimal("0"))
         )
         rows.append(
@@ -3169,6 +3184,7 @@ def _build_dividend_year_groups(
     instrument_flags: Mapping[str, Mapping[str, Any]],
     *,
     aix_provider: AixInstrumentProvider,
+    dividend_provider: KaseAixDividendProvider,
     offshore_provider: OffshoreJurisdictionProvider,
 ) -> dict[tuple[Any, ...], dict[str, Decimal]]:
     instrument_groups: dict[tuple[Any, ...], list[Mapping[str, Any]]] = defaultdict(list)
@@ -3199,10 +3215,12 @@ def _build_dividend_year_groups(
         flags = _record_tax_flags(
             representative,
             instrument_flags,
-            year=year,
             aix_provider=aix_provider,
             offshore_provider=offshore_provider,
         )
+        dividend_flag = dividend_provider.preferential_flag(flags.get("isin") or representative.get("isin"), year)
+        if dividend_flag is not None:
+            flags["dividend_preferential_flag"] = dividend_flag
         key = _years_result_key("Yearly Dividends", year, {**representative, "currency": currency}, flags)
         gross_amount = sum((_decimal(record.get("gross_amount")) for record in group_records), Decimal("0"))
         gross_amount_kzt = sum((_decimal(record.get("gross_amount_kzt")) for record in group_records), Decimal("0"))
@@ -3316,7 +3334,6 @@ def _record_tax_flags(
     record: Mapping[str, Any],
     instrument_flags: Mapping[str, Mapping[str, Any]],
     *,
-    year: int | None,
     aix_provider: AixInstrumentProvider,
     offshore_provider: OffshoreJurisdictionProvider,
 ) -> dict[str, Any]:
@@ -3340,13 +3357,15 @@ def _record_tax_flags(
     if issuer_outside_kz_flag is None and issuer_country is not None:
         issuer_outside_kz_flag = issuer_country != "KZ"
     offshore_flag = bool(offshore_flag) or offshore_provider.is_offshore_isin(isin)
-    exchange_bucket = _exchange_bucket(record, flags, year=year, aix_provider=aix_provider)
+    exchange_bucket = _exchange_bucket(record, flags, aix_provider=aix_provider)
+    exchange = _string_or_none(record.get("exchange") or flags.get("exchange"))
+    is_aix_trade = str(exchange or "").strip().upper() == EXCHANGE_AIX or ".AIX." in str(symbol or "").upper()
     preferential_tax_flag = (
         not offshore_flag
         and (
             bool(preferential_tax_flag)
             or exchange_bucket in {EXCHANGE_AIX, EXCHANGE_KASE}
-            or _is_kz_security(isin, symbol, _string_or_none(record.get("exchange") or flags.get("exchange")))
+            or (not is_aix_trade and _is_kz_security(isin, symbol, exchange))
         )
     )
     return {
@@ -3373,15 +3392,22 @@ def _exchange_bucket(
     record: Mapping[str, Any],
     flags: Mapping[str, Any],
     *,
-    year: int | None,
     aix_provider: AixInstrumentProvider,
 ) -> str:
     isin = _string_or_none(record.get("isin") or flags.get("isin"))
     symbol = _string_or_none(record.get("symbol") or flags.get("symbol"))
     exchange = _string_or_none(record.get("exchange") or flags.get("exchange"))
     normalized_exchange = str(exchange or "").strip().upper()
-    if aix_provider.is_listed(isin, year) or normalized_exchange == EXCHANGE_AIX:
+    capital_gain_date = (
+        record.get("exit_date")
+        or record.get("pay_date")
+        or record.get("date")
+        or record.get("date_time")
+    )
+    if aix_provider.is_listed(isin, capital_gain_date):
         return EXCHANGE_AIX
+    if normalized_exchange == EXCHANGE_AIX or ".AIX." in str(symbol or "").upper():
+        return EXCHANGE_OUTOFKZ
     if _is_kz_security(isin, symbol, exchange):
         return EXCHANGE_KASE
     return EXCHANGE_OUTOFKZ
@@ -3425,6 +3451,9 @@ def _years_result_sort_key(key: tuple[Any, ...]) -> tuple[Any, ...]:
 
 
 def _tax_source_flag(flags: Mapping[str, Any]) -> str:
+    dividend_flag = flags.get("dividend_preferential_flag")
+    if dividend_flag in {FLAG_PREFERENTIAL_AIX, FLAG_PREFERENTIAL_KASE}:
+        return str(dividend_flag)
     if flags.get("offshore_flag") is True:
         return FLAG_OFFSHORE
     if flags.get("preferential_tax_flag") is True:

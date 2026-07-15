@@ -13,8 +13,8 @@ from kztax270.form270.json_builder import Form270JsonBuilder
 from kztax270.form270.merge import merge_form270_jsons
 from kztax270.form270.split import split_form270_json
 from kztax270.reference.fx import AnnualFxRateProvider
+from kztax270.reference.kase_aix import ensure_kase_aix_preferential_current
 from kztax270.reference.nbk import ensure_nbk_rates_current
-from kztax270.reference.securities import ensure_aix_instruments_current
 from kztax270.reconciliation.engine import ReconciliationEngine
 from kztax270.transfers import TransferInFifoResolver
 
@@ -94,7 +94,7 @@ class AccountPipeline:
 
     def _registry_for_run(self) -> BrokerRegistry:
         ensure_nbk_rates_current(self.paths.nbk_rates)
-        ensure_aix_instruments_current(self.paths.nbk_rates.parent / "aix_instruments.xlsx")
+        ensure_kase_aix_preferential_current(self.paths.nbk_rates.parent)
         if self.registry is not None:
             return self.registry
         fx_provider = AnnualFxRateProvider.from_nbk_rates_xlsx(self.paths.nbk_rates)
