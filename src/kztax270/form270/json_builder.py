@@ -360,6 +360,14 @@ def _build_application_01(
 
     preferential_flags = {"preferential", "Issuer_KZ", "Preferential"}
     trades_kz = _sum_positive(rows, "pnl_kzt", table="Yearly Trades", flags=preferential_flags)
+    preferential_aix_trades = _sum_positive(
+        rows,
+        "pnl_kzt",
+        table="Yearly Trades",
+        flags=preferential_flags,
+        exchange="AIX",
+    )
+    preferential_kase_trades = trades_kz - preferential_aix_trades
     trades_foreign = _sum_positive(rows, "pnl_kzt", table="Yearly Trades", exclude_flags=preferential_flags)
     dividends = _sum_positive(rows, "amount_kzt", table="Yearly Dividends")
     dividend_corrections = _sum_positive(rows, "amount_kzt", table="Yearly Dividends", flags=preferential_flags)
@@ -386,6 +394,8 @@ def _build_application_01(
 
     values = {
         "trades_kz": trades_kz,
+        "preferential_kase_trades": preferential_kase_trades,
+        "preferential_aix_trades": preferential_aix_trades,
         "trades_foreign": trades_foreign,
         "dividends": dividends,
         "dividend_corrections": dividend_corrections,
@@ -411,14 +421,14 @@ def _build_application_01(
     b1 = b_1_4 + b_1_5 + b_1_9
     d_total = a1 + b1
     e1 = (
-        values["trades_kz"]
+        values["preferential_kase_trades"]
         + values["coupons"]
         + values["bond_redemptions"]
         + values["corp_actions"]
         + values["dividend_corrections"]
         + values["preferential_kase_dividends"]
     )
-    e4 = values["preferential_aix_dividends"]
+    e4 = values["preferential_aix_trades"] + values["preferential_aix_dividends"]
     e_total = e1 + e4
     g = d_total - e_total
     h = g * Decimal("0.10")
@@ -810,6 +820,7 @@ def _sum_positive(
     table: str,
     flags: set[str] | None = None,
     exclude_flags: set[str] | None = None,
+    exchange: str | None = None,
 ) -> Decimal:
     total = ZERO
     for row in rows:
@@ -819,6 +830,8 @@ def _sum_positive(
         if flags is not None and flag not in flags:
             continue
         if exclude_flags is not None and flag in exclude_flags:
+            continue
+        if exchange is not None and (_str_or_none(row.get("exchange")) or "").upper() != exchange.upper():
             continue
         total += max(_decimal(row.get(field)), ZERO)
     return total
@@ -901,8 +914,10 @@ def _is_application_04_property_asset(row: Mapping[str, Any]) -> bool:
 def _is_derivative_asset(row: Mapping[str, Any]) -> bool:
     asset_type = str(row.get("asset_type") or row.get("Asset_Type") or "").lower()
     symbol = str(row.get("symbol") or row.get("Symbol") or "").upper()
+    if asset_type.strip() == "forex":
+        return False
     return (
-        any(token in asset_type for token in ("option", "future", "futures", "derivative", "forex", "fx spot", "fx_spot", "currency", "опцион", "фьюч"))
+        any(token in asset_type for token in ("option", "future", "futures", "derivative", "fx spot", "fx_spot", "currency", "опцион", "фьюч"))
         or ".FX" in symbol
     )
 

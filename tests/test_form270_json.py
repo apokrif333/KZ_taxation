@@ -139,7 +139,7 @@ class Form270JsonTests(unittest.TestCase):
         self.assertEqual(form["fnoContent"]["commonInfo"]["selectedApplications"], ["application_04"])
         self.assertEqual(
             [row["F"] for row in app["B"]],
-            ["02.01.2024", "04.01.2024", "05.01.2024", "06.01.2024", "07.01.2024", "08.01.2024", "09.01.2024", "10.01.2024", "11.01.2024"],
+            ["02.01.2024", "05.01.2024", "06.01.2024", "07.01.2024", "08.01.2024", "09.01.2024", "10.01.2024", "11.01.2024"],
         )
         trades_by_identifier = {row["E"]: row for row in app["B"]}
         self.assertEqual(trades_by_identifier["US0000000001"]["B"], "1")
@@ -152,8 +152,7 @@ class Form270JsonTests(unittest.TestCase):
         self.assertIn(trades_by_identifier["US0000000001"]["H"], _reference_codes(COUNTRY_CODES_FILE))
         self.assertIn(trades_by_identifier["US0000000001"]["I"], _reference_codes(CURRENCY_CODES_FILE))
         self.assertEqual(trades_by_identifier["US0000000001"]["val_J"], {"value": 120, "manual": True})
-        self.assertEqual(trades_by_identifier["EUR.USD"]["B"], "1")
-        self.assertEqual(trades_by_identifier["EUR.USD"]["C"], "4")
+        self.assertNotIn("EUR.USD", trades_by_identifier)
         self.assertEqual(trades_by_identifier["SPY 19JAN24 100 C"]["B"], "4")
         self.assertEqual(trades_by_identifier["SPY 19JAN24 100 C"]["C"], "4")
         self.assertEqual(trades_by_identifier["EUR/AUD"]["B"], "4")
@@ -216,6 +215,41 @@ class Form270JsonTests(unittest.TestCase):
         self.assertEqual(app["E"]["_E"], 5000)
         self.assertEqual(app["_G"], 1000)
         self.assertEqual(app["_H"], 100)
+
+    def test_builder_places_preferential_trades_by_exchange_in_e1_and_e4(self) -> None:
+        dataset = CanonicalDataset.empty("freedom", "7A3453")
+        dataset.tables["Years_Results"] = [
+            {
+                "table": "Yearly Trades",
+                "year": 2023,
+                "flag": "preferential",
+                "exchange": "KASE",
+                "pnl_kzt": "2000",
+            },
+            {
+                "table": "Yearly Trades",
+                "year": 2023,
+                "flag": "preferential",
+                "exchange": "AIX",
+                "pnl_kzt": "3000",
+            },
+            {
+                "table": "Yearly Trades",
+                "year": 2023,
+                "flag": "non-preferential",
+                "exchange": "outofKZ",
+                "pnl_kzt": "1000",
+            },
+        ]
+
+        form = _builder().build_account_draft(dataset, tax_year=2023)
+        app = form["fnoContent"]["application_01"]
+
+        self.assertEqual(app["A"]["_A"], 6000)
+        self.assertEqual(app["E"]["_E1"], 2000)
+        self.assertEqual(app["E"]["_E4"], 3000)
+        self.assertEqual(app["E"]["_E"], 5000)
+        self.assertEqual(app["_G"], 1000)
 
     def test_foreign_tax_credit_groups_dividends_by_country_across_preferential_flags(self) -> None:
         dataset = CanonicalDataset.empty("exante", "HXR2208.001")

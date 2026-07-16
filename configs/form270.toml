@@ -5,7 +5,7 @@ form270_template = "data/templates/270 new template.json"
 
 [form270]
 # tax_year filters rows in processed Excel workbooks.
-tax_year = 2023
+tax_year = 2024
 joint_account = false
 civ_servant = false
 phone = "+7 (707) 878-71-33"
@@ -14,8 +14,8 @@ ogd_residence = ""
 ogd_location = ""
 
 [[form270.forms]]
-broker = "freedom"
-account_id = "744347"
+broker = "ib"
+account_id = "U10211105"
 fio1 = "Ашихмин"
 fio2 = "Алексей"
 fio3 = "Михайлович"
