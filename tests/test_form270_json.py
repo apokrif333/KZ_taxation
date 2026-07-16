@@ -177,6 +177,21 @@ class Form270JsonTests(unittest.TestCase):
         self.assertEqual(app["E"][0]["D"], "USA")
         self.assertEqual(app["E"][0]["E"], "США")
 
+    def test_builder_groups_cash_by_source_broker_for_merged_workbook(self) -> None:
+        dataset = CanonicalDataset.empty("merged", "Test_User")
+        dataset.tables["CashBalances"] = [
+            {"broker": "ib", "account_id": "U1", "year": 2024, "currency": "USD", "ending_cash": "100"},
+            {"broker": "ib", "account_id": "U2", "year": 2024, "currency": "USD", "ending_cash": "50"},
+            {"broker": "exante", "account_id": "E1", "year": 2024, "currency": "USD", "ending_cash": "200"},
+        ]
+
+        form = _builder().build_account_draft(dataset, tax_year=2024)
+        rows = form["fnoContent"]["application_04"]["C"]
+        by_bank = {row["B"]: row for row in rows}
+
+        self.assertEqual(by_bank["IBKRUS33XXX"]["F"], 150)
+        self.assertEqual(by_bank["EXAEMTM1"]["F"], 200)
+
     def test_builder_places_exchange_preferential_dividends_in_e1_and_e4(self) -> None:
         dataset = CanonicalDataset.empty("ib", "UPREF")
         dataset.tables["Years_Results"] = [
@@ -349,6 +364,7 @@ country = "USA"
 [[form270.forms]]
 broker = "ib"
 account_id = "UTEST"
+workbooks = ["ib_UTEST_audit.xlsx", "exante_ETEST_audit.xlsx"]
 joint_account = true
 fio1 = "Owner"
 fio2 = "One"
@@ -366,8 +382,56 @@ second_iin = "000000000002"
         self.assertEqual(config.defaults.phone, "+7")
         self.assertEqual(config.banks["ib"].code, "IBKRUS33XXX")
         self.assertEqual(config.forms[0].account_id, "UTEST")
+        self.assertEqual(
+            config.forms[0].workbooks,
+            (Path("ib_UTEST_audit.xlsx"), Path("exante_ETEST_audit.xlsx")),
+        )
         self.assertTrue(config.forms[0].joint_account)
         self.assertEqual(config.forms[0].second_owner.iin, "000000000002")
+
+    def test_form270_run_config_loads_job_modes_without_global_tax_year(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "form270.toml"
+            path.write_text(
+                """
+[form270]
+
+[[form270.jobs]]
+id = "excel"
+broker = "ib"
+account_id = "UTEST"
+
+[[form270.jobs]]
+id = "merge_excel"
+workbooks = ["ib_UTEST_audit.xlsx", "exante_ETEST_audit.xlsx"]
+fio1 = "Owner"
+fio2 = "One"
+
+[[form270.jobs]]
+id = "270_joint_json"
+file_name = "ib_UTEST_audit"
+tax_year = 2024
+fio1 = "Owner"
+fio2 = "One"
+iin = "000000000001"
+second_fio1 = "Owner"
+second_fio2 = "Two"
+second_iin = "000000000002"
+""",
+                encoding="utf-8",
+            )
+
+            config = load_form270_run_config(path)
+
+        self.assertIsNone(config.defaults.tax_year)
+        self.assertEqual([job.mode for job in config.jobs], ["excel", "merge_excel", "json"])
+        self.assertEqual(config.jobs[1].owner.iin, "")
+        self.assertTrue(config.jobs[2].joint_account)
+        self.assertEqual(config.jobs[2].workbook, Path("ib_UTEST_audit"))
+        self.assertEqual(
+            config.jobs[1].workbooks,
+            (Path("ib_UTEST_audit.xlsx"), Path("exante_ETEST_audit.xlsx")),
+        )
 
     def test_reference_dictionaries_normalize_form_codes(self) -> None:
         self.assertEqual(_country_code_for_form("US"), "USA")

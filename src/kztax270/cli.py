@@ -10,6 +10,7 @@ from kztax270.config import (
     AccountConfig,
     Form270BankConfig,
     Form270FillConfig,
+    Form270JobConfig,
     Form270OwnerConfig,
     Form270RunConfig,
     ProjectPaths,
@@ -17,6 +18,7 @@ from kztax270.config import (
     load_project_config,
 )
 from kztax270.form270.json_builder import BrokerBankInfo, Form270JsonBuilder, Form270Owner
+from kztax270.excel.merge_workbooks import merge_audit_workbooks
 from kztax270.reference.nbk import ensure_nbk_rates_current, upsert_nbk_average_annual_rates_xlsx
 from kztax270.reference.repositories import ReferenceDataStore
 from kztax270.reference.securities import ensure_aix_instruments_current
@@ -44,7 +46,7 @@ def build_parser() -> argparse.ArgumentParser:
     update_aix = sub.add_parser("update-aix-list", help="Update data/aix_instruments.xlsx from AIX if previous year is missing")
     update_aix.add_argument("--path", default="data/aix_instruments.xlsx")
 
-    run_account = sub.add_parser("run-account", help="Create an Excel audit workbook for one broker account")
+    run_account = sub.add_parser("run-account", help="Legacy: create an Excel audit workbook for one broker account")
     run_account.add_argument("broker")
     run_account.add_argument("account_id")
     run_account.add_argument("--raw-root", default="data/raw")
@@ -54,7 +56,7 @@ def build_parser() -> argparse.ArgumentParser:
     run_account.add_argument("--reference-root", default="reference")
     run_account.add_argument("--template", default="data/templates/270 new template.json")
 
-    fill_270 = sub.add_parser("fill-270", help="Fill Form270 JSON from data/processed audit workbook")
+    fill_270 = sub.add_parser("fill-270", help="Legacy: fill Form270 JSON from data/processed audit workbook")
     fill_270.add_argument("broker")
     fill_270.add_argument("account_id")
     fill_270.add_argument("--form-year", type=int, required=True)
@@ -87,7 +89,7 @@ def build_parser() -> argparse.ArgumentParser:
     fill_270.add_argument("--bank-country", default=None)
 
     for command_name in ("run", "run-270"):
-        run_270 = sub.add_parser(command_name, help="Fill Form270 JSONs from configs/form270.toml")
+        run_270 = sub.add_parser(command_name, help="Run Excel, merge, and Form270 jobs from a TOML config")
         run_270.add_argument("config", type=Path, nargs="?", default=Path("configs/form270.toml"))
         run_270.add_argument("--only", action="append", default=None, help="Optional broker:account_id or account_id filter")
 
@@ -192,48 +194,171 @@ def main(argv: list[str] | None = None) -> int:
 
 def _run_form270_config(config: Form270RunConfig, *, only: list[str] | None = None) -> int:
     builder = Form270JsonBuilder(config.paths.form270_template)
+    configured_bank_infos = {
+        broker.lower(): _bank_info_from_config(bank)
+        for broker, bank in config.banks.items()
+    }
     selected = set(only or [])
-    written = 0
-    for form in config.forms:
-        if selected and not _form270_filter_matches(form, selected):
+    executed = 0
+    forms_written = 0
+    jobs = config.jobs or tuple(_job_from_legacy_form(form) for form in config.forms)
+    for job in jobs:
+        if selected and not _job_filter_matches(job, selected):
             continue
-        bank_info = _bank_info_from_config(form.bank or config.banks.get(form.broker))
-        tax_year = form.tax_year or config.defaults.tax_year
-        joint_account = config.defaults.joint_account if form.joint_account is None else form.joint_account
-        civ_servant = config.defaults.civ_servant if form.civ_servant is None else form.civ_servant
-        workbook_path = form.workbook or config.paths.processed_data / f"{form.broker}_{form.account_id}_audit.xlsx"
 
-        owners: list[tuple[Form270OwnerConfig, str | None]] = [(form.owner, None)]
+        if job.mode == "excel":
+            _run_excel_job(config, job)
+            executed += 1
+            continue
+        if job.mode == "merge_excel":
+            workbook_path = _workbook_path_for_job(config, job)
+            print(f"merged_workbook={workbook_path}")
+            executed += 1
+            continue
+
+        if job.owner is None:
+            raise AssertionError(f"form270 job mode={job.mode} requires owner")
+        workbook_path = _workbook_path_for_job(config, job)
+        resolved_broker, resolved_account_id = _workbook_identity(workbook_path)
+        broker = job.broker or resolved_broker
+        account_id = job.account_id or resolved_account_id
+        bank_info = _bank_info_from_config(job.bank or config.banks.get(broker))
+        tax_year = job.tax_year or config.defaults.tax_year
+        if tax_year is None:
+            raise SystemExit(f"form270 job mode={job.mode} requires tax_year in the job or [form270]")
+        joint_account = config.defaults.joint_account if job.joint_account is None else job.joint_account
+        civ_servant = config.defaults.civ_servant if job.civ_servant is None else job.civ_servant
+
+        owners: list[tuple[Form270OwnerConfig, str | None]] = [(job.owner, None)]
         if joint_account:
-            if form.second_owner is None:
-                raise SystemExit(f"{form.broker}:{form.account_id} has joint_account=true but no second owner")
-            owners = [(form.owner, form.second_owner.iin), (form.second_owner, form.owner.iin)]
+            if job.second_owner is None:
+                raise SystemExit(f"{_job_label(job)} has joint_account=true but no second owner")
+            owners = [(job.owner, job.second_owner.iin), (job.second_owner, job.owner.iin)]
 
         for owner_config, spouse_iin in owners:
             owner = _owner_from_config(owner_config)
-            taxpayer = _taxpayer_payload_from_config(config, form, owner_config, spouse_iin=spouse_iin)
+            taxpayer = _taxpayer_payload_from_config(config, job, owner_config, spouse_iin=spouse_iin)
             draft = builder.build_processed_workbook_draft(
                 workbook_path,
                 tax_year=tax_year,
                 taxpayer=taxpayer,
-                broker=form.broker,
-                account_id=form.account_id,
+                broker=broker or None,
+                account_id=account_id or None,
                 split=joint_account,
                 civ_servant=civ_servant,
                 bank_info=bank_info,
+                bank_infos=configured_bank_infos,
             )
-            output_path = config.paths.output_data / _form270_output_name(tax_year, form.broker, form.account_id, owner)
+            output_path = config.paths.output_data / _form270_output_name(
+                tax_year, broker, account_id, owner
+            )
             builder.save(draft, output_path)
-            written += 1
+            forms_written += 1
             print(f"form[{owner.iin}]={output_path}")
-    if selected and written == 0:
+        executed += 1
+    if selected and executed == 0:
         raise SystemExit(f"No form270 entries matched --only={', '.join(sorted(selected))}")
-    print(f"forms_written={written}")
+    print(f"jobs_executed={executed}")
+    print(f"forms_written={forms_written}")
     return 0
 
 
-def _form270_filter_matches(form: Form270FillConfig, selected: set[str]) -> bool:
-    return form.account_id in selected or f"{form.broker}:{form.account_id}" in selected
+def _workbook_path_for_form(config: Form270RunConfig, form: Form270FillConfig) -> Path:
+    """Compatibility wrapper for the former [[form270.forms]] configuration."""
+
+    return _workbook_path_for_job(config, _job_from_legacy_form(form))
+
+
+def _workbook_path_for_job(config: Form270RunConfig, job: Form270JobConfig) -> Path:
+    if not job.workbooks:
+        if job.workbook:
+            return _resolve_configured_workbook(job.workbook, config.paths.processed_data)
+        if not job.broker or not job.account_id:
+            raise AssertionError(f"{_job_label(job)} has no workbook source")
+        return config.paths.processed_data / f"{job.broker}_{job.account_id}_audit.xlsx"
+
+    if job.owner is None:
+        raise AssertionError(f"{_job_label(job)} needs owner to name the merged workbook")
+    input_paths = tuple(_resolve_configured_workbook(path, config.paths.processed_data) for path in job.workbooks)
+    output_name = "merged_{}_{}.xlsx".format(
+        _safe_filename_part(job.owner.fio2),
+        _safe_filename_part(job.owner.fio1),
+    )
+    output_path = config.paths.processed_data / output_name
+    merge_audit_workbooks(input_paths, output_path)
+    return output_path
+
+
+def _resolve_configured_workbook(path: Path, processed_data: Path) -> Path:
+    candidate = path if path.suffix else path.with_suffix(".xlsx")
+    if candidate.is_absolute() or candidate.exists():
+        return candidate
+    return processed_data / candidate
+
+
+def _workbook_identity(path: Path) -> tuple[str, str]:
+    name = path.stem
+    if name.startswith("merged_"):
+        return "merged", "all"
+    if name.endswith("_audit"):
+        name = name[: -len("_audit")]
+    if name.endswith("_audit_fixed"):
+        name = name[: -len("_audit_fixed")]
+    if "_" not in name:
+        return "workbook", name
+    broker, account_id = name.split("_", 1)
+    if broker == "freedom" and account_id.startswith("bank_"):
+        return "freedom_bank", account_id[len("bank_") :]
+    if broker == "freedom" and account_id.startswith("broker_"):
+        return "freedom_broker", account_id[len("broker_") :]
+    return broker, account_id
+
+
+def _run_excel_job(config: Form270RunConfig, job: Form270JobConfig) -> None:
+    if not job.broker or not job.account_id:
+        raise AssertionError("excel job requires broker and account_id")
+    paths = config.paths
+    result = AccountPipeline(
+        paths,
+        transfer_in_resolver=InteractiveTransferInFifoResolver(paths.processed_data, raw_root=paths.raw_data),
+    ).run_account(
+        AccountConfig(broker=job.broker, account_id=job.account_id),
+        write_excel=True,
+        write_json=False,
+    )
+    if result.workbook_path:
+        print(f"workbook={result.workbook_path}")
+    print(f"reconciliation_rows={len(result.dataset.tables.get('Reconciliation', []))}")
+    print(f"reconciliation_errors={result.reconciliation_error_count}")
+
+
+def _job_from_legacy_form(form: Form270FillConfig) -> Form270JobConfig:
+    return Form270JobConfig(
+        mode="json",
+        broker=form.broker,
+        account_id=form.account_id,
+        owner=form.owner,
+        tax_year=form.tax_year,
+        workbook=form.workbook,
+        workbooks=form.workbooks,
+        second_owner=form.second_owner,
+        joint_account=form.joint_account,
+        civ_servant=form.civ_servant,
+        phone=form.phone,
+        email=form.email,
+        ogd_residence=form.ogd_residence,
+        ogd_location=form.ogd_location,
+        bank=form.bank,
+    )
+
+
+def _job_filter_matches(job: Form270JobConfig, selected: set[str]) -> bool:
+    label = _job_label(job)
+    return bool({job.job_id, job.account_id, label} & selected)
+
+
+def _job_label(job: Form270JobConfig) -> str:
+    return job.job_id or f"{job.broker or 'workbook'}:{job.account_id or 'all'}"
 
 
 def _bank_info_from_config(bank: Form270BankConfig | None) -> BrokerBankInfo | None:
@@ -248,7 +373,7 @@ def _owner_from_config(owner: Form270OwnerConfig) -> Form270Owner:
 
 def _taxpayer_payload_from_config(
     config: Form270RunConfig,
-    form: Form270FillConfig,
+    form: Form270FillConfig | Form270JobConfig,
     owner: Form270OwnerConfig,
     *,
     spouse_iin: str | None,

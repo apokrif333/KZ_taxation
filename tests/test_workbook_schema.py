@@ -58,6 +58,10 @@ class WorkbookSchemaTests(unittest.TestCase):
         columns = required_columns("Trades")
         self.assertIn("trade_type", columns)
 
+    def test_cash_balances_include_source_account(self) -> None:
+        columns = required_columns("CashBalances")
+        self.assertEqual(columns[:2], ("broker", "account_id"))
+
     def test_yearly_interest_columns_use_only_profit_tax_base(self) -> None:
         from kztax270.canonical.workbook_schema import YEARS_RESULTS_TABLE_COLUMNS
 
@@ -111,6 +115,45 @@ class WorkbookSchemaTests(unittest.TestCase):
         self.assertEqual(quantity_cell.data_type, "n")
         self.assertEqual(amount_cell.data_type, "n")
         self.assertEqual(isin_cell.data_type, "s")
+
+    def test_years_results_blocks_have_titles_headers_and_dimension_cells_formatted(self) -> None:
+        from openpyxl import load_workbook
+
+        dataset = CanonicalDataset.empty("ib", "UTEST")
+        dataset.tables["Years_Results"] = [
+            {
+                "table": "Yearly Interest",
+                "year": "2024",
+                "flag": "non-preferential",
+                "currency": "USD",
+                "amount": "10",
+                "amount_kzt": "4690",
+                "only_profit": "10",
+                "only_profit_kzt": "4690",
+                "tax_kzt": "469",
+            }
+        ]
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "audit.xlsx"
+            ExcelAuditWorkbookWriter().write(dataset, path)
+            workbook = load_workbook(path)
+
+        ws = workbook["Years_Results"]
+        self.assertIn("A1:H1", {str(cell_range) for cell_range in ws.merged_cells.ranges})
+        self.assertEqual(ws["A1"].value, "Yearly Interest")
+        self.assertTrue(ws["A1"].font.bold)
+        self.assertEqual(ws["A1"].alignment.horizontal, "center")
+        self.assertEqual(ws["A1"].border.bottom.style, "thin")
+        self.assertTrue(all(cell.font.bold for cell in ws[2]))
+        self.assertTrue(all(cell.border.bottom.style == "thin" for cell in ws[2]))
+        self.assertTrue(ws["A3"].font.bold)  # Year
+        self.assertTrue(ws["B3"].font.bold)  # Flag
+        self.assertTrue(ws["C3"].font.bold)  # Currency
+        self.assertEqual(ws["A3"].border.left.style, "thin")
+        self.assertFalse(ws["D3"].font.bold)  # Amount
+        self.assertEqual(ws["D3"].number_format, "0.00")
+        self.assertEqual(ws["E3"].number_format, '#,##0.00 "₸"')
 
 
 if __name__ == "__main__":

@@ -228,6 +228,8 @@ CANONICAL_WORKBOOK_SHEETS: tuple[SheetDefinition, ...] = (
     SheetDefinition(
         "CashBalances",
         (
+            "broker",
+            "account_id",
             "year",
             "date",
             "currency",

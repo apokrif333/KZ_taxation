@@ -4,38 +4,68 @@ output_data = "data/output"
 form270_template = "data/templates/270 new template.json"
 
 [form270]
-# tax_year filters rows in processed Excel workbooks.
-tax_year = 2024
-joint_account = false
-civ_servant = false
-phone = "+7 (707) 878-71-33"
-email = "alex.ah@list.ru"
-ogd_residence = ""
-ogd_location = ""
-
-[[form270.forms]]
-broker = "ib"
-account_id = "U10211105"
-fio1 = "Ашихмин"
-fio2 = "Алексей"
-fio3 = "Михайлович"
-iin = "930113399037"
-
-# Для совместного счета раскомментируй/добавь отдельную форму такого вида:
+# Все сценарии запускаются одной командой:
+# .\.venv\Scripts\python.exe -m kztax270 run-270 .\configs\form270.toml
 #
-# [[form270.forms]]
-# broker = "ib"
-# account_id = "U14219740"
-# joint_account = true
-# fio1 = "Фамилия1"
-# fio2 = "Имя1"
-# fio3 = "Отчество1"
-# iin = "000000000001"
-# second_fio1 = "Фамилия2"
-# second_fio2 = "Имя2"
-# second_fio3 = "Отчество2"
+# id = "excel"          — сформировать audit Excel из raw-отчётов одного счёта.
+# id = "merge_excel"    — объединить несколько audit Excel в merged_Имя_Фамилия.xlsx.
+# id = "270_json"       — заполнить 270.00 из одного готового audit Excel.
+# id = "270_joint_json" — заполнить 270.00 из одного готового audit Excel, как совместный счёт.
+#
+# Задания выполняются сверху вниз. Поэтому можно сначала создать Excel,
+# а следующим заданием сразу сформировать JSON из него.
+
+[[form270.jobs]]
+#id = "excel"
+#broker = "exante"
+#account_id = "HXR2208.001"
+
+# [[form270.jobs]]
+ id = "merge_excel"
+ workbooks = [
+     "ib_U10211105_audit.xlsx",
+     "freedom_8A0627_audit",
+     "ib_U1717377_audit.xlsx",
+     "exante_HXR2208.001_audit.xlsx"
+ ]
+ fio1 = "Ашихмин"
+ fio2 = "Алексей"
+ fio3 = "Михайлович"
+
+# [[form270.jobs]]
+# id = "270_json"
+# file_name = "merged_Алексей_Ашихмин"
+# civ_servant = false
+# tax_year = 2024
+# fio1 = "Ашихмин"
+# fio2 = "Алексей"
+# fio3 = "Михайлович"
+# iin = "930113399037"
+# phone = "+7 (707) 878-71-33"
+# email = "alex.ah@list.ru"
+# ogd_residence = ""
+# ogd_location = ""
+
+# [[form270.jobs]]
+# id = "270_joint_json"
+# file_name = "ib_U10211105_audit"
+# civ_servant = false
+# tax_year = 2024
+# fio1 = "Ашихмин"
+# fio2 = "Алексей"
+# fio3 = "Михайлович"
+# iin = "930113399037"
+# phone = "+7 (707) 878-71-33"
+# email = "alex.ah@list.ru"
+# second_fio1 = "Фамилия"
+# second_fio2 = "Имя"
+# second_fio3 = "Отчество"
 # second_iin = "000000000002"
-#
-# Для госслужащих добавь civ_servant = true в конкретную форму.
-# Для брокера/банка с остатком на иностранном денежном счете добавь bank_code,
-# bank_name, bank_country в конкретную форму либо секцию [form270.banks.<broker>].
+# ogd_residence = ""
+# ogd_location = ""
+
+# Параметры банка/брокера для CashBalances можно задать один раз:
+# [form270.banks.ib]
+# code = "IBKRUS33XXX"
+# name = "Interactive Brokers LLC"
+# country = "USA"

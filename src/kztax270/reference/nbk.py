@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import io
-from datetime import date
+import re
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -14,6 +15,9 @@ from .repositories import ReferenceDataStore
 NBK_MAIN_URL = "https://nationalbank.kz"
 NBK_RATES_NEWS_URL = f"{NBK_MAIN_URL}/ru/news/oficialnye-kursy?page={{page}}"
 NBK_RATE_COLUMNS = ("Des_Currency", "Currency", "Annual", "Year")
+YAHOO_CHART_URL = "https://query1.finance.yahoo.com/v8/finance/chart/{ticker}"
+YAHOO_USER_AGENT = "Mozilla/5.0 (compatible; kztax270/0.1; annual-fx-rate-fetcher)"
+ISO_CURRENCY_RE = re.compile(r"^[A-Z]{3}$")
 
 
 def ensure_nbk_rates_current(path: Path, today: date | None = None) -> bool:
@@ -34,6 +38,80 @@ def ensure_nbk_rates_current(path: Path, today: date | None = None) -> bool:
     if not _contains_year(updated, required_year):
         raise RuntimeError(f"NBK average annual FX rates for {required_year} are missing after update attempt.")
     return True
+
+
+def ensure_yahoo_cross_rate(path: Path, year: int, currency: str) -> Decimal | None:
+    """Persist an annual KZT rate for an NBK-missing currency via Yahoo and USD.
+
+    The annual Yahoo average of ``<CCY>USD=X`` is multiplied by NBK's official
+    average annual USD/KZT rate for the same year.
+    """
+
+    currency = currency.strip().upper()
+    if currency in {"KZT", "USD"} or not ISO_CURRENCY_RE.fullmatch(currency):
+        return None
+
+    current = read_nbk_rates_dataframe(path) if path.exists() else _empty_rates_dataframe()
+    direct = current[(current["Year"] == year) & (current["Currency"] == currency)]
+    if not direct.empty and not _is_outdated_yahoo_cross_rate(direct.iloc[-1]["Des_Currency"]):
+        return Decimal(str(direct.iloc[-1]["Annual"]))
+
+    usd = current[(current["Year"] == year) & (current["Currency"] == "USD")]
+    if usd.empty:
+        return None
+    usd_kzt = Decimal(str(usd.iloc[-1]["Annual"]))
+    currency_usd = fetch_yahoo_average_annual_rate(currency, year)
+    if currency_usd is None:
+        return None
+    annual_kzt = currency_usd * usd_kzt
+    pd = _pandas()
+    row = pd.DataFrame(
+        [
+            {
+                "Des_Currency": f"{currency} via Yahoo annual {currency}USD=X × NBK annual USD/KZT",
+                "Currency": currency,
+                "Annual": float(annual_kzt),
+                "Year": year,
+            }
+        ]
+    )
+    updated = _sort_rates_dataframe(pd.concat([current, row], ignore_index=True))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    updated.to_excel(path, index=False)
+    return annual_kzt
+
+
+def fetch_yahoo_average_annual_rate(currency: str, year: int) -> Decimal | None:
+    """Return the average daily close of Yahoo's ``<currency>USD=X`` ticker."""
+
+    requests, _ = _html_dependencies()
+    start = datetime(year, 1, 1, tzinfo=timezone.utc)
+    end = datetime(year + 1, 1, 1, tzinfo=timezone.utc)
+    ticker = f"{currency}USD=X"
+    try:
+        response = requests.get(
+            YAHOO_CHART_URL.format(ticker=ticker),
+            params={"period1": int(start.timestamp()), "period2": int(end.timestamp()), "interval": "1d"},
+            headers={"User-Agent": YAHOO_USER_AGENT},
+            timeout=30,
+        )
+        response.raise_for_status()
+        payload = response.json()
+    except Exception:
+        # A temporary Yahoo outage must leave the existing report runnable;
+        # the caller will retain the usual missing-rate warning and retry later.
+        return None
+    result = ((payload.get("chart") or {}).get("result") or [None])[0] or {}
+    quote = ((result.get("indicators") or {}).get("quote") or [{}])[0] or {}
+    closes = quote.get("close") or []
+    values = [Decimal(str(close)) for close in closes if close is not None]
+    if not values:
+        return None
+    return sum(values, Decimal("0")) / Decimal(len(values))
+
+
+def _is_outdated_yahoo_cross_rate(description: Any) -> bool:
+    return "via Yahoo calendar-daily" in str(description)
 
 
 def read_nbk_rates_dataframe(path: Path) -> Any:

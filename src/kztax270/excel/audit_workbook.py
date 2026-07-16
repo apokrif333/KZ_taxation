@@ -60,6 +60,11 @@ NUMERIC_WORKBOOK_COLUMNS = {
     "tolerance",
 }
 
+YEARS_RESULTS_DIMENSION_COLUMNS = frozenset({"year", "flag", "country", "exchange", "currency"})
+YEARS_RESULTS_KZT_COLUMNS = frozenset({"pnl_kzt", "amount_kzt", "only_profit_kzt", "withhold_kzt", "tax_kzt", "tax_kzt_withhold"})
+YEARS_RESULTS_AMOUNT_FORMAT = "0.00"
+YEARS_RESULTS_KZT_FORMAT = '#,##0.00 "₸"'
+
 
 class ExcelAuditWorkbookWriter:
     """Write one canonical audit workbook per broker account."""
@@ -77,6 +82,15 @@ class ExcelAuditWorkbookWriter:
                 if sheet.name == "Years_Results":
                     write_years_results_sheet(writer, records)
                     continue
+                if sheet.name == "CashBalances":
+                    records = [
+                        {
+                            **record,
+                            "broker": record.get("broker") or dataset.metadata.broker,
+                            "account_id": record.get("account_id") or dataset.metadata.account_id,
+                        }
+                        for record in records
+                    ]
                 df = pd.DataFrame(records)
                 df = ensure_columns(df, sheet.required_columns)
                 df = coerce_numeric_columns_for_excel(df)
@@ -146,6 +160,7 @@ def write_years_results_sheet(writer: Any, records: Sequence[Mapping[str, Any]])
         table_records = grouped.get(table_name, [])
         if not table_records:
             continue
+        title_row = row_idx
         columns = YEARS_RESULTS_TABLE_COLUMNS.get(table_name, tuple(key for key in table_records[0] if key != "table"))
         table_records = sorted(
             table_records,
@@ -170,7 +185,71 @@ def write_years_results_sheet(writer: Any, records: Sequence[Mapping[str, Any]])
         df = coerce_numeric_columns_for_excel(df)
         df = df.rename(columns=display_column_name)
         df.to_excel(writer, sheet_name="Years_Results", startrow=row_idx, index=False)
+        _style_years_results_block(
+            writer,
+            title_row=title_row,
+            table_name=table_name,
+            columns=columns,
+            record_count=len(table_records),
+        )
         row_idx += len(table_records) + 3
+
+
+def _style_years_results_block(
+    writer: Any,
+    *,
+    title_row: int,
+    table_name: str,
+    columns: Sequence[str],
+    record_count: int,
+) -> None:
+    """Apply the visual hierarchy used by the yearly result blocks."""
+
+    from openpyxl.styles import Alignment, Border, Font, Side  # type: ignore
+    from openpyxl.utils import get_column_letter  # type: ignore
+
+    ws = writer.sheets["Years_Results"]
+    title_excel_row = title_row + 1
+    header_excel_row = title_excel_row + 1
+    last_column = len(columns)
+    last_column_letter = get_column_letter(last_column)
+    black = Side(style="thin", color="000000")
+    all_sides = Border(left=black, right=black, top=black, bottom=black)
+
+    # The table title spans exactly the width of its columns.
+    for column_idx in range(1, last_column + 1):
+        cell = ws.cell(row=title_excel_row, column=column_idx)
+        cell.border = Border(
+            left=black if column_idx == 1 else Side(style=None),
+            right=black if column_idx == last_column else Side(style=None),
+            top=black,
+            bottom=black,
+        )
+    ws.merge_cells(f"A{title_excel_row}:{last_column_letter}{title_excel_row}")
+    title_cell = ws.cell(row=title_excel_row, column=1)
+    title_cell.value = table_name
+    title_cell.font = Font(bold=True)
+    title_cell.alignment = Alignment(horizontal="center", vertical="center")
+
+    for column_idx in range(1, last_column + 1):
+        header = ws.cell(row=header_excel_row, column=column_idx)
+        header.font = Font(bold=True)
+        header.alignment = Alignment(horizontal="center", vertical="center")
+        header.border = all_sides
+
+    data_start_row = header_excel_row + 1
+    data_end_row = data_start_row + record_count - 1
+    for column_idx, column_name in enumerate(columns, start=1):
+        for row_idx in range(data_start_row, data_end_row + 1):
+            cell = ws.cell(row=row_idx, column=column_idx)
+            if column_name in YEARS_RESULTS_DIMENSION_COLUMNS:
+                cell.font = Font(bold=True)
+                cell.alignment = Alignment(horizontal="center", vertical="center")
+                cell.border = all_sides
+            else:
+                cell.number_format = (
+                    YEARS_RESULTS_KZT_FORMAT if column_name in YEARS_RESULTS_KZT_COLUMNS else YEARS_RESULTS_AMOUNT_FORMAT
+                )
 
 
 def table_records_for_workbook(

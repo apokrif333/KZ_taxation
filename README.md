@@ -131,21 +131,30 @@ $env:PYTHONPATH="src"
 python -m kztax270 run-client configs/accounts.example.toml client_demo
 ```
 
-Создать Excel audit workbook по всем raw-годам счёта:
+Все рабочие сценарии запускаются через один конфигурационный файл:
 
 ```powershell
 $env:PYTHONPATH="src"
-python -m kztax270 run-account ib U1717377
+python -m kztax270 run-270 .\configs\form270.toml
 ```
+
+В `[[form270.jobs]]` тип задания задаётся полем `id`:
+
+- `excel` — создать audit Excel из raw-отчётов одного счёта;
+- `merge_excel` — объединить несколько готовых audit Excel;
+- `270_json` — создать 270.00 JSON из одного audit Excel;
+- `270_joint_json` — создать две формы 270.00 для совместного счёта.
+
+Задания выполняются сверху вниз: можно сначала указать `excel`, затем
+`merge_excel`, а потом `270_json` с именем объединённого файла. В заданиях
+объединения имена файлов без пути ищутся в
+`data/processed`; объединённый Excel сохраняется как
+`merged_Имя_Фамилия.xlsx`. Детальные листы объединяются построчно, а
+пересекающиеся строки `Years_Results` суммируются по виду дохода, году, флагу,
+стране, бирже и валюте. Полный пример находится в
+[`configs/form270.toml`](configs/form270.toml).
 
 Для Excel нужны `pandas` и `openpyxl`.
-
-Заполнить Form270 JSON из Excel по настройкам `configs/form270.toml`:
-
-```powershell
-$env:PYTHONPATH="src"
-python -m kztax270 run-270 configs/form270.toml
-```
 
 На текущем этапе запуск полного клиента требует legacy-зависимостей и корректных raw-файлов. Налоговый движок пока stub: он сохраняет структуру pipeline, но не заявляет готовность финального расчёта формы 270.00.
 

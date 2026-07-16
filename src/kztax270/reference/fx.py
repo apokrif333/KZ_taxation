@@ -2,20 +2,22 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal
 from pathlib import Path
 from typing import Mapping
 
-from .nbk import read_nbk_average_annual_rates_xlsx
+from .nbk import ensure_yahoo_cross_rate, read_nbk_average_annual_rates_xlsx
 from .repositories import ReferenceDataStore
 
 
 @dataclass(frozen=True, slots=True)
 class AnnualFxRateProvider:
-    """Look up average annual NBK official rates by tax year and currency."""
+    """Look up annual KZT rates, supplementing NBK gaps through Yahoo cross-rates."""
 
     rates: Mapping[tuple[int, str], Decimal]
+    fallback_path: Path | None = None
+    resolved_fallback_rates: dict[tuple[int, str], Decimal] = field(default_factory=dict, compare=False)
 
     @classmethod
     def from_reference_store(cls, store: ReferenceDataStore) -> "AnnualFxRateProvider":
@@ -24,7 +26,8 @@ class AnnualFxRateProvider:
 
     @classmethod
     def from_nbk_rates_xlsx(cls, path: Path) -> "AnnualFxRateProvider":
-        return cls.from_rows(read_nbk_average_annual_rates_xlsx(path))
+        provider = cls.from_rows(read_nbk_average_annual_rates_xlsx(path))
+        return cls(rates=provider.rates, fallback_path=path)
 
     @classmethod
     def from_rows(cls, rows: list[Mapping[str, object]]) -> "AnnualFxRateProvider":
@@ -46,4 +49,12 @@ class AnnualFxRateProvider:
         currency = currency.upper()
         if currency == "KZT":
             return Decimal("1")
-        return self.rates.get((year, currency))
+        key = (year, currency)
+        direct_rate = self.rates.get(key) or self.resolved_fallback_rates.get(key)
+        if direct_rate is not None or self.fallback_path is None:
+            return direct_rate
+
+        fallback_rate = ensure_yahoo_cross_rate(self.fallback_path, year, currency)
+        if fallback_rate is not None:
+            self.resolved_fallback_rates[key] = fallback_rate
+        return fallback_rate

@@ -177,6 +177,7 @@ class Form270JsonBuilder:
         split: bool = False,
         civ_servant: bool = False,
         bank_info: Mapping[str, Any] | BrokerBankInfo | None = None,
+        bank_infos: Mapping[str, BrokerBankInfo] | None = None,
     ) -> dict[str, Any]:
         broker = dataset.metadata.broker
         return self._build_draft(
@@ -187,6 +188,7 @@ class Form270JsonBuilder:
             split=split,
             civ_servant=civ_servant,
             bank_info=bank_info,
+            bank_infos=bank_infos,
         )
 
     def build_processed_workbook_draft(
@@ -200,6 +202,7 @@ class Form270JsonBuilder:
         split: bool = False,
         civ_servant: bool = False,
         bank_info: Mapping[str, Any] | BrokerBankInfo | None = None,
+        bank_infos: Mapping[str, BrokerBankInfo] | None = None,
     ) -> dict[str, Any]:
         tables = load_processed_workbook_tables(workbook_path)
         resolved_broker, _resolved_account = _broker_account_from_workbook_path(workbook_path)
@@ -211,6 +214,7 @@ class Form270JsonBuilder:
             split=split,
             civ_servant=civ_servant,
             bank_info=bank_info,
+            bank_infos=bank_infos,
         )
 
     def _build_draft(
@@ -223,6 +227,7 @@ class Form270JsonBuilder:
         split: bool,
         civ_servant: bool,
         bank_info: Mapping[str, Any] | BrokerBankInfo | None,
+        bank_infos: Mapping[str, BrokerBankInfo] | None,
     ) -> dict[str, Any]:
         draft = copy.deepcopy(self.load_template())
         draft["fnoYear"] = tax_year
@@ -246,6 +251,7 @@ class Form270JsonBuilder:
             split=split,
             broker=broker,
             bank_info=_resolve_bank_info(broker, bank_info),
+            bank_infos=bank_infos,
         )
         application_04["D"] = []
         application_04["E"] = _build_application_04_e(tables, tax_year=tax_year)
@@ -289,10 +295,11 @@ def load_processed_workbook_tables(workbook_path: Path) -> dict[str, list[dict[s
     if not workbook_path.exists():
         raise FileNotFoundError(workbook_path)
 
-    excel = pd.ExcelFile(workbook_path)
+    with pd.ExcelFile(workbook_path) as excel:
+        sheet_names = frozenset(excel.sheet_names)
     tables: dict[str, list[dict[str, Any]]] = {}
     for sheet in CANONICAL_WORKBOOK_SHEETS:
-        if sheet.name not in excel.sheet_names:
+        if sheet.name not in sheet_names:
             continue
         if sheet.name == "Years_Results":
             tables[sheet.name] = _read_years_results_sheet(workbook_path)
@@ -561,24 +568,31 @@ def _build_application_04_c(
     split: bool,
     broker: str,
     bank_info: BrokerBankInfo | None,
+    bank_infos: Mapping[str, BrokerBankInfo] | None,
 ) -> list[dict[str, Any]]:
-    if bank_info is None:
-        return []
-
-    balances_by_currency: dict[str, Decimal] = {}
+    balances: dict[tuple[str, str], Decimal] = {}
     for row in tables.get("CashBalances", []):
         if _int_or_none(row.get("year")) != tax_year:
             continue
+        source_broker = (_str_or_none(row.get("broker")) or broker).lower()
         currency = _str_or_none(row.get("currency"))
         if currency is None or currency == "KZT":
             continue
         amount = _decimal(row.get("ending_cash"))
         if amount <= ZERO:
             continue
-        balances_by_currency[currency] = balances_by_currency.get(currency, ZERO) + amount
+        key = (source_broker, currency)
+        balances[key] = balances.get(key, ZERO) + amount
 
     rows = []
-    for currency, amount in sorted(balances_by_currency.items()):
+    for (source_broker, currency), amount in sorted(balances.items()):
+        source_bank_info = (bank_infos or {}).get(source_broker)
+        if source_bank_info is None and source_broker == broker.lower():
+            source_bank_info = bank_info
+        if source_bank_info is None:
+            source_bank_info = _resolve_bank_info(source_broker, None)
+        if source_bank_info is None:
+            continue
         balance = amount * HALF if split else amount
         rounded_balance = _round_int(balance)
         if rounded_balance <= 1:
@@ -587,9 +601,9 @@ def _build_application_04_c(
         rows.append(
             {
                 "A": _row_no(index),
-                "B": bank_info.code,
-                "C": bank_info.name,
-                "D": _country_code_for_form(bank_info.country),
+                "B": source_bank_info.code,
+                "C": source_bank_info.name,
+                "D": _country_code_for_form(source_bank_info.country),
                 "E": currency,
                 "F": rounded_balance,
                 "index": index - 1,
