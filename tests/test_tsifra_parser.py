@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
 import tempfile
 import unittest
 
 from conftest_imports import SRC  # noqa: F401
+from kztax270.brokers import tsifra as tsifra_module
 from kztax270.brokers.tsifra import TsifraParser
 from kztax270.reconciliation.engine import ReconciliationEngine
 from kztax270.reconciliation.models import ReconciliationSeverity
@@ -107,9 +108,42 @@ class TsifraParserTests(unittest.TestCase):
         self.assertEqual(yearly_trades["tax_kzt"], "25.00")
         self.assertEqual(yearly_trades["tax_kzt_withhold"], "0.00")
 
+        yearly_coupon = [row for row in dataset.tables["Years_Results"] if row["table"] == "Yearly Coupons"][0]
+        self.assertEqual(yearly_coupon["amount"], "20.00")
+        self.assertEqual(yearly_coupon["only_profit"], "20.00")
+        self.assertEqual(yearly_coupon["only_profit_kzt"], "100.00")
+        self.assertEqual(yearly_coupon["withhold_kzt"], "-30.00")
+        self.assertEqual(yearly_coupon["tax_kzt"], "10.00")
+        self.assertEqual(yearly_coupon["tax_kzt_withhold"], "0.00")
+
         reconciliation = ReconciliationEngine().reconcile_dataset(dataset)
         non_info = [item for item in reconciliation if item.severity != ReconciliationSeverity.INFO]
         self.assertEqual(non_info, [])
+
+    def test_negative_coupon_nkd_and_explicit_revert_have_different_tax_effects(self) -> None:
+        report = tsifra_module.ParsedTsifraReport(path=Path("tsifra.xml"), period_end=date(2024, 12, 31))
+        report.rows[tsifra_module.TSIFRA_SECTION_MONEY_MOVES] = [
+            {"date": "2024-04-01", "in_qty": "20", "out_qty": "0", "currency_code": "RUB", "type": "kupon"},
+            {"date": "2024-04-02", "in_qty": "0", "out_qty": "5", "currency_code": "RUB", "type": "kupon", "description": "accrued coupon interest"},
+            {"date": "2024-04-03", "in_qty": "0", "out_qty": "20", "currency_code": "RUB", "type": "kupon", "description": "Reverted: coupon"},
+            {"date": "2024-04-03", "in_qty": "20", "out_qty": "0", "currency_code": "RUB", "type": "kupon", "description": "corrected coupon"},
+        ]
+        provider = AnnualFxRateProvider({(2024, "RUB"): Decimal("5")})
+
+        coupons = tsifra_module._build_coupons([report], {}, provider, [])
+        dataset = tsifra_module.CanonicalDataset.empty("tsifra", "1432280")
+        dataset.tables["Coupons"] = coupons
+        yearly_coupon = next(
+            row for row in tsifra_module._build_years_results(dataset) if row["table"] == "Yearly Coupons"
+        )
+
+        self.assertEqual([row["is_revert"] for row in coupons], [False, False, True, False])
+        self.assertEqual(yearly_coupon["amount"], "15.00")
+        self.assertEqual(yearly_coupon["only_profit"], "20.00")
+        self.assertEqual(yearly_coupon["only_profit_kzt"], "100.00")
+        self.assertEqual(yearly_coupon["withhold_kzt"], "-30.00")
+        self.assertEqual(yearly_coupon["tax_kzt"], "10.00")
+        self.assertEqual(yearly_coupon["tax_kzt_withhold"], "0.00")
 
 
 if __name__ == "__main__":

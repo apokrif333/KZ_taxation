@@ -60,7 +60,7 @@ NUMERIC_WORKBOOK_COLUMNS = {
     "tolerance",
 }
 
-YEARS_RESULTS_DIMENSION_COLUMNS = frozenset({"year", "flag", "country", "exchange", "currency"})
+YEARS_RESULTS_DIMENSION_COLUMNS = frozenset({"year", "flag", "country", "tax_exchange", "currency"})
 YEARS_RESULTS_KZT_COLUMNS = frozenset({"pnl_kzt", "amount_kzt", "only_profit_kzt", "withhold_kzt", "tax_kzt", "tax_kzt_withhold"})
 YEARS_RESULTS_AMOUNT_FORMAT = "0.00"
 YEARS_RESULTS_KZT_FORMAT = '#,##0.00 "₸"'
@@ -167,7 +167,7 @@ def write_years_results_sheet(writer: Any, records: Sequence[Mapping[str, Any]])
             key=lambda row: (
                 -1 if row.get("year") in (None, "") else int(row.get("year")),
                 str(row.get("flag") or ""),
-                str(row.get("exchange") or ""),
+                str(row.get("tax_exchange") or row.get("exchange") or ""),
                 str(row.get("currency") or ""),
             ),
         )

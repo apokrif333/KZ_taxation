@@ -32,6 +32,7 @@ class Form270JsonTests(unittest.TestCase):
                 "table": "Yearly Trades",
                 "year": 2024,
                 "flag": "non-preferential",
+                "country": "US",
                 "currency": "USD",
                 "pnl_kzt": "1000",
                 "tax_kzt": "100",
@@ -41,6 +42,7 @@ class Form270JsonTests(unittest.TestCase):
                 "table": "Yearly Trades",
                 "year": 2024,
                 "flag": "offshore",
+                "country": "US",
                 "currency": "USD",
                 "pnl_kzt": "3000",
                 "tax_kzt": "300",
@@ -50,6 +52,7 @@ class Form270JsonTests(unittest.TestCase):
                 "table": "Yearly Trades",
                 "year": 2024,
                 "flag": "preferential",
+                "country": "KZ",
                 "currency": "USD",
                 "pnl_kzt": "2000",
                 "tax_kzt": "0",
@@ -78,8 +81,9 @@ class Form270JsonTests(unittest.TestCase):
                 "flag": "non-preferential",
                 "currency": "USD",
                 "amount_kzt": "400",
-                "tax_kzt": "0",
-                "tax_kzt_withhold": "0",
+                "only_profit_kzt": "400",
+                "tax_kzt": "40",
+                "tax_kzt_withhold": "40",
             },
             {
                 "table": "Yearly Bonds Redemption",
@@ -93,7 +97,7 @@ class Form270JsonTests(unittest.TestCase):
                 "table": "Yearly Derivatives",
                 "year": 2024,
                 "flag": "non-preferential",
-                "exchange": "outofKZ",
+                "tax_exchange": "outofKZ",
                 "currency": "USD",
                 "pnl_kzt": "-100",
                 "only_profit_kzt": "600",
@@ -115,16 +119,80 @@ class Form270JsonTests(unittest.TestCase):
         self.assertEqual(app["B"]["_05"], 1500)
         self.assertEqual(app["B"]["_09"], 600)
         self.assertEqual(app["_D"], 8600)
-        self.assertEqual(app["E"]["_E"], 3200)
-        self.assertEqual(app["_G"], 5400)
-        self.assertEqual(app["_H"], 540)
+        self.assertEqual(app["E"]["_E"], 2800)
+        self.assertEqual(app["_G"], 5800)
+        self.assertEqual(app["_H"], 580)
         self.assertEqual(app["_I"], 30)
-        self.assertEqual(app["_K"], 510)
+        self.assertEqual(app["_K"], 550)
         self.assertEqual(form["taxpayerCode"], "000000000001")
         self.assertEqual(form["taxpayerNameRu"], "TEST OWNER")
         self.assertIsNone(form["periodValue"])
         self.assertEqual(form["fnoYear"], 2024)
         self.assertEqual(form["fnoContent"]["commonInfo"]["selectedApplications"], ["application_01"])
+
+    def test_application_01_trade_income_nets_four_country_and_flag_categories_separately(self) -> None:
+        dataset = CanonicalDataset.empty("ib", "UGEOGRAPHY")
+        dataset.tables["Years_Results"] = [
+            {
+                "table": "Yearly Trades",
+                "year": 2024,
+                "flag": flag,
+                "country": country,
+                "tax_exchange": tax_exchange,
+                "currency": currency,
+                "pnl_kzt": pnl_kzt,
+            }
+            for flag, country, tax_exchange, currency, pnl_kzt in (
+                ("preferential", "KZ", "KASE", "KZT", "100"),
+                ("preferential", "KZ", "AIX", "USD", "-200"),
+                ("non-preferential", "KZ", "outofKZ", "USD", "300"),
+                ("non-preferential", "KZ", "outofKZ", "EUR", "-50"),
+                ("preferential", "US", "AIX", "USD", "400"),
+                ("preferential", "GB", "AIX", "GBP", "-100"),
+                ("non-preferential", "US", "outofKZ", "USD", "500"),
+                ("non-preferential", "CA", "outofKZ", "CAD", "-700"),
+            )
+        ]
+
+        form = _builder().build_account_draft(dataset, tax_year=2024)
+        app = form["fnoContent"]["application_01"]
+
+        self.assertEqual(app["A"]["_01"], 250)
+        self.assertEqual(app["A"]["_02"], 300)
+        self.assertEqual(app["A"]["_A"], 550)
+
+    def test_application_01_uses_coupon_only_profit_and_corrects_only_preferential_coupons(self) -> None:
+        dataset = CanonicalDataset.empty("ib", "UCOUPONS")
+        dataset.tables["Years_Results"] = [
+            {
+                "table": "Yearly Coupons",
+                "year": 2024,
+                "flag": "non-preferential",
+                "currency": "USD",
+                "amount_kzt": "100",
+                "only_profit_kzt": "150",
+                "tax_kzt": "15",
+                "tax_kzt_withhold": "15",
+            },
+            {
+                "table": "Yearly Coupons",
+                "year": 2024,
+                "flag": "preferential",
+                "currency": "USD",
+                "amount_kzt": "50",
+                "only_profit_kzt": "50",
+                "tax_kzt": "0",
+                "tax_kzt_withhold": "0",
+            },
+        ]
+
+        form = _builder().build_account_draft(dataset, tax_year=2024)
+        app = form["fnoContent"]["application_01"]
+
+        self.assertEqual(app["B"]["_05"], 200)
+        self.assertEqual(app["E"]["_E1"], 50)
+        self.assertEqual(app["_G"], 150)
+        self.assertEqual(app["_H"], 15)
 
     def test_builder_fills_application_04_from_trades_cash_and_positions(self) -> None:
         dataset = _dataset_with_application_04_rows()
@@ -176,6 +244,29 @@ class Form270JsonTests(unittest.TestCase):
         self.assertEqual(app["E"][0]["C"], "US0000000001")
         self.assertEqual(app["E"][0]["D"], "USA")
         self.assertEqual(app["E"][0]["E"], "США")
+
+    def test_builder_includes_treasury_bills_in_application_04_b(self) -> None:
+        dataset = CanonicalDataset.empty("ib", "UTEST")
+        dataset.tables["Trades"] = [
+            {
+                "date_time": "2022-11-21 15:10:40",
+                "symbol": "912796ZK8",
+                "isin": "US912796ZK84",
+                "asset_type": "Treasury Bills",
+                "quantity": "1011000",
+                "amount": "1004691.36",
+                "currency": "USD",
+                "country": "US",
+            }
+        ]
+
+        form = _builder().build_account_draft(dataset, tax_year=2022)
+
+        rows = form["fnoContent"]["application_04"]["B"]
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["E"], "US912796ZK84")
+        self.assertEqual(rows[0]["B"], "1")
+        self.assertEqual(rows[0]["C"], "3")
 
     def test_builder_groups_cash_by_source_broker_for_merged_workbook(self) -> None:
         dataset = CanonicalDataset.empty("merged", "Test_User")
@@ -238,21 +329,21 @@ class Form270JsonTests(unittest.TestCase):
                 "table": "Yearly Trades",
                 "year": 2023,
                 "flag": "preferential",
-                "exchange": "KASE",
+                "tax_exchange": "KASE",
                 "pnl_kzt": "2000",
             },
             {
                 "table": "Yearly Trades",
                 "year": 2023,
                 "flag": "preferential",
-                "exchange": "AIX",
+                "tax_exchange": "AIX",
                 "pnl_kzt": "3000",
             },
             {
                 "table": "Yearly Trades",
                 "year": 2023,
                 "flag": "non-preferential",
-                "exchange": "outofKZ",
+                "tax_exchange": "outofKZ",
                 "pnl_kzt": "1000",
             },
         ]
@@ -266,7 +357,7 @@ class Form270JsonTests(unittest.TestCase):
         self.assertEqual(app["E"]["_E"], 5000)
         self.assertEqual(app["_G"], 1000)
 
-    def test_foreign_tax_credit_groups_dividends_by_country_across_preferential_flags(self) -> None:
+    def test_foreign_tax_credit_excludes_preferential_dividends_from_country_pool(self) -> None:
         dataset = CanonicalDataset.empty("exante", "HXR2208.001")
         dataset.tables["Years_Results"] = [
             {
@@ -305,7 +396,7 @@ class Form270JsonTests(unittest.TestCase):
         app = form["fnoContent"]["application_01"]
 
         self.assertEqual(app["E"]["_E1"], 1373)
-        self.assertEqual(app["_I"], 42821)
+        self.assertEqual(app["_I"], 42684)
 
     def test_builder_split_halves_amounts_and_sets_second_owner_iin(self) -> None:
         dataset = _dataset_with_application_04_rows()

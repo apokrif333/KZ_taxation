@@ -1,16 +1,15 @@
 from __future__ import annotations
 
-from decimal import Decimal
-from pathlib import Path
 import tempfile
 import unittest
+from decimal import Decimal
+from pathlib import Path
 
 from conftest_imports import SRC  # noqa: F401
 from kztax270.brokers.exante import ExanteParser
 from kztax270.reconciliation.engine import ReconciliationEngine
 from kztax270.reconciliation.models import ReconciliationSeverity
 from kztax270.reference.fx import AnnualFxRateProvider
-
 
 MINIMAL_EXANTE_CSV = '''"Costs and Charges Report: 2023-01-01 - 2023-12-31"
 "Account"\t"EX1"
@@ -277,6 +276,9 @@ class ExanteParserTests(unittest.TestCase):
             result = parser.parse_reports(parser.discover_reports(raw_root, "EXD"), "EXD")
 
         future_fifo = next(row for row in result.dataset.tables["Fifo"] if row["asset_type"] == "Futures")
+        future_trades = [row for row in result.dataset.tables["Trades"] if row["asset_type"] == "Futures"]
+        self.assertTrue(all(row["country"] == "US" for row in future_trades))
+        self.assertEqual(future_fifo["country"], "US")
         self.assertEqual(future_fifo["pnl_before_commission"], "10")
         self.assertEqual(future_fifo["pnl"], "10")
         self.assertEqual(future_fifo["pnl_after_all_commissions"], "5")

@@ -13,7 +13,7 @@ from kztax270.form270.json_builder import load_processed_workbook_tables
 from .audit_workbook import ExcelAuditWorkbookWriter
 
 
-YEAR_RESULT_DIMENSIONS = ("table", "year", "flag", "country", "exchange", "currency")
+YEAR_RESULT_DIMENSIONS = ("table", "year", "flag", "country", "tax_exchange", "currency")
 YEAR_RESULT_VALUES = (
     "pnl",
     "pnl_kzt",
@@ -73,7 +73,14 @@ def aggregate_years_results(records: Sequence[Mapping[str, Any]]) -> list[dict[s
     groups: dict[tuple[Any, ...], dict[str, Decimal]] = {}
     present_values: dict[tuple[Any, ...], set[str]] = {}
     for record in records:
-        key = tuple(_dimension_value(record.get(field), field=field) for field in YEAR_RESULT_DIMENSIONS)
+        dimensions: list[Any] = []
+        for field in YEAR_RESULT_DIMENSIONS:
+            if field == "tax_exchange":
+                value = record.get("tax_exchange") or record.get("exchange")
+            else:
+                value = record.get(field)
+            dimensions.append(_dimension_value(value, field=field))
+        key = tuple(dimensions)
         values = groups.setdefault(key, {field: Decimal("0") for field in YEAR_RESULT_VALUES})
         present = present_values.setdefault(key, set())
         for field in YEAR_RESULT_VALUES:
@@ -103,6 +110,9 @@ def _recalculate_withholding_after_merge(rows: Sequence[dict[str, Any]]) -> None
     groups: dict[tuple[Any, ...], list[dict[str, Any]]] = {}
     for row in rows:
         if row.get("table") not in WITHHOLDING_POOL_TABLES:
+            continue
+        if row.get("table") in {"Yearly Dividends", "Yearly Coupons"} and _is_preferential_income(row):
+            row["tax_kzt_withhold"] = "0"
             continue
         key = (row.get("table"), row.get("year"), row.get("country"))
         groups.setdefault(key, []).append(row)
@@ -137,6 +147,11 @@ def _allocate_tax_after_withholding(
     for row in rows:
         if row not in taxable_rows:
             row["tax_kzt_withhold"] = "0"
+
+
+def _is_preferential_income(row: Mapping[str, Any]) -> bool:
+    flag = str(row.get("flag") or "").strip().casefold()
+    return flag == "issuer_kz" or flag.startswith("preferential")
 
 
 def broker_account_from_workbook_path(path: Path) -> tuple[str, str]:
@@ -194,12 +209,12 @@ def _missing(value: Any) -> bool:
 
 
 def _year_result_sort_key(key: tuple[Any, ...]) -> tuple[Any, ...]:
-    table, year, flag, country, exchange, currency = key
+    table, year, flag, country, tax_exchange, currency = key
     return (
         str(table or ""),
         -1 if year is None else int(year),
         str(flag or ""),
         str(country or ""),
-        str(exchange or ""),
+        str(tax_exchange or ""),
         str(currency or ""),
     )

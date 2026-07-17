@@ -2792,6 +2792,7 @@ def _build_interest_and_coupons(
                         "gross_amount_kzt": base_record["gross_amount_kzt"],
                         "withholding_tax_kzt": base_record["withholding_tax_kzt"],
                         "net_amount_kzt": base_record["net_amount_kzt"],
+                        "is_revert": _is_explicit_income_revert(description),
                         "offshore_flag": None,
                         "source_report": str(report.path),
                         "description": description,
@@ -2820,6 +2821,13 @@ def _infer_interest_symbol_isin(
             if isin and ISIN_RE.fullmatch(str(isin)):
                 return str(instrument.get("symbol") or candidate), str(isin)
     return None, None
+
+
+def _is_explicit_income_revert(description: str | None) -> bool:
+    """Recognize a reversal only when the raw broker text says it is one."""
+
+    text = str(description or "").strip().casefold()
+    return any(marker in text for marker in ("reverted", "reversal", "reversed", "storno", "сторно", "отмена"))
 
 
 def _build_cash_balances(
@@ -2924,9 +2932,10 @@ def _build_years_results(
             flags = _issuer_outside_kz_flags()
             table_name = "Yearly FX Trades"
         else:
+            pnl_kzt = _decimal(record.get("pnl_kzt"))
             table_name = (
                 "Yearly Bonds Redemption"
-                if _is_bond_redemption_fifo_row(record)
+                if _is_bond_redemption_fifo_row(record) and pnl_kzt > 0
                 else "Yearly Trades"
             )
         key = _years_result_key(table_name, year, record, flags)
@@ -3002,12 +3011,21 @@ def _build_years_results(
             if sheet_name == "Interest" and amount > 0:
                 values["only_profit"] += amount
                 values["only_profit_kzt"] += amount_kzt
+            elif sheet_name == "Coupons" and (
+                (amount > 0 and not bool(record.get("is_revert")))
+                or (amount < 0 and bool(record.get("is_revert")))
+            ):
+                # Negative accrued coupon interest (NKD) remains in Amount, but
+                # does not reduce remuneration.  An explicit broker reversal
+                # does reduce the positive-coupon tax base.
+                values["only_profit"] += amount
+                values["only_profit_kzt"] += amount_kzt
             withholding_kzt = _decimal(record.get("withholding_tax_kzt"))
             values["withhold_kzt"] += withholding_kzt
             values["foreign_tax_credit_kzt"] += withholding_kzt
 
     for key in sorted(pnl_groups, key=_years_result_sort_key):
-        table_name, year, flag, country, exchange, currency = key
+        table_name, year, flag, country, tax_exchange, currency = key
         values = pnl_groups[key]
         pnl = values["pnl"]
         pnl_kzt = values["pnl_kzt"]
@@ -3035,7 +3053,7 @@ def _build_years_results(
                 "year": year,
                 "flag": flag,
                 "country": country,
-                "exchange": exchange,
+                "tax_exchange": tax_exchange,
                 "currency": currency,
                 "pnl": _money_text(pnl),
                 "pnl_kzt": _money_text(display_pnl_kzt),
@@ -3048,7 +3066,7 @@ def _build_years_results(
         )
 
     for key in sorted(amount_groups, key=_years_result_sort_key):
-        table_name, year, flag, country, exchange, currency = key
+        table_name, year, flag, country, tax_exchange, currency = key
         values = amount_groups[key]
         amount = values["amount"]
         amount_kzt = values["amount_kzt"]
@@ -3056,7 +3074,6 @@ def _build_years_results(
         only_profit_kzt = values["only_profit_kzt"]
         withhold_kzt = values["withhold_kzt"]
         foreign_tax_credit_kzt = values["foreign_tax_credit_kzt"]
-        taxable_amount_kzt = max(amount_kzt, Decimal("0"))
         if table_name == "Yearly Interest":
             tax_kzt = max(only_profit_kzt, Decimal("0")) * Decimal("0.10")
             rows.append(
@@ -3065,7 +3082,7 @@ def _build_years_results(
                     "year": year,
                     "flag": flag,
                     "country": country,
-                    "exchange": exchange,
+                    "tax_exchange": tax_exchange,
                     "currency": currency,
                     "amount": _money_text(amount),
                     "amount_kzt": _money_text(amount_kzt),
@@ -3075,38 +3092,45 @@ def _build_years_results(
                 }
             )
             continue
-        is_preferential_unreported_income = table_name in {"Yearly Coupons", "Yearly Dividends"} and flag == FLAG_PREFERENTIAL
+        is_preferential_unreported_income = table_name == "Yearly Dividends" and flag == FLAG_PREFERENTIAL
         is_exchange_preferential_dividend = table_name == "Yearly Dividends" and flag in {
             FLAG_PREFERENTIAL_AIX,
             FLAG_PREFERENTIAL_KASE,
         }
+        is_preferential_coupon = table_name == "Yearly Coupons" and flag == FLAG_PREFERENTIAL
         displayed_amount_kzt = Decimal("0") if is_preferential_unreported_income else amount_kzt
         displayed_withhold_kzt = Decimal("0") if is_preferential_unreported_income else withhold_kzt
+        taxable_amount_kzt = max(only_profit_kzt if table_name == "Yearly Coupons" else amount_kzt, Decimal("0"))
         tax_kzt = (
             Decimal("0")
-            if table_name == "Yearly Coupons" or is_preferential_unreported_income or is_exchange_preferential_dividend
+            if is_preferential_coupon or is_preferential_unreported_income or is_exchange_preferential_dividend
             else taxable_amount_kzt * Decimal("0.10")
         )
         tax_kzt_withhold = (
             Decimal("0")
-            if amount_kzt <= 0 or table_name == "Yearly Coupons" or is_preferential_unreported_income or is_exchange_preferential_dividend
+            if taxable_amount_kzt <= 0
+            or is_preferential_coupon
+            or is_preferential_unreported_income
+            or is_exchange_preferential_dividend
             else max(tax_kzt + foreign_tax_credit_kzt, Decimal("0"))
         )
-        rows.append(
-            {
-                "table": table_name,
-                "year": year,
-                "flag": flag,
-                "country": country,
-                "exchange": exchange,
-                "currency": currency,
-                "amount": _money_text(amount),
-                "amount_kzt": _money_text(displayed_amount_kzt),
-                "withhold_kzt": _money_text(displayed_withhold_kzt),
-                "tax_kzt": _money_text(tax_kzt),
-                "tax_kzt_withhold": _money_text(tax_kzt_withhold),
-            }
-        )
+        row = {
+            "table": table_name,
+            "year": year,
+            "flag": flag,
+            "country": country,
+            "tax_exchange": tax_exchange,
+            "currency": currency,
+            "amount": _money_text(amount),
+            "amount_kzt": _money_text(displayed_amount_kzt),
+            "withhold_kzt": _money_text(displayed_withhold_kzt),
+            "tax_kzt": _money_text(tax_kzt),
+            "tax_kzt_withhold": _money_text(tax_kzt_withhold),
+        }
+        if table_name == "Yearly Coupons":
+            row["only_profit"] = _money_text(only_profit)
+            row["only_profit_kzt"] = _money_text(only_profit_kzt)
+        rows.append(row)
     return rows
 
 
@@ -3395,29 +3419,29 @@ def _exchange_bucket(
     aix_provider: AixInstrumentProvider,
 ) -> str:
     isin = _string_or_none(record.get("isin") or flags.get("isin"))
-    symbol = _string_or_none(record.get("symbol") or flags.get("symbol"))
     exchange = _string_or_none(record.get("exchange") or flags.get("exchange"))
-    normalized_exchange = str(exchange or "").strip().upper()
+    normalized_exchange = str(exchange or "").strip().upper().split(".", 1)[0]
     capital_gain_date = (
         record.get("exit_date")
         or record.get("pay_date")
         or record.get("date")
         or record.get("date_time")
     )
+    if normalized_exchange == EXCHANGE_KASE:
+        return EXCHANGE_KASE
+    if normalized_exchange == EXCHANGE_AIX:
+        return EXCHANGE_AIX
     if aix_provider.is_listed(isin, capital_gain_date):
         return EXCHANGE_AIX
-    if normalized_exchange == EXCHANGE_AIX or ".AIX." in str(symbol or "").upper():
-        return EXCHANGE_OUTOFKZ
-    if _is_kz_security(isin, symbol, exchange):
+    if str(isin or "").strip().upper().startswith("KZ"):
         return EXCHANGE_KASE
     return EXCHANGE_OUTOFKZ
 
 
 def _is_kz_security(isin: str | None, symbol: str | None, exchange: str | None) -> bool:
     normalized_isin = str(isin or "").strip().upper()
-    normalized_symbol = str(symbol or "").strip().upper()
     normalized_exchange = str(exchange or "").strip().upper()
-    return normalized_isin.startswith("KZ") or ".KZ" in normalized_symbol or normalized_exchange == EXCHANGE_KASE
+    return normalized_isin.startswith("KZ") or normalized_exchange == EXCHANGE_KASE
 
 
 def _years_result_key(
@@ -3426,7 +3450,7 @@ def _years_result_key(
     record: Mapping[str, Any],
     flags: Mapping[str, Any],
 ) -> tuple[Any, ...]:
-    country = _string_or_none(record.get("country")) if table_name == "Yearly Dividends" else None
+    country = _string_or_none(record.get("country")) if table_name in {"Yearly Trades", "Yearly Dividends"} else None
     exchange = _string_or_none(flags.get("exchange_bucket")) if table_name in {"Yearly Trades", "Yearly Derivatives"} else None
     return (
         table_name,

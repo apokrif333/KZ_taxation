@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from decimal import Decimal
 import unittest
+from decimal import Decimal
 
 from conftest_imports import SRC  # noqa: F401
 from kztax270.canonical.schema import CanonicalDataset
+from kztax270.canonical.validation import validate_dataset_for_tax_forms
 from kztax270.reconciliation.engine import ReconciliationEngine
 from kztax270.reconciliation.models import ReconciliationMetric, ReconciliationSeverity
 
@@ -68,6 +69,71 @@ class ReconciliationTests(unittest.TestCase):
 
         self.assertEqual(len(position_errors), 1)
         self.assertEqual(position_errors[0].difference, Decimal("74950"))
+
+    def test_missing_country_and_fx_rate_are_unprocessed_reconciliation_errors(self) -> None:
+        dataset = CanonicalDataset.empty("test", "account")
+        dataset.tables["Trades"] = [
+            {
+                "date_time": "2024-01-10 10:00:00",
+                "trade_id": "trade-1",
+                "symbol": "UNKNOWN",
+                "asset_type": "Stocks",
+                "currency": "ZZZ",
+                "exchange": "UNKNOWN",
+                "country": None,
+            }
+        ]
+        dataset.tables["Fifo"] = [
+            {
+                "symbol": "UNKNOWN",
+                "asset_type": "Stocks",
+                "currency": "ZZZ",
+                "exchange": "UNKNOWN",
+                "country": None,
+            }
+        ]
+        dataset.warnings.append("Missing annual NBK FX rate for ZZZ/2024; KZT fields left empty.")
+
+        validate_dataset_for_tax_forms(dataset)
+
+        self.assertEqual(
+            {row["reason"] for row in dataset.tables["Unprocessed"]},
+            {"missing_instrument_country", "missing_kzt_fx_rate"},
+        )
+        country_row = next(row for row in dataset.tables["Unprocessed"] if row["reason"] == "missing_instrument_country")
+        self.assertEqual(country_row["source_sheet"], "Fifo, Trades")
+
+        items = ReconciliationEngine().reconcile_dataset(dataset)
+        unprocessed = [item for item in items if item.metric == ReconciliationMetric.UNPROCESSED_ROWS]
+        self.assertEqual(len(unprocessed), 2)
+        self.assertTrue(all(item.severity == ReconciliationSeverity.ERROR for item in unprocessed))
+
+    def test_cme_country_is_filled_before_country_validation(self) -> None:
+        dataset = CanonicalDataset.empty("test", "account")
+        dataset.tables["Trades"] = [
+            {
+                "symbol": "MES",
+                "asset_type": "Futures",
+                "currency": "USD",
+                "exchange": "CME.Z2022",
+                "country": None,
+            }
+        ]
+        dataset.tables["Fifo"] = [
+            {
+                "symbol": "MES",
+                "asset_type": "Futures",
+                "currency": "USD",
+                "exchange": "CME.Z2022",
+                "country": None,
+            }
+        ]
+
+        validate_dataset_for_tax_forms(dataset)
+
+        self.assertEqual({row["country"] for row in dataset.tables["Trades"]}, {"US"})
+        self.assertEqual({row["country"] for row in dataset.tables["Fifo"]}, {"US"})
+        self.assertEqual(dataset.tables["Unprocessed"], [])
 
 
 if __name__ == "__main__":

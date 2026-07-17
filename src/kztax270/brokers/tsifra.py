@@ -744,8 +744,12 @@ def _build_coupons(
             isin = _normalize_isin(row.get("isin"))
             currency = _none_text(row.get("currency_code")) or TSIFRA_BASE_CURRENCY
             instrument = _lookup_instrument(instrument_lookup, isin=isin, year=year) or {}
-            amount = _decimal(row.get("in_qty"))
-            withholding_tax = -(amount * Decimal("0.30"))
+            amount = _decimal(row.get("in_qty")) - _decimal(row.get("out_qty"))
+            is_revert = _is_explicit_coupon_revert(row)
+            # A negative ordinary coupon row is accrued coupon interest (NKD),
+            # not a negative remuneration or a withholding refund.  Only an
+            # explicit reversal reverses the inferred coupon withholding too.
+            withholding_tax = -(amount * Decimal("0.30")) if amount > 0 or is_revert else Decimal("0")
             net_amount = amount + withholding_tax
             rate = _annual_rate(fx_provider, year, currency, warnings)
             rows.append(
@@ -762,6 +766,7 @@ def _build_coupons(
                     "gross_amount_kzt": _amount_kzt(amount, rate),
                     "withholding_tax_kzt": _amount_kzt(withholding_tax, rate),
                     "net_amount_kzt": _amount_kzt(net_amount, rate),
+                    "is_revert": is_revert,
                     "offshore_flag": None,
                     "source_report": str(report.path),
                 }
@@ -770,10 +775,18 @@ def _build_coupons(
 
 
 def _is_coupon_money_row(row: Mapping[str, Any]) -> bool:
+    amount = _decimal(row.get("in_qty")) - _decimal(row.get("out_qty"))
     if _none_text(row.get("type")) == "kupon":
-        return _decimal(row.get("in_qty")) > 0
+        return amount != 0
     oper_name = str(row.get("oper_name") or "").lower()
-    return ("купон" in oper_name or "облигац" in oper_name) and _decimal(row.get("in_qty")) > 0
+    if "купон" in oper_name:
+        return amount != 0
+    return "облигац" in oper_name and amount > 0
+
+
+def _is_explicit_coupon_revert(row: Mapping[str, Any]) -> bool:
+    text = " ".join(str(row.get(field) or "") for field in ("type", "oper_name", "description")).casefold()
+    return any(marker in text for marker in ("reverted", "reversal", "reversed", "storno", "сторно", "отмена"))
 
 
 def _build_cash_balances(reports: Sequence[ParsedTsifraReport], fx_provider: AnnualFxRateProvider, warnings: list[str]) -> list[dict[str, Any]]:
@@ -842,6 +855,7 @@ def _build_trade_withholding_taxes(
             {
                 "year": year,
                 "date": event_dt.date().isoformat() if event_dt else None,
+                "country": "RU",
                 "currency": currency,
                 "withholding_tax": _money_text(withholding_tax),
                 "withholding_tax_kzt": _amount_kzt(withholding_tax, rate),

@@ -15,36 +15,36 @@ form270_template = "data/templates/270 new template.json"
 # Задания выполняются сверху вниз. Поэтому можно сначала создать Excel,
 # а следующим заданием сразу сформировать JSON из него.
 
-[[form270.jobs]]
+#[[form270.jobs]]
 #id = "excel"
 #broker = "exante"
 #account_id = "HXR2208.001"
 
 # [[form270.jobs]]
- id = "merge_excel"
- workbooks = [
-     "ib_U10211105_audit.xlsx",
-     "freedom_8A0627_audit",
-     "ib_U1717377_audit.xlsx",
-     "exante_HXR2208.001_audit.xlsx"
- ]
- fio1 = "Ашихмин"
- fio2 = "Алексей"
- fio3 = "Михайлович"
-
-# [[form270.jobs]]
-# id = "270_json"
-# file_name = "merged_Алексей_Ашихмин"
-# civ_servant = false
-# tax_year = 2024
+# id = "merge_excel"
+# workbooks = [
+#     "ib_U10211105_audit.xlsx",
+#     "freedom_8A0627_audit",
+#     "ib_U1717377_audit.xlsx",
+#     "exante_HXR2208.001_audit.xlsx"
+# ]
 # fio1 = "Ашихмин"
 # fio2 = "Алексей"
 # fio3 = "Михайлович"
-# iin = "930113399037"
-# phone = "+7 (707) 878-71-33"
-# email = "alex.ah@list.ru"
-# ogd_residence = ""
-# ogd_location = ""
+
+ [[form270.jobs]]
+ id = "270_json"
+ file_name = "merged_Алексей_Ашихмин"
+ civ_servant = false
+ tax_year = 2024
+ fio1 = "Ашихмин"
+ fio2 = "Алексей"
+ fio3 = "Михайлович"
+ iin = "930113399037"
+ phone = "+7 (707) 878-71-33"
+ email = "alex.ah@list.ru"
+ ogd_residence = ""
+ ogd_location = ""
 
 # [[form270.jobs]]
 # id = "270_joint_json"

@@ -125,6 +125,8 @@ YEARS_HEADER_ALIASES = {
     "Year": "year",
     "Flag": "flag",
     "Country": "country",
+    "Exchange": "tax_exchange",
+    "Tax_Exchange": "tax_exchange",
     "Currency": "currency",
     "PnL": "pnl",
     "PnL_KZT": "pnl_kzt",
@@ -366,16 +368,48 @@ def _build_application_01(
         return None
 
     preferential_flags = {"preferential", "Issuer_KZ", "Preferential"}
-    trades_kz = _sum_positive(rows, "pnl_kzt", table="Yearly Trades", flags=preferential_flags)
+    # Offshore trades retain their separate audit flag and tax base, but they
+    # are non-preferential when income is split between A.1.1 and A.1.2.
+    non_preferential_trade_flags = {"non-preferential", "offshore"}
+    trades_kz_preferential = _sum_then_floor(
+        rows,
+        "pnl_kzt",
+        table="Yearly Trades",
+        flags=preferential_flags,
+        country_is_kz=True,
+    )
+    trades_kz_non_preferential = _sum_then_floor(
+        rows,
+        "pnl_kzt",
+        table="Yearly Trades",
+        flags=non_preferential_trade_flags,
+        country_is_kz=True,
+    )
+    trades_foreign_preferential = _sum_then_floor(
+        rows,
+        "pnl_kzt",
+        table="Yearly Trades",
+        flags=preferential_flags,
+        country_is_kz=False,
+    )
+    trades_foreign_non_preferential = _sum_then_floor(
+        rows,
+        "pnl_kzt",
+        table="Yearly Trades",
+        flags=non_preferential_trade_flags,
+        country_is_kz=False,
+    )
+    trades_kz = trades_kz_preferential + trades_kz_non_preferential
+    trades_foreign = trades_foreign_preferential + trades_foreign_non_preferential
+    preferential_trades = _sum_positive(rows, "pnl_kzt", table="Yearly Trades", flags=preferential_flags)
     preferential_aix_trades = _sum_positive(
         rows,
         "pnl_kzt",
         table="Yearly Trades",
         flags=preferential_flags,
-        exchange="AIX",
+        tax_exchange="AIX",
     )
-    preferential_kase_trades = trades_kz - preferential_aix_trades
-    trades_foreign = _sum_positive(rows, "pnl_kzt", table="Yearly Trades", exclude_flags=preferential_flags)
+    preferential_kase_trades = preferential_trades - preferential_aix_trades
     dividends = _sum_positive(rows, "amount_kzt", table="Yearly Dividends")
     dividend_corrections = _sum_positive(rows, "amount_kzt", table="Yearly Dividends", flags=preferential_flags)
     preferential_kase_dividends = _sum_positive(
@@ -391,7 +425,13 @@ def _build_application_01(
         flags={"preferential_aix"},
     )
     interest = _sum_positive(rows, "only_profit_kzt", table="Yearly Interest")
-    coupons = _sum_positive(rows, "amount_kzt", table="Yearly Coupons")
+    coupons = _sum_positive(rows, "only_profit_kzt", table="Yearly Coupons")
+    coupon_corrections = _sum_positive(
+        rows,
+        "only_profit_kzt",
+        table="Yearly Coupons",
+        flags=preferential_flags,
+    )
     bond_redemptions = _sum_positive(rows, "pnl_kzt", table="Yearly Bonds Redemption")
     corp_actions = _sum_positive(rows, "pnl_kzt", table="Yearly Corp Actions")
     repos = _sum_positive(rows, "pnl_kzt", table="Yearly Repo")
@@ -401,6 +441,10 @@ def _build_application_01(
 
     values = {
         "trades_kz": trades_kz,
+        "trades_kz_preferential": trades_kz_preferential,
+        "trades_kz_non_preferential": trades_kz_non_preferential,
+        "trades_foreign_preferential": trades_foreign_preferential,
+        "trades_foreign_non_preferential": trades_foreign_non_preferential,
         "preferential_kase_trades": preferential_kase_trades,
         "preferential_aix_trades": preferential_aix_trades,
         "trades_foreign": trades_foreign,
@@ -410,6 +454,7 @@ def _build_application_01(
         "preferential_aix_dividends": preferential_aix_dividends,
         "interest": interest,
         "coupons": coupons,
+        "coupon_corrections": coupon_corrections,
         "bond_redemptions": bond_redemptions,
         "corp_actions": corp_actions,
         "repos": repos,
@@ -429,7 +474,7 @@ def _build_application_01(
     d_total = a1 + b1
     e1 = (
         values["preferential_kase_trades"]
-        + values["coupons"]
+        + values["coupon_corrections"]
         + values["bond_redemptions"]
         + values["corp_actions"]
         + values["dividend_corrections"]
@@ -834,7 +879,7 @@ def _sum_positive(
     table: str,
     flags: set[str] | None = None,
     exclude_flags: set[str] | None = None,
-    exchange: str | None = None,
+    tax_exchange: str | None = None,
 ) -> Decimal:
     total = ZERO
     for row in rows:
@@ -845,24 +890,48 @@ def _sum_positive(
             continue
         if exclude_flags is not None and flag in exclude_flags:
             continue
-        if exchange is not None and (_str_or_none(row.get("exchange")) or "").upper() != exchange.upper():
+        row_tax_exchange = _str_or_none(row.get("tax_exchange") or row.get("exchange")) or ""
+        if tax_exchange is not None and row_tax_exchange.upper() != tax_exchange.upper():
             continue
         total += max(_decimal(row.get(field)), ZERO)
     return total
 
 
+def _sum_then_floor(
+    rows: Sequence[Mapping[str, Any]],
+    field: str,
+    *,
+    table: str,
+    flags: set[str],
+    country_is_kz: bool,
+) -> Decimal:
+    total = ZERO
+    for row in rows:
+        if row.get("table") != table:
+            continue
+        if (_str_or_none(row.get("flag")) or "") not in flags:
+            continue
+        row_is_kz = (_str_or_none(row.get("country")) or "").upper() == "KZ"
+        if row_is_kz != country_is_kz:
+            continue
+        total += _decimal(row.get(field))
+    return max(total, ZERO)
+
+
 def _foreign_tax_credit(rows: Sequence[Mapping[str, Any]]) -> Decimal:
-    """Return foreign-tax credit, pooling dividends by tax year and country.
+    """Return foreign-tax credit, pooling taxable dividends by country.
 
     ``rows`` are already filtered to one tax year by ``_build_application_01``.
-    Dividend flags do not split the pool: preferential and taxable dividends
-    from the same country share one withholding total and one 10% limit.
+    Preferential dividends reduce the taxable base through E.1/E.4, therefore
+    neither their income nor their withholding may increase the credit limit.
     """
 
     total = ZERO
     dividend_groups: dict[str, dict[str, Decimal]] = {}
     for row in rows:
         if row.get("table") == "Yearly Dividends" and "withhold_kzt" in row:
+            if _is_preferential_dividend(row):
+                continue
             country = _country_code_for_form(_str_or_none(row.get("country"))) or "UNKNOWN"
             values = dividend_groups.setdefault(country, {"amount_kzt": ZERO, "withhold_kzt": ZERO})
             values["amount_kzt"] += _decimal(row.get("amount_kzt"))
@@ -877,6 +946,11 @@ def _foreign_tax_credit(rows: Sequence[Mapping[str, Any]]) -> Decimal:
         foreign_tax_withheld = max(-values["withhold_kzt"], ZERO)
         total += min(foreign_tax_withheld, kazakhstan_tax_limit)
     return total
+
+
+def _is_preferential_dividend(row: Mapping[str, Any]) -> bool:
+    flag = (_str_or_none(row.get("flag")) or "").casefold()
+    return flag == "issuer_kz" or flag.startswith("preferential")
 
 
 def _rate_lookup(tables: Mapping[str, Sequence[Mapping[str, Any]]]) -> dict[tuple[int, str], Decimal]:
@@ -922,7 +996,10 @@ def _is_application_04_property_asset(row: Mapping[str, Any]) -> bool:
     if _is_derivative_asset(row):
         return True
     asset_type = str(row.get("asset_type") or row.get("Asset_Type") or "").lower()
-    return any(token in asset_type for token in ("stock", "stocks", "share", "shares", "bond", "bonds", "акци", "облига"))
+    return any(
+        token in asset_type
+        for token in ("stock", "stocks", "share", "shares", "bond", "bonds", "treasury", "t-bill", "акци", "облига")
+    )
 
 
 def _is_derivative_asset(row: Mapping[str, Any]) -> bool:
@@ -953,7 +1030,7 @@ def _application_04_operation(row: Mapping[str, Any], quantity: Decimal) -> tupl
 
 def _is_bond_asset(row: Mapping[str, Any]) -> bool:
     asset_type = str(row.get("asset_type") or row.get("Asset_Type") or "").lower()
-    return any(token in asset_type for token in ("bond", "bonds", "облига"))
+    return any(token in asset_type for token in ("bond", "bonds", "treasury", "t-bill", "облига"))
 
 
 def _is_excluded_security(row: Mapping[str, Any]) -> bool:

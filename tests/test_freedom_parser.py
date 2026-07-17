@@ -124,7 +124,7 @@ class FreedomParserTests(unittest.TestCase):
         yearly_derivatives = [row for row in result.dataset.tables["Years_Results"] if row["table"] == "Yearly Derivatives"]
         self.assertEqual(len(yearly_derivatives), 1)
         self.assertEqual(yearly_derivatives[0]["flag"], "non-preferential")
-        self.assertEqual(yearly_derivatives[0]["exchange"], "outofKZ")
+        self.assertEqual(yearly_derivatives[0]["tax_exchange"], "outofKZ")
         self.assertEqual(yearly_derivatives[0]["pnl"], "11.84")
         self.assertEqual(yearly_derivatives[0]["pnl_kzt"], "5552.96")
         self.assertEqual(yearly_derivatives[0]["only_profit"], "11.84")
@@ -1072,7 +1072,7 @@ class FreedomParserTests(unittest.TestCase):
         yearly_trades = [row for row in result.dataset.tables["Years_Results"] if row["table"] == "Yearly Trades"]
         self.assertEqual(len(yearly_trades), 1)
         self.assertEqual(yearly_trades[0]["flag"], "preferential")
-        self.assertEqual(yearly_trades[0]["exchange"], "KASE")
+        self.assertEqual(yearly_trades[0]["tax_exchange"], "KASE")
         self.assertEqual(yearly_trades[0]["pnl"], "50.00")
         self.assertEqual(yearly_trades[0]["tax_kzt"], "0.00")
         self.assertEqual(yearly_trades[0]["tax_kzt_withhold"], "0.00")
@@ -1520,6 +1520,36 @@ class FreedomParserTests(unittest.TestCase):
         self.assertTrue(all(row["symbol"] == "FFSPC1.1228.AIX.KZ" for row in coupons))
         self.assertEqual(coupons[1]["symbol"], "FFSPC1.1228.AIX.KZ")
         self.assertEqual(coupons[1]["isin"], "KZX000001862")
+
+
+    def test_coupon_revert_reduces_only_profit_but_negative_nkd_does_not(self) -> None:
+        import pandas as pd  # type: ignore
+
+        with tempfile.TemporaryDirectory() as tmp:
+            raw_root = Path(tmp) / "raw"
+            broker_root = raw_root / fe.BROKER_CODE
+            broker_root.mkdir(parents=True)
+            report_path = broker_root / "7A3453_2024-01-01 00_00_00_2024-12-31 23_59_59_all.xlsx"
+            description = "Coupon on security (Bond issuer (BOND.AIX.KZ)), record date 2024-05-18."
+            with pd.ExcelWriter(report_path) as writer:
+                pd.DataFrame(
+                    [
+                        {fe.COL_TYPE: "Coupon", fe.COL_DATE: "2024-05-01", fe.COL_AMOUNT: 20, fe.COL_CURRENCY: "USD", fe.COL_COMMENT: description},
+                        {fe.COL_TYPE: "Coupon", fe.COL_DATE: "2024-05-02", fe.COL_AMOUNT: -5, fe.COL_CURRENCY: "USD", fe.COL_COMMENT: description},
+                        {fe.COL_TYPE: "Coupon", fe.COL_DATE: "2024-05-03", fe.COL_AMOUNT: -20, fe.COL_CURRENCY: "USD", fe.COL_COMMENT: f"Reverted: {description}"},
+                        {fe.COL_TYPE: "Coupon", fe.COL_DATE: "2024-05-03", fe.COL_AMOUNT: 20, fe.COL_CURRENCY: "USD", fe.COL_COMMENT: description},
+                    ]
+                ).to_excel(writer, sheet_name="Cash In Out 20240101 - 20241231", index=False)
+
+            parser = FreedomParser(fx_provider=AnnualFxRateProvider({(2024, "USD"): Decimal("469")}))
+            result = parser.parse_reports(parser.discover_reports(raw_root, "7A3453"), "7A3453")
+
+        coupons = result.dataset.tables["Coupons"]
+        self.assertEqual([row["is_revert"] for row in coupons], [False, False, True, False])
+        yearly_coupon = next(row for row in result.dataset.tables["Years_Results"] if row["table"] == "Yearly Coupons")
+        self.assertEqual(yearly_coupon["amount"], "15.00")
+        self.assertEqual(yearly_coupon["only_profit"], "20.00")
+        self.assertEqual(yearly_coupon["only_profit_kzt"], "9380.00")
 
 
 if __name__ == "__main__":

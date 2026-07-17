@@ -70,6 +70,37 @@ class WorkbookSchemaTests(unittest.TestCase):
             ("year", "flag", "currency", "amount", "amount_kzt", "only_profit", "only_profit_kzt", "tax_kzt"),
         )
 
+    def test_yearly_coupon_columns_use_only_profit_tax_base(self) -> None:
+        from kztax270.canonical.workbook_schema import YEARS_RESULTS_TABLE_COLUMNS
+
+        self.assertEqual(
+            YEARS_RESULTS_TABLE_COLUMNS["Yearly Coupons"],
+            (
+                "year",
+                "flag",
+                "currency",
+                "amount",
+                "amount_kzt",
+                "only_profit",
+                "only_profit_kzt",
+                "withhold_kzt",
+                "tax_kzt",
+                "tax_kzt_withhold",
+            ),
+        )
+
+    def test_coupon_rows_preserve_explicit_revert_marker(self) -> None:
+        self.assertIn("is_revert", required_columns("Coupons"))
+
+    def test_yearly_trade_columns_use_tax_exchange_name(self) -> None:
+        from kztax270.canonical.workbook_schema import YEARS_RESULTS_TABLE_COLUMNS
+
+        columns = YEARS_RESULTS_TABLE_COLUMNS["Yearly Trades"]
+        self.assertIn("tax_exchange", columns)
+        self.assertNotIn("exchange", columns)
+        self.assertEqual(columns[:4], ("year", "flag", "country", "tax_exchange"))
+        self.assertEqual(display_column_name("tax_exchange"), "Tax_Exchange")
+
     def test_excel_headers_use_legacy_style_title_case(self) -> None:
         self.assertEqual(display_column_name("date_time"), "Date_Time")
         self.assertEqual(display_column_name("gross_amount_kzt"), "Gross_Amount_KZT")

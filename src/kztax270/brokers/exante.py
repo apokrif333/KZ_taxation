@@ -5,11 +5,12 @@ from __future__ import annotations
 import csv
 import re
 from collections import defaultdict
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any
 
 from kztax270.canonical.schema import AccountMetadata, CanonicalDataset, RawReportTotals
 from kztax270.reconciliation.models import ReconciliationMetric
@@ -21,8 +22,8 @@ from .discovery import DiscoveryRule, discover_raw_reports
 from .ib import (
     ISIN_RE,
     _amount_kzt,
-    _apply_broker_country_to_forex_trades,
     _annual_rate,
+    _apply_broker_country_to_forex_trades,
     _build_broker_trade_realized_pl,
     _build_fifo_and_positions,
     _build_fx_fifo_rows,
@@ -30,7 +31,6 @@ from .ib import (
     _build_years_results,
     _canonical_trade_rows,
     _canonical_transfer_rows,
-    _decimal as _ib_decimal,
     _decimal_text,
     _effective_transaction_multiplier,
     _instrument_identity_key_from_values,
@@ -38,9 +38,14 @@ from .ib import (
     _is_fx_trade,
     _money_text,
     _multiplier_text,
-    _parse_datetime as _ib_parse_datetime,
     _sort_trades_by_datetime,
     _string_or_none,
+)
+from .ib import (
+    _decimal as _ib_decimal,
+)
+from .ib import (
+    _parse_datetime as _ib_parse_datetime,
 )
 
 EXANTE_SECTION_TRADES = "Trades"
@@ -1066,6 +1071,7 @@ def _build_interest_and_coupons(
             year = event_dt.year if event_dt else _year_for_report(report)
             currency = _string_or_none(row.get("Asset"))
             amount = _decimal(row.get("Sum"))
+            description = _none_text(row.get("Comment"))
             rate = _annual_rate(fx_provider, year, currency, warnings)
             base = {
                 "date": _date_to_iso(event_dt),
@@ -1080,7 +1086,7 @@ def _build_interest_and_coupons(
                 "source_report": str(report.path),
             }
             if operation_type == "INTEREST":
-                interest_rows.append({"description": _none_text(row.get("Comment")), **base})
+                interest_rows.append({"description": description, **base})
             else:
                 symbol_id = _string_or_none(row.get("Symbol ID"))
                 symbol, exchange = _split_symbol_id(symbol_id)
@@ -1092,11 +1098,19 @@ def _build_interest_and_coupons(
                         "symbol": symbol,
                         "isin": isin or _string_or_none(instrument.get("isin")),
                         "country": country,
+                        "is_revert": _is_explicit_income_revert(description),
                         "offshore_flag": None,
                         **base,
                     }
                 )
     return interest_rows, coupon_rows
+
+
+def _is_explicit_income_revert(description: str | None) -> bool:
+    """Recognize a reversal only from an explicit raw transaction marker."""
+
+    text = str(description or "").strip().casefold()
+    return any(marker in text for marker in ("reverted", "reversal", "reversed", "storno", "сторно", "отмена"))
 
 
 def _build_cash_balances(
@@ -1468,6 +1482,7 @@ def _country_from_isin_or_exchange(isin: str | None, exchange: str | None) -> st
         "NYSE": "US",
         "AMEX": "US",
         "CBOE": "US",
+        "CME": "US",
         "MOEX": "RU",
         "SPB": "RU",
         "LSE": "GB",
@@ -1478,7 +1493,7 @@ def _country_from_isin_or_exchange(isin: str | None, exchange: str | None) -> st
         "KASE": "KZ",
         "AIX": "KZ",
     }
-    return exchange_country.get(str(exchange or "").upper())
+    return exchange_country.get(str(exchange or "").upper().split(".", 1)[0])
 
 
 def _currency_from_exchange(exchange: str | None) -> str | None:
@@ -1488,6 +1503,7 @@ def _currency_from_exchange(exchange: str | None) -> str | None:
         "NYSE": "USD",
         "AMEX": "USD",
         "CBOE": "USD",
+        "CME": "USD",
         "MOEX": "RUB",
         "SPB": "RUB",
         "LSE": "USD",
@@ -1498,7 +1514,7 @@ def _currency_from_exchange(exchange: str | None) -> str | None:
         "KASE": "KZT",
         "AIX": "USD",
     }
-    return exchange_currency.get(str(exchange or "").upper())
+    return exchange_currency.get(str(exchange or "").upper().split(".", 1)[0])
 
 
 def _transaction_currency(row: Mapping[str, Any], symbol_id: str | None, exchange: str | None) -> str | None:

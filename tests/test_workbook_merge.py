@@ -23,7 +23,7 @@ class WorkbookMergeTests(unittest.TestCase):
                         "year": 2022,
                         "flag": "non-preferential",
                         "country": "US",
-                        "exchange": "outofKZ",
+                        "tax_exchange": "outofKZ",
                         "currency": "USD",
                         "tax_kzt": "100",
                         "withhold_kzt": "-10",
@@ -34,7 +34,7 @@ class WorkbookMergeTests(unittest.TestCase):
                         "year": 2022,
                         "flag": "non-preferential",
                         "country": "US",
-                        "exchange": "outofKZ",
+                        "tax_exchange": "outofKZ",
                         "currency": "EUR",
                         "tax_kzt": "50",
                         "withhold_kzt": "-200",
@@ -48,6 +48,64 @@ class WorkbookMergeTests(unittest.TestCase):
         for table in ("Yearly Trades", "Yearly Dividends", "Yearly Coupons"):
             table_rows = [row for row in merged if row["table"] == table]
             self.assertEqual(sum(Decimal(row["tax_kzt_withhold"]) for row in table_rows), Decimal("0"))
+
+    def test_preferential_dividend_withholding_does_not_cover_taxable_dividends_after_merge(self) -> None:
+        rows = [
+            {
+                "table": "Yearly Dividends",
+                "year": 2024,
+                "flag": "non-preferential",
+                "country": "US",
+                "currency": "USD",
+                "tax_kzt": "100",
+                "withhold_kzt": "-10",
+            },
+            {
+                "table": "Yearly Dividends",
+                "year": 2024,
+                "flag": "preferential_kase",
+                "country": "US",
+                "currency": "USD",
+                "tax_kzt": "0",
+                "withhold_kzt": "-1000",
+            },
+        ]
+
+        merged = aggregate_years_results(rows)
+
+        taxable = next(row for row in merged if row["flag"] == "non-preferential")
+        preferential = next(row for row in merged if row["flag"] == "preferential_kase")
+        self.assertEqual(Decimal(taxable["tax_kzt_withhold"]), Decimal("90"))
+        self.assertEqual(Decimal(preferential["tax_kzt_withhold"]), Decimal("0"))
+
+    def test_preferential_coupon_withholding_does_not_cover_taxable_coupons_after_merge(self) -> None:
+        rows = [
+            {
+                "table": "Yearly Coupons",
+                "year": 2024,
+                "flag": "non-preferential",
+                "country": "US",
+                "currency": "USD",
+                "tax_kzt": "100",
+                "withhold_kzt": "-10",
+            },
+            {
+                "table": "Yearly Coupons",
+                "year": 2024,
+                "flag": "preferential",
+                "country": "US",
+                "currency": "EUR",
+                "tax_kzt": "0",
+                "withhold_kzt": "-1000",
+            },
+        ]
+
+        merged = aggregate_years_results(rows)
+
+        taxable = next(row for row in merged if row["flag"] == "non-preferential")
+        preferential = next(row for row in merged if row["flag"] == "preferential")
+        self.assertEqual(Decimal(taxable["tax_kzt_withhold"]), Decimal("90"))
+        self.assertEqual(Decimal(preferential["tax_kzt_withhold"]), Decimal("0"))
 
     def test_merge_concatenates_detail_sheets_and_aggregates_years_results(self) -> None:
         first = CanonicalDataset.empty("freedom", "A1")
@@ -63,7 +121,7 @@ class WorkbookMergeTests(unittest.TestCase):
                 "table": "Yearly Trades",
                 "year": 2024,
                 "flag": "preferential",
-                "exchange": "KASE",
+                "tax_exchange": "KASE",
                 "currency": "USD",
                 "pnl": "10",
                 "pnl_kzt": "4700",
@@ -94,7 +152,7 @@ class WorkbookMergeTests(unittest.TestCase):
                 "table": "Yearly Trades",
                 "year": 2024,
                 "flag": "preferential",
-                "exchange": "KASE",
+                "tax_exchange": "KASE",
                 "currency": "USD",
                 "pnl": "20",
                 "pnl_kzt": "9400",
@@ -104,7 +162,7 @@ class WorkbookMergeTests(unittest.TestCase):
                 "table": "Yearly Trades",
                 "year": 2024,
                 "flag": "preferential",
-                "exchange": "AIX",
+                "tax_exchange": "AIX",
                 "currency": "USD",
                 "pnl": "30",
                 "pnl_kzt": "14100",
@@ -139,8 +197,8 @@ class WorkbookMergeTests(unittest.TestCase):
         self.assertEqual(set(cash), {("freedom", "A1"), ("exante", "B2")})
 
         yearly = tables["Years_Results"]
-        kase = next(row for row in yearly if row["table"] == "Yearly Trades" and row["exchange"] == "KASE")
-        aix = next(row for row in yearly if row["table"] == "Yearly Trades" and row["exchange"] == "AIX")
+        kase = next(row for row in yearly if row["table"] == "Yearly Trades" and row["tax_exchange"] == "KASE")
+        aix = next(row for row in yearly if row["table"] == "Yearly Trades" and row["tax_exchange"] == "AIX")
         dividends = next(row for row in yearly if row["table"] == "Yearly Dividends")
         self.assertEqual(Decimal(str(kase["pnl_kzt"])), Decimal("14100"))
         self.assertEqual(Decimal(str(aix["pnl_kzt"])), Decimal("14100"))

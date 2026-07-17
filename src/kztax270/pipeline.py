@@ -8,14 +8,15 @@ from pathlib import Path
 from kztax270.brokers.registry import BrokerRegistry, default_registry
 from kztax270.calculations.tax_rules import TaxRuleEngine
 from kztax270.canonical.schema import CanonicalDataset
+from kztax270.canonical.validation import validate_dataset_for_tax_forms
 from kztax270.excel.audit_workbook import ExcelAuditWorkbookWriter
 from kztax270.form270.json_builder import Form270JsonBuilder
 from kztax270.form270.merge import merge_form270_jsons
 from kztax270.form270.split import split_form270_json
+from kztax270.reconciliation.engine import ReconciliationEngine
 from kztax270.reference.fx import AnnualFxRateProvider
 from kztax270.reference.kase_aix import ensure_kase_aix_preferential_current
 from kztax270.reference.nbk import ensure_nbk_rates_current
-from kztax270.reconciliation.engine import ReconciliationEngine
 from kztax270.transfers import TransferInFifoResolver
 
 from .config import AccountConfig, ClientConfig, ProjectPaths
@@ -59,6 +60,7 @@ class AccountPipeline:
         reports = adapter.discover_reports(self.paths.raw_data, account.account_id)
         parse_result = adapter.parse_reports(reports, account.account_id)
         dataset = parse_result.dataset
+        validate_dataset_for_tax_forms(dataset)
 
         reconciliation_rows = [item.as_record() for item in self.reconciliation_engine.reconcile_dataset(dataset)]
         dataset.tables["Reconciliation"] = reconciliation_rows

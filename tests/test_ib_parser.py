@@ -626,7 +626,7 @@ class InteractiveBrokersParserTests(unittest.TestCase):
         derivative_rows = [row for row in result.dataset.tables["Years_Results"] if row["table"] == "Yearly Derivatives"]
         self.assertEqual(len(derivative_rows), 1)
         self.assertEqual(derivative_rows[0]["flag"], "non-preferential")
-        self.assertEqual(derivative_rows[0]["exchange"], "outofKZ")
+        self.assertEqual(derivative_rows[0]["tax_exchange"], "outofKZ")
         self.assertEqual(derivative_rows[0]["pnl"], "40.00")
         self.assertEqual(derivative_rows[0]["pnl_kzt"], "20000.00")
         self.assertEqual(derivative_rows[0]["only_profit"], "40.00")
@@ -1247,7 +1247,7 @@ class InteractiveBrokersParserTests(unittest.TestCase):
         self.assertNotIn("withhold_kzt", interest_rows[0])
         self.assertNotIn("tax_kzt_withhold", interest_rows[0])
 
-    def test_yearly_trades_do_not_group_by_hidden_country(self) -> None:
+    def test_yearly_trades_group_by_country(self) -> None:
         dataset = CanonicalDataset.empty("ib", "UKEY")
         dataset.tables["Fifo"] = [
             {
@@ -1267,12 +1267,14 @@ class InteractiveBrokersParserTests(unittest.TestCase):
         ]
         yearly = ib_module._build_years_results(dataset)
         trade_rows = [row for row in yearly if row["table"] == "Yearly Trades"]
-        self.assertEqual(len(trade_rows), 1)
-        self.assertEqual(trade_rows[0]["pnl"], "30.00")
-        self.assertEqual(trade_rows[0]["pnl_kzt"], "14100.00")
-        self.assertIsNone(trade_rows[0]["country"])
-        self.assertEqual(trade_rows[0]["flag"], "non-preferential")
-        self.assertEqual(trade_rows[0]["exchange"], "outofKZ")
+        self.assertEqual(len(trade_rows), 2)
+        by_country = {row["country"]: row for row in trade_rows}
+        self.assertEqual(by_country["US"]["pnl"], "10.00")
+        self.assertEqual(by_country["US"]["pnl_kzt"], "4700.00")
+        self.assertEqual(by_country["CA"]["pnl"], "20.00")
+        self.assertEqual(by_country["CA"]["pnl_kzt"], "9400.00")
+        self.assertTrue(all(row["flag"] == "non-preferential" for row in trade_rows))
+        self.assertTrue(all(row["tax_exchange"] == "outofKZ" for row in trade_rows))
 
     def test_aix_security_is_preferential_and_offshore_tax_uses_proceeds(self) -> None:
         dataset = CanonicalDataset.empty("ib", "UCLASS")
@@ -1306,13 +1308,13 @@ class InteractiveBrokersParserTests(unittest.TestCase):
             aix_provider=AixInstrumentProvider({"US0000000001": date(2024, 1, 1)}),
             offshore_provider=OffshoreJurisdictionProvider(frozenset({"BS"})),
         )
-        trade_rows = {(row["flag"], row["exchange"]): row for row in yearly if row["table"] == "Yearly Trades"}
+        trade_rows = {(row["flag"], row["tax_exchange"]): row for row in yearly if row["table"] == "Yearly Trades"}
         self.assertEqual(trade_rows[("preferential", "AIX")]["tax_kzt"], "0.00")
         self.assertEqual(trade_rows[("offshore", "outofKZ")]["pnl"], "-10.00")
         self.assertEqual(trade_rows[("offshore", "outofKZ")]["pnl_kzt"], "470000.00")
         self.assertEqual(trade_rows[("offshore", "outofKZ")]["tax_kzt"], "47000.00")
 
-    def test_aix_capital_gain_is_preferential_only_after_listing_date(self) -> None:
+    def test_explicit_aix_exchange_takes_priority_over_listing_date(self) -> None:
         dataset = CanonicalDataset.empty("ib", "UAIXDATE")
         dataset.tables["Fifo"] = [
             {
@@ -1342,10 +1344,47 @@ class InteractiveBrokersParserTests(unittest.TestCase):
             aix_provider=AixInstrumentProvider({"US0000000001": date(2024, 2, 1)}),
             offshore_provider=OffshoreJurisdictionProvider(frozenset()),
         )
-        trade_rows = {(row["flag"], row["exchange"]): row for row in yearly if row["table"] == "Yearly Trades"}
+        trade_rows = {(row["flag"], row["tax_exchange"]): row for row in yearly if row["table"] == "Yearly Trades"}
 
-        self.assertEqual(trade_rows[("non-preferential", "outofKZ")]["tax_kzt"], "4700.00")
+        self.assertEqual(set(trade_rows), {("preferential", "AIX")})
+        self.assertEqual(trade_rows[("preferential", "AIX")]["pnl_kzt"], "141000.00")
         self.assertEqual(trade_rows[("preferential", "AIX")]["tax_kzt"], "0.00")
+
+    def test_tax_exchange_uses_trade_then_aix_listing_then_kz_isin_priority(self) -> None:
+        provider = AixInstrumentProvider({"US0000000003": date(2024, 2, 1)})
+
+        self.assertEqual(
+            ib_module._exchange_bucket(
+                {"isin": "US0000000001", "exchange": "KASE", "exit_date": "2024-01-01"},
+                {},
+                aix_provider=provider,
+            ),
+            "KASE",
+        )
+        self.assertEqual(
+            ib_module._exchange_bucket(
+                {"isin": "US0000000002", "exchange": "AIX", "exit_date": "2024-01-01"},
+                {},
+                aix_provider=provider,
+            ),
+            "AIX",
+        )
+        self.assertEqual(
+            ib_module._exchange_bucket(
+                {"isin": "US0000000003", "exit_date": "2024-02-01"},
+                {},
+                aix_provider=provider,
+            ),
+            "AIX",
+        )
+        self.assertEqual(
+            ib_module._exchange_bucket(
+                {"isin": "KZ0000000001", "exit_date": "2024-01-01"},
+                {},
+                aix_provider=provider,
+            ),
+            "KASE",
+        )
 
     def test_yearly_derivatives_tax_only_profitable_fifo_rows(self) -> None:
         dataset = CanonicalDataset.empty("ib", "UDER")
@@ -1375,14 +1414,14 @@ class InteractiveBrokersParserTests(unittest.TestCase):
         derivative_rows = [row for row in yearly if row["table"] == "Yearly Derivatives"]
         self.assertEqual(len(derivative_rows), 1)
         self.assertEqual(derivative_rows[0]["flag"], "non-preferential")
-        self.assertEqual(derivative_rows[0]["exchange"], "outofKZ")
+        self.assertEqual(derivative_rows[0]["tax_exchange"], "outofKZ")
         self.assertEqual(derivative_rows[0]["pnl"], "0.20")
         self.assertEqual(derivative_rows[0]["pnl_kzt"], "20.00")
         self.assertEqual(derivative_rows[0]["only_profit"], "1.00")
         self.assertEqual(derivative_rows[0]["only_profit_kzt"], "100.00")
         self.assertEqual(derivative_rows[0]["tax_kzt"], "10.00")
 
-    def test_yearly_bonds_redemption_is_not_taxable(self) -> None:
+    def test_only_profitable_bond_redemption_stays_in_redemption_table(self) -> None:
         dataset = CanonicalDataset.empty("ib", "UCORP")
         dataset.tables["Fifo"] = [
             {
@@ -1393,15 +1432,29 @@ class InteractiveBrokersParserTests(unittest.TestCase):
                 "pnl_kzt": "45000",
                 "source_trade_id": "CA:bond-maturity",
                 "corporate_action_type": "maturity",
-            }
+            },
+            {
+                "exit_date": "2023-02-16 20:25:00",
+                "country": "US",
+                "currency": "USD",
+                "pnl": "-50",
+                "pnl_kzt": "-22500",
+                "source_trade_id": "CA:bond-maturity-loss",
+                "corporate_action_type": "maturity",
+            },
         ]
         yearly = ib_module._build_years_results(dataset)
         corp_rows = [row for row in yearly if row["table"] == "Yearly Bonds Redemption"]
         self.assertEqual(len(corp_rows), 1)
         self.assertEqual(corp_rows[0]["pnl"], "100.00")
         self.assertEqual(corp_rows[0]["tax_kzt"], "0.00")
+        trade_rows = [row for row in yearly if row["table"] == "Yearly Trades"]
+        self.assertEqual(len(trade_rows), 1)
+        self.assertEqual(trade_rows[0]["pnl"], "-50.00")
+        self.assertEqual(trade_rows[0]["pnl_kzt"], "-22500.00")
+        self.assertEqual(trade_rows[0]["tax_kzt"], "0.00")
 
-    def test_yearly_coupons_are_not_taxable(self) -> None:
+    def test_yearly_coupons_tax_only_positive_income_less_explicit_reverts(self) -> None:
         dataset = CanonicalDataset.empty("ib", "UCOUPON")
         dataset.tables["Coupons"] = [
             {
@@ -1410,15 +1463,36 @@ class InteractiveBrokersParserTests(unittest.TestCase):
                 "currency": "USD",
                 "gross_amount": "100",
                 "gross_amount_kzt": "45000",
+                "withholding_tax_kzt": "-1000",
+            },
+            {
+                "date": "2023-07-01",
+                "country": "US",
+                "currency": "USD",
+                "gross_amount": "-30",
+                "gross_amount_kzt": "-13500",
                 "withholding_tax_kzt": "0",
-            }
+                "is_revert": False,
+            },
+            {
+                "date": "2023-07-02",
+                "country": "US",
+                "currency": "USD",
+                "gross_amount": "-20",
+                "gross_amount_kzt": "-9000",
+                "withholding_tax_kzt": "0",
+                "is_revert": True,
+            },
         ]
         yearly = ib_module._build_years_results(dataset)
         coupon_rows = [row for row in yearly if row["table"] == "Yearly Coupons"]
         self.assertEqual(len(coupon_rows), 1)
-        self.assertEqual(coupon_rows[0]["amount"], "100.00")
-        self.assertEqual(coupon_rows[0]["tax_kzt"], "0.00")
-        self.assertEqual(coupon_rows[0]["tax_kzt_withhold"], "0.00")
+        self.assertEqual(coupon_rows[0]["amount"], "50.00")
+        self.assertEqual(coupon_rows[0]["amount_kzt"], "22500.00")
+        self.assertEqual(coupon_rows[0]["only_profit"], "80.00")
+        self.assertEqual(coupon_rows[0]["only_profit_kzt"], "36000.00")
+        self.assertEqual(coupon_rows[0]["tax_kzt"], "3600.00")
+        self.assertEqual(coupon_rows[0]["tax_kzt_withhold"], "2600.00")
 
     def test_kz_yearly_coupons_keep_amount_but_zero_kzt_columns(self) -> None:
         dataset = CanonicalDataset.empty("ib", "UKZCOUPON")
@@ -1447,7 +1521,9 @@ class InteractiveBrokersParserTests(unittest.TestCase):
         self.assertEqual(len(coupon_rows), 1)
         self.assertEqual(coupon_rows[0]["flag"], "preferential")
         self.assertEqual(coupon_rows[0]["amount"], "100.00")
-        self.assertEqual(coupon_rows[0]["amount_kzt"], "0.00")
+        self.assertEqual(coupon_rows[0]["amount_kzt"], "45000.00")
+        self.assertEqual(coupon_rows[0]["only_profit"], "100.00")
+        self.assertEqual(coupon_rows[0]["only_profit_kzt"], "45000.00")
         self.assertEqual(coupon_rows[0]["withhold_kzt"], "0.00")
         self.assertEqual(coupon_rows[0]["tax_kzt"], "0.00")
         self.assertEqual(coupon_rows[0]["tax_kzt_withhold"], "0.00")

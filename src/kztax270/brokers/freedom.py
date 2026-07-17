@@ -1492,6 +1492,7 @@ def _build_coupons(
                     "gross_amount_kzt": _amount_kzt(gross_amount, rate),
                     "withholding_tax_kzt": _amount_kzt(withholding, rate),
                     "net_amount_kzt": _amount_kzt(net_amount, rate),
+                    "is_revert": _is_reverted_description(description),
                     "offshore_flag": None,
                     "source_report": str(report.path),
                 }
