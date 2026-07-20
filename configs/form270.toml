@@ -17,8 +17,8 @@ form270_template = "data/templates/270 new template.json"
 
 #[[form270.jobs]]
 #id = "excel"
-#broker = "exante"
-#account_id = "HXR2208.001"
+#broker = "ib"
+#account_id = "U1717377"
 
 # [[form270.jobs]]
 # id = "merge_excel"
@@ -36,7 +36,7 @@ form270_template = "data/templates/270 new template.json"
  id = "270_json"
  file_name = "merged_Алексей_Ашихмин"
  civ_servant = false
- tax_year = 2024
+ tax_year = 2025
  fio1 = "Ашихмин"
  fio2 = "Алексей"
  fio3 = "Михайлович"

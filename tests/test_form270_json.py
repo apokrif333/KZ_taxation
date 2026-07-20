@@ -82,8 +82,8 @@ class Form270JsonTests(unittest.TestCase):
                 "currency": "USD",
                 "amount_kzt": "400",
                 "only_profit_kzt": "400",
-                "tax_kzt": "40",
-                "tax_kzt_withhold": "40",
+                "tax_kzt": "0",
+                "tax_kzt_withhold": "0",
             },
             {
                 "table": "Yearly Bonds Redemption",
@@ -119,11 +119,11 @@ class Form270JsonTests(unittest.TestCase):
         self.assertEqual(app["B"]["_05"], 1500)
         self.assertEqual(app["B"]["_09"], 600)
         self.assertEqual(app["_D"], 8600)
-        self.assertEqual(app["E"]["_E"], 2800)
-        self.assertEqual(app["_G"], 5800)
-        self.assertEqual(app["_H"], 580)
+        self.assertEqual(app["E"]["_E"], 3200)
+        self.assertEqual(app["_G"], 5400)
+        self.assertEqual(app["_H"], 540)
         self.assertEqual(app["_I"], 30)
-        self.assertEqual(app["_K"], 550)
+        self.assertEqual(app["_K"], 510)
         self.assertEqual(form["taxpayerCode"], "000000000001")
         self.assertEqual(form["taxpayerNameRu"], "TEST OWNER")
         self.assertIsNone(form["periodValue"])
@@ -161,7 +161,7 @@ class Form270JsonTests(unittest.TestCase):
         self.assertEqual(app["A"]["_02"], 300)
         self.assertEqual(app["A"]["_A"], 550)
 
-    def test_application_01_uses_coupon_only_profit_and_corrects_only_preferential_coupons(self) -> None:
+    def test_application_01_uses_coupon_only_profit_and_corrects_all_coupons(self) -> None:
         dataset = CanonicalDataset.empty("ib", "UCOUPONS")
         dataset.tables["Years_Results"] = [
             {
@@ -171,8 +171,8 @@ class Form270JsonTests(unittest.TestCase):
                 "currency": "USD",
                 "amount_kzt": "100",
                 "only_profit_kzt": "150",
-                "tax_kzt": "15",
-                "tax_kzt_withhold": "15",
+                "tax_kzt": "0",
+                "tax_kzt_withhold": "0",
             },
             {
                 "table": "Yearly Coupons",
@@ -190,9 +190,10 @@ class Form270JsonTests(unittest.TestCase):
         app = form["fnoContent"]["application_01"]
 
         self.assertEqual(app["B"]["_05"], 200)
-        self.assertEqual(app["E"]["_E1"], 50)
-        self.assertEqual(app["_G"], 150)
-        self.assertEqual(app["_H"], 15)
+        self.assertEqual(app["E"]["_E1"], 200)
+        self.assertEqual(app["_G"], 0)
+        self.assertEqual(app["_H"], 0)
+        self.assertEqual(app["_I"], 0)
 
     def test_builder_fills_application_04_from_trades_cash_and_positions(self) -> None:
         dataset = _dataset_with_application_04_rows()

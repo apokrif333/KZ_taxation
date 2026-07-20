@@ -63,6 +63,7 @@ US_LISTING_EXCHANGES = {
     "NASDAQ",
     "NYSE",
     "NYSEARCA",
+    "PINK",
 }
 
 
@@ -3097,23 +3098,27 @@ def _build_years_results(
             FLAG_PREFERENTIAL_AIX,
             FLAG_PREFERENTIAL_KASE,
         }
-        is_preferential_coupon = table_name == "Yearly Coupons" and flag == FLAG_PREFERENTIAL
+        is_coupon = table_name == "Yearly Coupons"
         displayed_amount_kzt = Decimal("0") if is_preferential_unreported_income else amount_kzt
         displayed_withhold_kzt = Decimal("0") if is_preferential_unreported_income else withhold_kzt
-        taxable_amount_kzt = max(only_profit_kzt if table_name == "Yearly Coupons" else amount_kzt, Decimal("0"))
-        tax_kzt = (
-            Decimal("0")
-            if is_preferential_coupon or is_preferential_unreported_income or is_exchange_preferential_dividend
-            else taxable_amount_kzt * Decimal("0.10")
-        )
-        tax_kzt_withhold = (
-            Decimal("0")
-            if taxable_amount_kzt <= 0
-            or is_preferential_coupon
-            or is_preferential_unreported_income
-            or is_exchange_preferential_dividend
-            else max(tax_kzt + foreign_tax_credit_kzt, Decimal("0"))
-        )
+        taxable_amount_kzt = max(only_profit_kzt if is_coupon else amount_kzt, Decimal("0"))
+        if is_coupon:
+            # All bond coupon remuneration is deducted in application 01.E.1
+            # (article 341), so it must not produce a Kazakhstan tax or a
+            # foreign-tax credit in the annual result block.
+            tax_kzt = Decimal("0")
+            tax_kzt_withhold = Decimal("0")
+        else:
+            tax_kzt = (
+                Decimal("0")
+                if is_preferential_unreported_income or is_exchange_preferential_dividend
+                else taxable_amount_kzt * Decimal("0.10")
+            )
+            tax_kzt_withhold = (
+                Decimal("0")
+                if taxable_amount_kzt <= 0 or is_preferential_unreported_income or is_exchange_preferential_dividend
+                else max(tax_kzt + foreign_tax_credit_kzt, Decimal("0"))
+            )
         row = {
             "table": table_name,
             "year": year,

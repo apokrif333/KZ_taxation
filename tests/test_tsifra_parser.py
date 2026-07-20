@@ -113,7 +113,7 @@ class TsifraParserTests(unittest.TestCase):
         self.assertEqual(yearly_coupon["only_profit"], "20.00")
         self.assertEqual(yearly_coupon["only_profit_kzt"], "100.00")
         self.assertEqual(yearly_coupon["withhold_kzt"], "-30.00")
-        self.assertEqual(yearly_coupon["tax_kzt"], "10.00")
+        self.assertEqual(yearly_coupon["tax_kzt"], "0.00")
         self.assertEqual(yearly_coupon["tax_kzt_withhold"], "0.00")
 
         reconciliation = ReconciliationEngine().reconcile_dataset(dataset)
@@ -142,7 +142,7 @@ class TsifraParserTests(unittest.TestCase):
         self.assertEqual(yearly_coupon["only_profit"], "20.00")
         self.assertEqual(yearly_coupon["only_profit_kzt"], "100.00")
         self.assertEqual(yearly_coupon["withhold_kzt"], "-30.00")
-        self.assertEqual(yearly_coupon["tax_kzt"], "10.00")
+        self.assertEqual(yearly_coupon["tax_kzt"], "0.00")
         self.assertEqual(yearly_coupon["tax_kzt_withhold"], "0.00")
 
 

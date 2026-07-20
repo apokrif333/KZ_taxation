@@ -426,12 +426,10 @@ def _build_application_01(
     )
     interest = _sum_positive(rows, "only_profit_kzt", table="Yearly Interest")
     coupons = _sum_positive(rows, "only_profit_kzt", table="Yearly Coupons")
-    coupon_corrections = _sum_positive(
-        rows,
-        "only_profit_kzt",
-        table="Yearly Coupons",
-        flags=preferential_flags,
-    )
+    # Bond coupon remuneration is deducted under article 341 regardless of
+    # the instrument's preferential flag.  ``coupons`` is already based on
+    # OnlyProfit, so accrued coupon interest (NKD) is not deducted.
+    coupon_corrections = coupons
     bond_redemptions = _sum_positive(rows, "pnl_kzt", table="Yearly Bonds Redemption")
     corp_actions = _sum_positive(rows, "pnl_kzt", table="Yearly Corp Actions")
     repos = _sum_positive(rows, "pnl_kzt", table="Yearly Repo")

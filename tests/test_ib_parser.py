@@ -1276,6 +1276,9 @@ class InteractiveBrokersParserTests(unittest.TestCase):
         self.assertTrue(all(row["flag"] == "non-preferential" for row in trade_rows))
         self.assertTrue(all(row["tax_exchange"] == "outofKZ" for row in trade_rows))
 
+    def test_pink_sheet_security_is_classified_as_us(self) -> None:
+        self.assertEqual(ib_module._country_from_instrument("Stocks", "09173T108", "PINK"), "US")
+
     def test_aix_security_is_preferential_and_offshore_tax_uses_proceeds(self) -> None:
         dataset = CanonicalDataset.empty("ib", "UCLASS")
         dataset.tables["Fifo"] = [
@@ -1454,7 +1457,7 @@ class InteractiveBrokersParserTests(unittest.TestCase):
         self.assertEqual(trade_rows[0]["pnl_kzt"], "-22500.00")
         self.assertEqual(trade_rows[0]["tax_kzt"], "0.00")
 
-    def test_yearly_coupons_tax_only_positive_income_less_explicit_reverts(self) -> None:
+    def test_yearly_coupons_keep_only_profit_but_do_not_produce_tax(self) -> None:
         dataset = CanonicalDataset.empty("ib", "UCOUPON")
         dataset.tables["Coupons"] = [
             {
@@ -1491,8 +1494,8 @@ class InteractiveBrokersParserTests(unittest.TestCase):
         self.assertEqual(coupon_rows[0]["amount_kzt"], "22500.00")
         self.assertEqual(coupon_rows[0]["only_profit"], "80.00")
         self.assertEqual(coupon_rows[0]["only_profit_kzt"], "36000.00")
-        self.assertEqual(coupon_rows[0]["tax_kzt"], "3600.00")
-        self.assertEqual(coupon_rows[0]["tax_kzt_withhold"], "2600.00")
+        self.assertEqual(coupon_rows[0]["tax_kzt"], "0.00")
+        self.assertEqual(coupon_rows[0]["tax_kzt_withhold"], "0.00")
 
     def test_kz_yearly_coupons_keep_amount_but_zero_kzt_columns(self) -> None:
         dataset = CanonicalDataset.empty("ib", "UKZCOUPON")

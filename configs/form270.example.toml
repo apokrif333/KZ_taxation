@@ -1,0 +1,55 @@
+[paths]
+processed_data = ""
+output_data = ""
+form270_template = ""
+
+[form270]
+
+[[form270.jobs]]
+id = ""
+broker = ""
+account_id = ""
+
+[[form270.jobs]]
+id = ""
+workbooks = []
+fio1 = ""
+fio2 = ""
+fio3 = ""
+
+[[form270.jobs]]
+id = ""
+file_name = ""
+civ_servant = false
+tax_year = 0
+fio1 = ""
+fio2 = ""
+fio3 = ""
+iin = ""
+phone = ""
+email = ""
+ogd_residence = ""
+ogd_location = ""
+
+[[form270.jobs]]
+id = ""
+file_name = ""
+civ_servant = false
+tax_year = 0
+fio1 = ""
+fio2 = ""
+fio3 = ""
+iin = ""
+phone = ""
+email = ""
+second_fio1 = ""
+second_fio2 = ""
+second_fio3 = ""
+second_iin = ""
+ogd_residence = ""
+ogd_location = ""
+
+[form270.banks.ib]
+code = ""
+name = ""
+country = ""
