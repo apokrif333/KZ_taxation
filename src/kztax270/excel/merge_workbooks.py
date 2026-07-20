@@ -158,7 +158,7 @@ def broker_account_from_workbook_path(path: Path) -> tuple[str, str]:
     """Infer source broker and account from the standard audit filename."""
 
     name = path.stem
-    for suffix in ("_audit_fixed", "_audit"):
+    for suffix in ("_joint_audit_fixed", "_joint_audit", "_audit_fixed", "_audit"):
         if name.endswith(suffix):
             name = name[: -len(suffix)]
             break

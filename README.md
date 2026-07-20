@@ -17,9 +17,9 @@ IB уже имеет native parser в `src/kztax270/brokers/ib.py`. Старый
 7. `apply tax rules` - сформировать налоговую сводную. На текущем этапе это stub.
 8. `generate broker-level Excel audit workbook` - один workbook на один брокерский счёт.
 9. `run reconciliation` - сравнить raw totals брокера с каноническими таблицами.
-10. `generate account-level Form270 draft JSON` - заполнить JSON из `data/templates/270 new template.json`.
-11. `merge multiple broker/account JSON files` - объединить несколько счетов клиента.
-12. `split joint accounts` - разделить совместный счёт по ownership ratio.
+10. `create joint-owner Excel workbook` - при необходимости создать 50%-ную копию audit workbook.
+11. `generate account-level Form270 draft JSON` - заполнить JSON из `data/templates/270 new template.json`.
+12. `merge multiple broker/account JSON files` - объединить несколько счетов клиента.
 
 ## Структура
 
@@ -28,8 +28,8 @@ src/kztax270/
   brokers/          # parser interfaces, discovery, lazy adapters to legacy
   canonical/        # canonical dataset and workbook schema
   calculations/     # shared FIFO, corporate actions, income, tax rule contracts
-  excel/            # canonical audit workbook writer
-  form270/          # JSON builder, merge, joint-account split
+  excel/            # canonical audit writer, merge and joint-account share
+  form270/          # JSON builder and merge
   reconciliation/   # raw-vs-canonical discrepancy engine
   reference/        # CSV-backed reference data stores and updater stubs
   pipeline.py       # account/client orchestration
@@ -142,11 +142,15 @@ python -m kztax270 run-270 .\configs\form270.toml
 
 - `excel` — создать audit Excel из raw-отчётов одного счёта;
 - `merge_excel` — объединить несколько готовых audit Excel;
+- `joint_excel` — создать 50%-ную копию готового audit Excel для одного владельца совместного счёта;
 - `270_json` — создать 270.00 JSON из одного audit Excel;
-- `270_joint_json` — создать две формы 270.00 для совместного счёта.
 
 Задания выполняются сверху вниз: можно сначала указать `excel`, затем
-`merge_excel`, а потом `270_json` с именем объединённого файла. В заданиях
+`joint_excel`, а потом `270_json` с именем файла вида
+`ib_U22777472_joint_audit.xlsx`. При создании совместного Excel все количества,
+денежные суммы, комиссии, удержания, PnL и остатки делятся на два; цены, курсы и
+мультипликаторы сохраняются. `Years_Results` агрегируется и рассчитывается заново.
+В заданиях
 объединения имена файлов без пути ищутся в
 `data/processed`; объединённый Excel сохраняется как
 `merged_Имя_Фамилия.xlsx`. Детальные листы объединяются построчно, а

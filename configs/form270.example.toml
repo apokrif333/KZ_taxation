@@ -5,11 +5,13 @@ form270_template = ""
 
 [form270]
 
+# excel
 [[form270.jobs]]
 id = ""
 broker = ""
 account_id = ""
 
+# merge_excel
 [[form270.jobs]]
 id = ""
 workbooks = []
@@ -17,20 +19,12 @@ fio1 = ""
 fio2 = ""
 fio3 = ""
 
+# joint_excel
 [[form270.jobs]]
 id = ""
 file_name = ""
-civ_servant = false
-tax_year = 0
-fio1 = ""
-fio2 = ""
-fio3 = ""
-iin = ""
-phone = ""
-email = ""
-ogd_residence = ""
-ogd_location = ""
 
+# 270_json
 [[form270.jobs]]
 id = ""
 file_name = ""
@@ -42,10 +36,6 @@ fio3 = ""
 iin = ""
 phone = ""
 email = ""
-second_fio1 = ""
-second_fio2 = ""
-second_fio3 = ""
-second_iin = ""
 ogd_residence = ""
 ogd_location = ""
 

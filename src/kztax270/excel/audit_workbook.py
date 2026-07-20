@@ -46,6 +46,8 @@ NUMERIC_WORKBOOK_COLUMNS = {
     "pnl",
     "exit_amount_kzt",
     "acquisition_cost_with_commission_kzt",
+    "pnl_before_commission_kzt",
+    "pnl_after_all_commissions_kzt",
     "pnl_kzt",
     "amount_kzt",
     "ending_cash",

@@ -67,7 +67,7 @@ class CliTests(unittest.TestCase):
         self.assertTrue(call.kwargs["write_excel"])
         self.assertFalse(call.kwargs["write_json"])
 
-    def test_run_270_executes_excel_merge_json_and_joint_json_jobs(self) -> None:
+    def test_run_270_executes_excel_merge_joint_excel_and_json_jobs(self) -> None:
         result = AccountPipelineResult(
             dataset=CanonicalDataset.empty("ib", "U1"),
             workbook_path=Path("data/processed/ib_U1_audit.xlsx"),
@@ -83,20 +83,17 @@ class CliTests(unittest.TestCase):
                 job_id="merge-audit",
             ),
             Form270JobConfig(
+                mode="joint_excel",
+                workbook=Path("ib_U1_audit"),
+                job_id="joint-audit",
+            ),
+            Form270JobConfig(
                 mode="json",
                 broker="ib",
                 account_id="U1",
                 owner=Form270OwnerConfig("Owner", "One", "", "000000000001"),
-                workbook=Path("ib_U1_audit"),
+                workbook=Path("ib_U1_joint_audit"),
                 job_id="form",
-            ),
-            Form270JobConfig(
-                mode="json",
-                owner=Form270OwnerConfig("Owner", "One", "", "000000000001"),
-                workbook=Path("ib_U1_audit"),
-                second_owner=Form270OwnerConfig("Owner", "Two", "", "000000000002"),
-                joint_account=True,
-                job_id="joint-form",
             ),
         )
         with tempfile.TemporaryDirectory() as tmp:
@@ -115,15 +112,21 @@ class CliTests(unittest.TestCase):
                 patch("kztax270.cli.InteractiveTransferInFifoResolver"),
                 patch("kztax270.cli.Form270JsonBuilder", return_value=builder),
                 patch("kztax270.cli.merge_audit_workbooks") as merge,
+                patch(
+                    "kztax270.cli.create_joint_audit_workbook",
+                    return_value=config.paths.processed_data / "ib_U1_joint_audit.xlsx",
+                ) as joint,
             ):
                 exit_code = _run_form270_config(config)
 
         self.assertEqual(exit_code, 0)
         self.assertEqual(pipeline.run_account.call_count, 1)
         self.assertEqual(merge.call_count, 1)
-        self.assertEqual(builder.build_processed_workbook_draft.call_count, 3)
-        self.assertEqual(builder.save.call_count, 3)
+        joint.assert_called_once_with(config.paths.processed_data / "ib_U1_audit.xlsx")
+        self.assertEqual(builder.build_processed_workbook_draft.call_count, 1)
+        self.assertEqual(builder.save.call_count, 1)
         self.assertEqual(
             builder.build_processed_workbook_draft.call_args_list[0].args[0].name,
-            "ib_U1_audit.xlsx",
+            "ib_U1_joint_audit.xlsx",
         )
+        self.assertFalse(builder.build_processed_workbook_draft.call_args_list[0].kwargs["split"])

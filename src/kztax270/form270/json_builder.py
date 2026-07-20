@@ -1122,10 +1122,10 @@ def _normalized_reference_key(value: Any) -> str:
 
 def _broker_account_from_workbook_path(path: Path) -> tuple[str, str]:
     name = path.stem
-    if name.endswith("_audit"):
-        name = name[: -len("_audit")]
-    if name.endswith("_audit_fixed"):
-        name = name[: -len("_audit_fixed")]
+    for suffix in ("_joint_audit_fixed", "_joint_audit", "_audit_fixed", "_audit"):
+        if name.endswith(suffix):
+            name = name[: -len(suffix)]
+            break
     if "_" not in name:
         return "", name
     broker, account_id = name.split("_", 1)

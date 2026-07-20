@@ -9,8 +9,8 @@ form270_template = "data/templates/270 new template.json"
 #
 # id = "excel"          — сформировать audit Excel из raw-отчётов одного счёта.
 # id = "merge_excel"    — объединить несколько audit Excel в merged_Имя_Фамилия.xlsx.
+# id = "joint_excel"    — создать audit Excel с долей совместного счёта 50%.
 # id = "270_json"       — заполнить 270.00 из одного готового audit Excel.
-# id = "270_joint_json" — заполнить 270.00 из одного готового audit Excel, как совместный счёт.
 #
 # Задания выполняются сверху вниз. Поэтому можно сначала создать Excel,
 # а следующим заданием сразу сформировать JSON из него.
@@ -18,49 +18,35 @@ form270_template = "data/templates/270 new template.json"
 #[[form270.jobs]]
 #id = "excel"
 #broker = "ib"
-#account_id = "U1717377"
-
-# [[form270.jobs]]
-# id = "merge_excel"
-# workbooks = [
-#     "ib_U10211105_audit.xlsx",
-#     "freedom_8A0627_audit",
-#     "ib_U1717377_audit.xlsx",
-#     "exante_HXR2208.001_audit.xlsx"
-# ]
-# fio1 = "Ашихмин"
-# fio2 = "Алексей"
-# fio3 = "Михайлович"
+#account_id = "U22777472"
 
  [[form270.jobs]]
- id = "270_json"
- file_name = "merged_Алексей_Ашихмин"
- civ_servant = false
- tax_year = 2025
+ id = "merge_excel"
+ workbooks = [
+     "ib_U10211105_audit.xlsx",
+     "freedom_8A0627_audit",
+     "ib_U1717377_audit.xlsx",
+     "exante_HXR2208.001_audit.xlsx"
+ ]
  fio1 = "Ашихмин"
  fio2 = "Алексей"
  fio3 = "Михайлович"
- iin = "930113399037"
- phone = "+7 (707) 878-71-33"
- email = "alex.ah@list.ru"
- ogd_residence = ""
- ogd_location = ""
 
 # [[form270.jobs]]
-# id = "270_joint_json"
-# file_name = "ib_U10211105_audit"
+# id = "joint_excel"
+# file_name = "ib_U22777472_audit"
+
+# [[form270.jobs]]
+# id = "270_json"
+# file_name = "ib_U7816412_audit"
 # civ_servant = false
-# tax_year = 2024
-# fio1 = "Ашихмин"
-# fio2 = "Алексей"
-# fio3 = "Михайлович"
-# iin = "930113399037"
-# phone = "+7 (707) 878-71-33"
-# email = "alex.ah@list.ru"
-# second_fio1 = "Фамилия"
-# second_fio2 = "Имя"
-# second_fio3 = "Отчество"
-# second_iin = "000000000002"
+# tax_year = 2025
+# fio1 = "Мусаева"
+# fio2 = "Динара"
+# fio3 = "Рахматулаевна"
+# iin = "910430400123"
+# phone = ""
+# email = ""
 # ogd_residence = ""
 # ogd_location = ""
 

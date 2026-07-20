@@ -17,8 +17,9 @@ from kztax270.config import (
     load_form270_run_config,
     load_project_config,
 )
-from kztax270.form270.json_builder import BrokerBankInfo, Form270JsonBuilder, Form270Owner
+from kztax270.excel.joint_workbook import create_joint_audit_workbook
 from kztax270.excel.merge_workbooks import merge_audit_workbooks
+from kztax270.form270.json_builder import BrokerBankInfo, Form270JsonBuilder, Form270Owner
 from kztax270.reference.nbk import ensure_nbk_rates_current, upsert_nbk_average_annual_rates_xlsx
 from kztax270.reference.repositories import ReferenceDataStore
 from kztax270.reference.securities import ensure_aix_instruments_current
@@ -215,6 +216,12 @@ def _run_form270_config(config: Form270RunConfig, *, only: list[str] | None = No
             print(f"merged_workbook={workbook_path}")
             executed += 1
             continue
+        if job.mode == "joint_excel":
+            source_path = _workbook_path_for_job(config, job)
+            workbook_path = create_joint_audit_workbook(source_path)
+            print(f"joint_workbook={workbook_path}")
+            executed += 1
+            continue
 
         if job.owner is None:
             raise AssertionError(f"form270 job mode={job.mode} requires owner")
@@ -300,10 +307,10 @@ def _workbook_identity(path: Path) -> tuple[str, str]:
     name = path.stem
     if name.startswith("merged_"):
         return "merged", "all"
-    if name.endswith("_audit"):
-        name = name[: -len("_audit")]
-    if name.endswith("_audit_fixed"):
-        name = name[: -len("_audit_fixed")]
+    for suffix in ("_joint_audit_fixed", "_joint_audit", "_audit_fixed", "_audit"):
+        if name.endswith(suffix):
+            name = name[: -len(suffix)]
+            break
     if "_" not in name:
         return "workbook", name
     broker, account_id = name.split("_", 1)

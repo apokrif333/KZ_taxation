@@ -234,12 +234,12 @@ def _load_form270_job(data: dict[str, Any]) -> Form270JobConfig:
         raise ValueError(f"form270 job id={job_id} requires broker and account_id")
     if requires_workbooks and not workbooks:
         raise ValueError(f"form270 job id={job_id} requires workbooks")
-    if mode == "json" and workbook is None:
+    if mode in {"json", "joint_excel"} and workbook is None:
         raise ValueError(f"form270 job id={job_id} requires file_name")
     if mode == "excel" and (workbook is not None or workbooks):
         raise ValueError("form270 job id=excel reads raw reports and does not accept file_name/workbooks")
-    if mode == "json" and workbooks:
-        raise ValueError("form270 JSON jobs accept one file_name; run merge_excel before them")
+    if mode in {"json", "joint_excel"} and workbooks:
+        raise ValueError(f"form270 job id={job_id} accepts one file_name, not workbooks")
     if mode == "merge_excel" and workbook is not None:
         raise ValueError("form270 job id=merge_excel accepts workbooks, not file_name")
 
@@ -272,14 +272,14 @@ def _job_mode_from_id(job_id: str) -> tuple[str, bool]:
     modes = {
         "excel": ("excel", False),
         "merge_excel": ("merge_excel", False),
+        "joint_excel": ("joint_excel", False),
         "270_json": ("json", False),
-        "270_joint_json": ("json", True),
     }
     try:
         return modes[job_id]
     except KeyError as exc:
         raise ValueError(
-            "form270 job id must be one of: excel, merge_excel, 270_json, 270_joint_json"
+            "form270 job id must be one of: excel, merge_excel, joint_excel, 270_json"
         ) from exc
 
 

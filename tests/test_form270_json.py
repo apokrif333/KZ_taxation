@@ -500,15 +500,16 @@ fio1 = "Owner"
 fio2 = "One"
 
 [[form270.jobs]]
-id = "270_joint_json"
+id = "joint_excel"
 file_name = "ib_UTEST_audit"
+
+[[form270.jobs]]
+id = "270_json"
+file_name = "ib_UTEST_joint_audit"
 tax_year = 2024
 fio1 = "Owner"
 fio2 = "One"
 iin = "000000000001"
-second_fio1 = "Owner"
-second_fio2 = "Two"
-second_iin = "000000000002"
 """,
                 encoding="utf-8",
             )
@@ -516,10 +517,14 @@ second_iin = "000000000002"
             config = load_form270_run_config(path)
 
         self.assertIsNone(config.defaults.tax_year)
-        self.assertEqual([job.mode for job in config.jobs], ["excel", "merge_excel", "json"])
+        self.assertEqual(
+            [job.mode for job in config.jobs],
+            ["excel", "merge_excel", "joint_excel", "json"],
+        )
         self.assertEqual(config.jobs[1].owner.iin, "")
-        self.assertTrue(config.jobs[2].joint_account)
+        self.assertFalse(config.jobs[2].joint_account)
         self.assertEqual(config.jobs[2].workbook, Path("ib_UTEST_audit"))
+        self.assertEqual(config.jobs[3].workbook, Path("ib_UTEST_joint_audit"))
         self.assertEqual(
             config.jobs[1].workbooks,
             (Path("ib_UTEST_audit.xlsx"), Path("exante_ETEST_audit.xlsx")),
