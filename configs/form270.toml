@@ -17,38 +17,38 @@ form270_template = "data/templates/270 new template.json"
 
 #[[form270.jobs]]
 #id = "excel"
-#broker = "ib"
-#account_id = "U22777472"
+#broker = "freedom"
+#account_id = "broker_Tatyna_ykovleva"
 
- [[form270.jobs]]
- id = "merge_excel"
- workbooks = [
-     "ib_U10211105_audit.xlsx",
-     "freedom_8A0627_audit",
-     "ib_U1717377_audit.xlsx",
-     "exante_HXR2208.001_audit.xlsx"
- ]
- fio1 = "Ашихмин"
- fio2 = "Алексей"
- fio3 = "Михайлович"
+# [[form270.jobs]]
+# id = "merge_excel"
+# workbooks = [
+#     "freedom_broker_Tatyna_ykovleva_audit.xlsx",
+#     "tabys_015727293_audit.xlsx",
+#     'freedom_bank_820708450141_audit.xlsx',
+#     'ib_U16474812_audit.xlsx'
+# ]
+# fio1 = "Татьяна"
+# fio2 = "Яковлева"
+# fio3 = ""
 
 # [[form270.jobs]]
 # id = "joint_excel"
-# file_name = "ib_U22777472_audit"
+# file_name = "ib_U20274469_audit"
 
-# [[form270.jobs]]
-# id = "270_json"
-# file_name = "ib_U7816412_audit"
-# civ_servant = false
-# tax_year = 2025
-# fio1 = "Мусаева"
-# fio2 = "Динара"
-# fio3 = "Рахматулаевна"
-# iin = "910430400123"
-# phone = ""
-# email = ""
-# ogd_residence = ""
-# ogd_location = ""
+ [[form270.jobs]]
+ id = "270_json"
+ file_name = "merged_Яковлева_Татьяна.xlsx"
+ civ_servant = false
+ tax_year = 2025
+ fio1 = "Татьяна"
+ fio2 = "Яковлева"
+ fio3 = ""
+ iin = "1"
+ phone = ""
+ email = ""
+ ogd_residence = ""
+ ogd_location = ""
 
 # Параметры банка/брокера для CashBalances можно задать один раз:
 # [form270.banks.ib]

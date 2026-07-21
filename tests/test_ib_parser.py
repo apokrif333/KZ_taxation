@@ -1497,7 +1497,7 @@ class InteractiveBrokersParserTests(unittest.TestCase):
         self.assertEqual(coupon_rows[0]["tax_kzt"], "0.00")
         self.assertEqual(coupon_rows[0]["tax_kzt_withhold"], "0.00")
 
-    def test_kz_yearly_coupons_keep_amount_but_zero_kzt_columns(self) -> None:
+    def test_kz_yearly_coupons_keep_amount_but_zero_only_profit(self) -> None:
         dataset = CanonicalDataset.empty("ib", "UKZCOUPON")
         dataset.tables["Instruments"] = [
             {
@@ -1525,8 +1525,8 @@ class InteractiveBrokersParserTests(unittest.TestCase):
         self.assertEqual(coupon_rows[0]["flag"], "preferential")
         self.assertEqual(coupon_rows[0]["amount"], "100.00")
         self.assertEqual(coupon_rows[0]["amount_kzt"], "45000.00")
-        self.assertEqual(coupon_rows[0]["only_profit"], "100.00")
-        self.assertEqual(coupon_rows[0]["only_profit_kzt"], "45000.00")
+        self.assertEqual(coupon_rows[0]["only_profit"], "0.00")
+        self.assertEqual(coupon_rows[0]["only_profit_kzt"], "0.00")
         self.assertEqual(coupon_rows[0]["withhold_kzt"], "0.00")
         self.assertEqual(coupon_rows[0]["tax_kzt"], "0.00")
         self.assertEqual(coupon_rows[0]["tax_kzt_withhold"], "0.00")

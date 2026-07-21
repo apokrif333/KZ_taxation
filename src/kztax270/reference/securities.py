@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from datetime import date, datetime
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 AIX_API_URL = "https://market-backend.aixkz.com/api/table/mw-main-records?&is_etf_etn=true"
+AIX_PROFILE_API_URL = "https://market-backend.aixkz.com/api/profile/{ticker}"
+AIX_PROFILE_PAGE_URL = "https://market.aixkz.com/details/{ticker}/profile"
 AIX_COLUMNS = (
     "year",
     "snapshot_type",
@@ -23,7 +26,17 @@ AIX_COLUMNS = (
     "listingDate",
 )
 DEFAULT_AIX_INSTRUMENTS_PATH = Path("data/aix_instruments.xlsx")
+DEFAULT_TABYS_INSTRUMENTS_PATH = Path("data/tabys_instruments.xlsx")
 DEFAULT_OFFSHORE_LIST_PATH = Path("data/offshore_list.xlsx")
+TABYS_PROFILE_COLUMNS = (
+    *AIX_COLUMNS,
+    "country",
+    "securityName",
+    "maturityDate",
+    "faceValue",
+    "couponRate",
+    "couponFreq",
+)
 
 
 def ensure_aix_instruments_current(path: Path = DEFAULT_AIX_INSTRUMENTS_PATH, today: date | None = None) -> bool:
@@ -55,6 +68,18 @@ def read_aix_instruments_dataframe(path: Path) -> Any:
     return _normalize_aix_dataframe(df)
 
 
+def read_tabys_instruments_dataframe(path: Path) -> Any:
+    """Read AIX profiles cached specifically for Tabys.
+
+    This workbook is deliberately separate from the yearly AIX listing snapshot:
+    a profile can be available for a delisted security and must not affect tax
+    classification based on ``aix_instruments.xlsx``.
+    """
+
+    pd = _pandas()
+    return _normalize_tabys_instruments_dataframe(pd.read_excel(path, engine="openpyxl"))
+
+
 def fetch_aix_instruments(snapshot_year: int) -> Any:
     """Download one complete AIX instrument snapshot and mark it with its refresh year."""
 
@@ -71,12 +96,98 @@ def fetch_aix_instruments(snapshot_year: int) -> Any:
     return _sort_aix_dataframe(frame)
 
 
+@dataclass(slots=True)
+class AixInstrumentResolver:
+    """Resolve AIX tickers from the yearly snapshot, Tabys cache, then AIX profile."""
+
+    aix_path: Path = DEFAULT_AIX_INSTRUMENTS_PATH
+    profile_cache_path: Path = DEFAULT_TABYS_INSTRUMENTS_PATH
+    timeout: float = 30
+    persist_profiles: bool = True
+    _aix_records_by_ticker: dict[str, dict[str, Any]] = field(default_factory=dict, init=False, repr=False)
+    _cached_records_by_ticker: dict[str, dict[str, Any]] = field(default_factory=dict, init=False, repr=False)
+    _loaded: bool = field(default=False, init=False, repr=False)
+
+    def resolve(self, ticker: str, *, snapshot_year: int | None = None) -> dict[str, Any]:
+        normalized_ticker = str(ticker or "").strip().upper()
+        if not normalized_ticker:
+            raise ValueError("AIX instrument ticker is empty.")
+
+        self._load_local_records()
+        local = self._aix_records_by_ticker.get(normalized_ticker)
+        if local is not None:
+            return _aix_reference(local, source=str(self.aix_path))
+        cached = self._cached_records_by_ticker.get(normalized_ticker)
+        if cached is not None:
+            return _aix_reference(cached, source=str(self.profile_cache_path))
+
+        profile = fetch_aix_instrument_profile(normalized_ticker, timeout=self.timeout)
+        reference = _aix_reference(
+            profile,
+            source=AIX_PROFILE_PAGE_URL.format(ticker=normalized_ticker),
+        )
+        self._cached_records_by_ticker[normalized_ticker] = profile
+        if self.persist_profiles:
+            self._persist_profile(profile, snapshot_year=snapshot_year)
+        return reference
+
+    def _load_local_records(self) -> None:
+        if self._loaded:
+            return
+        self._loaded = True
+        if self.aix_path.exists():
+            frame = read_aix_instruments_dataframe(self.aix_path)
+            records = sorted(
+                frame.to_dict(orient="records"),
+                key=lambda row: int(row.get("year") or 0),
+            )
+            for record in records:
+                ticker = _normalize_ticker(record.get("secCode"))
+                if ticker is not None:
+                    self._aix_records_by_ticker[ticker] = record
+        if not self.profile_cache_path.exists():
+            return
+        frame = read_tabys_instruments_dataframe(self.profile_cache_path)
+        for record in frame.to_dict(orient="records"):
+            ticker = _normalize_ticker(record.get("secCode"))
+            if ticker is not None:
+                self._cached_records_by_ticker[ticker] = record
+
+    def _persist_profile(self, profile: Mapping[str, Any], *, snapshot_year: int | None) -> None:
+        pd = _pandas()
+        current = (
+            read_tabys_instruments_dataframe(self.profile_cache_path)
+            if self.profile_cache_path.exists()
+            else _empty_tabys_instruments_dataframe()
+        )
+        row = {column: profile.get(column) for column in TABYS_PROFILE_COLUMNS}
+        row["year"] = snapshot_year or date.today().year
+        row["snapshot_type"] = "profile"
+        updated = _normalize_tabys_instruments_dataframe(pd.concat([current, pd.DataFrame([row])], ignore_index=True))
+        self.profile_cache_path.parent.mkdir(parents=True, exist_ok=True)
+        updated.to_excel(self.profile_cache_path, index=False)
+
+
+def fetch_aix_instrument_profile(ticker: str, *, timeout: float = 30) -> dict[str, Any]:
+    """Fetch the data used by ``market.aixkz.com/details/{ticker}/profile``."""
+
+    normalized_ticker = str(ticker or "").strip().upper()
+    requests = _requests()
+    response = requests.get(AIX_PROFILE_API_URL.format(ticker=normalized_ticker), timeout=timeout)
+    response.raise_for_status()
+    profile = response.json()
+    if not isinstance(profile, dict) or not _normalize_isin(profile.get("isin")):
+        raise RuntimeError(f"AIX returned an invalid profile for {normalized_ticker}.")
+    profile["secCode"] = _normalize_ticker(profile.get("secCode")) or normalized_ticker
+    return profile
+
+
 @dataclass(frozen=True, slots=True)
 class AixInstrumentProvider:
     listing_dates: Mapping[str, date]
 
     @classmethod
-    def from_xlsx(cls, path: Path = DEFAULT_AIX_INSTRUMENTS_PATH) -> "AixInstrumentProvider":
+    def from_xlsx(cls, path: Path = DEFAULT_AIX_INSTRUMENTS_PATH) -> AixInstrumentProvider:
         if not path.exists():
             return cls({})
         df = read_aix_instruments_dataframe(path)
@@ -105,7 +216,7 @@ class OffshoreJurisdictionProvider:
     isin_prefixes: frozenset[str]
 
     @classmethod
-    def from_xlsx(cls, path: Path = DEFAULT_OFFSHORE_LIST_PATH) -> "OffshoreJurisdictionProvider":
+    def from_xlsx(cls, path: Path = DEFAULT_OFFSHORE_LIST_PATH) -> OffshoreJurisdictionProvider:
         if not path.exists():
             return cls(frozenset())
         pd = _pandas()
@@ -140,6 +251,20 @@ def _normalize_aix_dataframe(df: Any) -> Any:
     return result.drop_duplicates(subset=["year", "isin"], keep="last")
 
 
+def _normalize_tabys_instruments_dataframe(df: Any) -> Any:
+    if df is None or len(df) == 0:
+        return _empty_tabys_instruments_dataframe()
+    result = df.copy()
+    for column in TABYS_PROFILE_COLUMNS:
+        if column not in result.columns:
+            result[column] = None
+    result = result[list(TABYS_PROFILE_COLUMNS)]
+    result["secCode"] = result["secCode"].astype("string").str.strip().str.upper()
+    result["isin"] = result["isin"].astype("string").str.strip().str.upper()
+    result = result.dropna(subset=["secCode", "isin"])
+    return result.drop_duplicates(subset=["secCode"], keep="last").sort_values(by=["secCode"])
+
+
 def _date_or_none(value: Any) -> date | None:
     if isinstance(value, datetime):
         return value.date()
@@ -163,6 +288,11 @@ def _sort_aix_dataframe(df: Any) -> Any:
 def _empty_aix_dataframe() -> Any:
     pd = _pandas()
     return pd.DataFrame(columns=list(AIX_COLUMNS))
+
+
+def _empty_tabys_instruments_dataframe() -> Any:
+    pd = _pandas()
+    return pd.DataFrame(columns=list(TABYS_PROFILE_COLUMNS))
 
 
 def _contains_year(df: Any, year: int) -> bool:
@@ -204,6 +334,73 @@ def _is_yes(value: Any) -> bool:
 def _normalize_isin(value: Any) -> str | None:
     text = str(value or "").strip().upper()
     return text if len(text) >= 2 else None
+
+
+def _normalize_ticker(value: Any) -> str | None:
+    text = str(value or "").strip().upper()
+    return text or None
+
+
+def _aix_reference(record: Mapping[str, Any], *, source: str) -> dict[str, Any]:
+    isin = _normalize_isin(record.get("isin"))
+    country = _aix_country_code(record.get("country"), isin)
+    return {
+        "symbol": _normalize_ticker(record.get("secCode")),
+        "description": _first_text(record, "securityName", "shortName", "secCode"),
+        "isin": isin,
+        "type": _aix_asset_type(record),
+        "issuer": _first_text(record, "issuer"),
+        "country": country,
+        "currency": _first_text(record, "currency", "faceCurrency"),
+        "maturity": _date_or_none(record.get("maturityDate")),
+        "face_value": _first_text(record, "faceValue"),
+        "coupon_rate": _first_text(record, "couponRate"),
+        "coupon_frequency": _first_text(record, "couponFreq"),
+        "source": source,
+    }
+
+
+def _aix_asset_type(record: Mapping[str, Any]) -> str | None:
+    values = [
+        _first_text(record, "instrument"),
+        _first_text(record, "assetClass"),
+        _first_text(record, "securityGroup"),
+    ]
+    combined = " ".join(value.casefold() for value in values if value)
+    if any(token in combined for token in ("debt", "bond", "облигац")):
+        return "Bonds"
+    if "etn" in combined:
+        return "ETN"
+    if any(token in combined for token in ("equity", "share", "stock", "etf", "fund", "акци")):
+        return "Stocks"
+    return values[0] or values[1] or values[2]
+
+
+def _aix_country_code(value: Any, isin: str | None) -> str | None:
+    text = str(value or "").strip()
+    if len(text) == 2:
+        return text.upper()
+    known = {
+        "kazakhstan": "KZ",
+        "қазақстан": "KZ",
+        "казахстан": "KZ",
+    }
+    if text.casefold() in known:
+        return known[text.casefold()]
+    if isin:
+        return "BE" if isin.startswith("XS") else isin[:2]
+    return None
+
+
+def _first_text(record: Mapping[str, Any], *keys: str) -> str | None:
+    for key in keys:
+        value = record.get(key)
+        if value is None:
+            continue
+        text = str(value).strip()
+        if text and text.casefold() not in {"nan", "nat", "none", "null"}:
+            return text
+    return None
 
 
 def _pandas() -> Any:

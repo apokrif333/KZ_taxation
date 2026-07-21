@@ -3012,13 +3012,15 @@ def _build_years_results(
             if sheet_name == "Interest" and amount > 0:
                 values["only_profit"] += amount
                 values["only_profit_kzt"] += amount_kzt
-            elif sheet_name == "Coupons" and (
+            elif sheet_name == "Coupons" and not _is_kz_coupon(record, flags) and (
                 (amount > 0 and not bool(record.get("is_revert")))
                 or (amount < 0 and bool(record.get("is_revert")))
             ):
                 # Negative accrued coupon interest (NKD) remains in Amount, but
                 # does not reduce remuneration.  An explicit broker reversal
-                # does reduce the positive-coupon tax base.
+                # does reduce the positive-coupon tax base.  Coupons from KZ
+                # securities are informative Amount values only and therefore
+                # never enter OnlyProfit or form 270.00.
                 values["only_profit"] += amount
                 values["only_profit_kzt"] += amount_kzt
             withholding_kzt = _decimal(record.get("withholding_tax_kzt"))
@@ -3206,6 +3208,20 @@ def _is_swap_interest_record(record: Mapping[str, Any]) -> bool:
         return True
     description = str(record.get("description") or "").lower()
     return description.startswith("swap reward")
+
+
+def _is_kz_coupon(record: Mapping[str, Any], flags: Mapping[str, Any]) -> bool:
+    if flags.get("issuer_outside_kz_flag") is False:
+        return True
+    issuer_country = _string_or_none(
+        record.get("issuer_country")
+        or record.get("country")
+        or flags.get("issuer_country")
+    )
+    if str(issuer_country or "").strip().upper() == "KZ":
+        return True
+    isin = _string_or_none(record.get("isin") or flags.get("isin"))
+    return str(isin or "").strip().upper().startswith("KZ")
 
 
 def _build_dividend_year_groups(

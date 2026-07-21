@@ -4,19 +4,21 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from kztax270.reference.fx import AnnualFxRateProvider
+from kztax270.transfers import TransferInFifoResolver
+
 from .base import BrokerParser
 from .exante import ExanteParser
 from .freedom import FreedomParser
 from .freedom_bank import FreedomBankParser
 from .ib import InteractiveBrokersParser
-from .tsifra import TsifraParser
-from kztax270.reference.fx import AnnualFxRateProvider
-from kztax270.transfers import TransferInFifoResolver
 from .legacy_adapters import (
     ExanteLegacyAdapter,
     InteractiveBrokersLegacyAdapter,
     TsifraLegacyAdapter,
 )
+from .tabys import TabysParser
+from .tsifra import TsifraParser
 
 
 @dataclass(slots=True)
@@ -46,6 +48,7 @@ def default_registry(
     registry.register(FreedomParser(fx_provider=fx_provider, transfer_in_resolver=transfer_in_resolver))
     registry.register(FreedomBankParser(fx_provider=fx_provider))
     registry.register(ExanteParser(fx_provider=fx_provider, transfer_in_resolver=transfer_in_resolver))
+    registry.register(TabysParser(fx_provider=fx_provider, transfer_in_resolver=transfer_in_resolver))
     exante_legacy = ExanteLegacyAdapter()
     exante_legacy.broker_code = "exante_legacy"
     registry.register(exante_legacy)
