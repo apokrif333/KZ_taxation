@@ -1542,7 +1542,11 @@ def _is_identity_change_merger_action(action: Mapping[str, Any]) -> bool:
 def _split_ratio(description: str | None) -> Decimal | None:
     if not description:
         return None
-    match = re.search(r"(\d+(?:\.\d+)?)\s+for\s+(\d+(?:\.\d+)?)", description)
+    match = re.search(
+        r"(\d+(?:\.\d+)?)\s*(?:-?\s*for\s*-?|:|/)\s*(\d+(?:\.\d+)?)",
+        description,
+        flags=re.IGNORECASE,
+    )
     if not match:
         return None
     from_qty = Decimal(match.group(1))

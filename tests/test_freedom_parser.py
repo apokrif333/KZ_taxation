@@ -15,6 +15,18 @@ from kztax270.transfers import TransferInFifoLot, TransferInRequest
 
 
 class FreedomParserTests(unittest.TestCase):
+    def test_russian_conversion_description_parses_identities_and_ratio(self) -> None:
+        description = (
+            "Конвертация бумаг PARA.US (US92556H2067) -> PSKY.US (US69932A2042). "
+            "Дата среза 2025-08-07, коэффициент: 7/2."
+        )
+
+        self.assertEqual(
+            fe._conversion_identities(description),
+            ("PARA.US", "US92556H2067", "PSKY.US", "US69932A2042"),
+        )
+        self.assertEqual(fe._conversion_ratio(description), Decimal("3.5"))
+
     def test_financing_operations_are_interest_not_trades_or_fifo(self) -> None:
         import pandas as pd  # type: ignore
 

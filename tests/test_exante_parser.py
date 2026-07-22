@@ -86,6 +86,18 @@ DERIVATIVES_EXANTE_CSV = '''"Costs and Charges Report: 2024-01-01 - 2024-12-31"
 '''
 
 
+SPLIT_EXANTE_CSV = '''"Costs and Charges Report: 2021-01-01 - 2021-12-31"
+"Account"\t"EXSPLIT"
+""
+"Time"\t"Account ID"\t"Side"\t"Symbol ID"\t"ISIN"\t"Type"\t"Price"\t"Currency"\t"Quantity"\t"Commission"\t"Commission Currency"\t"P&L"\t"Traded Volume"\t"Order Id"\t"Order pos"\t"Value Date"\t"Unique Transaction Identifier (UTI)"\t"Trade type"\t"Exchange Order ID"
+"2021-05-10 16:00:00"\t"EXSPLIT"\t"buy"\t"NVDA.NASDAQ"\t"US67066G1040"\t"STOCK"\t"400"\t"USD"\t"2"\t"0"\t"USD"\t"0"\t"800"\t"buy"\t"1"\t""\t""\t""\t""
+"2021-07-06 16:00:00"\t"EXSPLIT"\t"sell"\t"NVDA.NASDAQ"\t"US67066G1040"\t"STOCK"\t"600"\t"USD"\t"1"\t"0"\t"USD"\t"200"\t"600"\t"sell-before"\t"1"\t""\t""\t""\t""
+"2021-09-13 16:00:00"\t"EXSPLIT"\t"sell"\t"NVDA.NASDAQ"\t"US67066G1040"\t"STOCK"\t"150"\t"USD"\t"2"\t"0"\t"USD"\t"100"\t"300"\t"sell-after"\t"1"\t""\t""\t""\t""
+"Transaction ID"\t"Account ID"\t"Symbol ID"\t"ISIN"\t"Operation type"\t"When"\t"Sum"\t"Asset"\t"EUR equivalent"\t"Comment"\t"UUID"\t"Parent UUID"
+"split"\t"EXSPLIT"\t"NVDA.NASDAQ"\t"US67066G1040"\t"STOCK SPLIT"\t"2021-07-19 20:25:00"\t"6"\t"NVDA.NASDAQ"\t""\t"NVDA Stock split 4-for-1"\t""\t""
+'''
+
+
 HXR_TRANSFER_KSPI_OPTION_EXANTE_CSV = '''"Costs and Charges Report: 2022-01-01 - 2023-12-31"
 "Account"\t"HXR2208.001"
 ""
@@ -310,6 +322,31 @@ class ExanteParserTests(unittest.TestCase):
         self.assertEqual(derivative_rows[0]["only_profit_kzt"], "10000.00")
         self.assertEqual(derivative_rows[0]["tax_kzt"], "1000.00")
         self.assertFalse(any(row["table"] == "Yearly FX Trades" for row in result.dataset.tables["Years_Results"]))
+
+    def test_stock_split_adjusts_fifo_but_keeps_exante_trades_raw(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            raw_root = Path(tmp) / "raw"
+            broker_root = raw_root / "exante"
+            broker_root.mkdir(parents=True)
+            path = broker_root / "Custom_EXSPLIT.csv"
+            path.write_text(SPLIT_EXANTE_CSV, encoding="utf-16")
+
+            parser = ExanteParser(fx_provider=AnnualFxRateProvider({(2021, "USD"): Decimal("426.03")}))
+            result = parser.parse_reports(parser.discover_reports(raw_root, "EXSPLIT"), "EXSPLIT")
+
+        trades = result.dataset.tables["Trades"]
+        self.assertEqual([(row["quantity"], row["price"]) for row in trades], [("2", "400"), ("-1", "600"), ("-2", "150")])
+        self.assertEqual(result.dataset.tables["CorporateActions"][0]["action_type"], "split")
+
+        fifo_rows = result.dataset.tables["Fifo"]
+        self.assertEqual(len(fifo_rows), 2)
+        self.assertEqual(
+            [(row["enter_quantity"], row["enter_price"], row["exit_quantity"], row["exit_price"]) for row in fifo_rows],
+            [("4", "100", "4", "150"), ("2", "100", "2", "150")],
+        )
+        position = result.dataset.tables["Positions"][0]
+        self.assertEqual(position["quantity"], "2")
+        self.assertEqual(position["price"], "100")
 
     def test_hxr_security_transfer_kspi_isin_and_option_expiration(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

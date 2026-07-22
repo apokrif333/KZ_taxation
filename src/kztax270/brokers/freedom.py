@@ -1953,18 +1953,27 @@ def _financing_interest_row(
 
 
 def _conversion_identities(description: str) -> tuple[str | None, str | None, str | None, str | None]:
-    match = re.search(r"securities\s+([A-Z0-9_.]+)\s+\(([A-Z0-9]{12})\)\s+->\s+([A-Z0-9_.]+)\s+\(([A-Z0-9]{12})\)", description, re.IGNORECASE)
+    match = re.search(
+        r"([A-Z0-9_.]+)\s+\(([A-Z0-9]{12})\)\s*(?:->|→)\s*([A-Z0-9_.]+)\s+\(([A-Z0-9]{12})\)",
+        description,
+        re.IGNORECASE,
+    )
     if not match:
         return None, None, None, None
     return _clean_symbol(match.group(1)), match.group(2).upper(), _clean_symbol(match.group(3)), match.group(4).upper()
 
 
 def _conversion_ratio(description: str) -> Decimal:
-    match = re.search(r"ratio:\s*(\d+(?:\.\d+)?)/(\d+(?:\.\d+)?)", description, re.IGNORECASE)
+    match = re.search(
+        r"(?:ratio|коэффициент)\s*:\s*(\d+(?:[.,]\d+)?)\s*/\s*(\d+(?:[.,]\d+)?)",
+        description,
+        re.IGNORECASE,
+    )
     if not match:
         return Decimal("1")
-    denominator = Decimal(match.group(2))
-    return Decimal(match.group(1)) / denominator if denominator else Decimal("1")
+    numerator = Decimal(match.group(1).replace(",", "."))
+    denominator = Decimal(match.group(2).replace(",", "."))
+    return numerator / denominator if denominator else Decimal("1")
 
 
 def _split_ratio(description: str) -> Decimal:

@@ -24,6 +24,7 @@ from .ib import (
     _amount_kzt,
     _annual_rate,
     _apply_broker_country_to_forex_trades,
+    _apply_corporate_action_split_adjustments_to_fifo_trades,
     _build_broker_trade_realized_pl,
     _build_fifo_and_positions,
     _build_fx_fifo_rows,
@@ -280,13 +281,21 @@ def build_canonical_dataset(
     instrument_lookup = _instrument_lookup(instruments)
     symbol_history = _instrument_symbol_history(instruments)
     dataset.tables["Instruments"] = instruments
-    dataset.tables["CorporateActions"] = _build_corporate_actions(reports, instrument_lookup)
+    corporate_actions = _build_corporate_actions(reports, instrument_lookup)
+    dataset.tables["CorporateActions"] = corporate_actions
     dataset.tables["Dividends"] = _build_dividends(reports, instrument_lookup, fx_provider, dataset.warnings)
 
     transfers, transfer_totals_by_currency = _build_transfers(reports, instrument_lookup)
     internal_trades = _sort_trades_by_datetime(_build_trades(reports, instrument_lookup))
     _apply_broker_country_to_forex_trades(internal_trades, "exante")
-    fifo_input_trades = [trade for trade in internal_trades if not _is_fx_trade(trade)]
+    fifo_input_trades = [
+        trade
+        for trade in _apply_corporate_action_split_adjustments_to_fifo_trades(
+            internal_trades,
+            corporate_actions,
+        )
+        if not _is_fx_trade(trade)
+    ]
     dataset.tables["Trades"] = _canonical_trade_rows(internal_trades)
     dataset.tables["_BrokerTradeRealizedPL"] = _build_broker_trade_realized_pl(internal_trades)
 
