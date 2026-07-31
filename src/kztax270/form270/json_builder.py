@@ -28,6 +28,7 @@ OPERATION_EXCHANGE_ACQUIRED = "Приобретено путем обмена"
 OPERATION_EXCHANGE_DISPOSED = "Отчуждено путем обмена"
 OPERATION_SALE = "Продажа"
 OPERATION_GRATUITOUS = "Безвозмездно полученное (за исключением наследства)"
+OPERATION_GRATUITOUS_TRANSFERRED = "Безвозмездно переданное"
 OPERATION_OTHER = "Другой способ"
 BOND_REDEMPTION_OTHER_TEXT = "Погашение"
 REFERENCE_TEMPLATES_DIR = Path(__file__).resolve().parents[3] / "data" / "templates"
@@ -1013,6 +1014,10 @@ def _is_derivative_asset(row: Mapping[str, Any]) -> bool:
 
 def _application_04_operation(row: Mapping[str, Any], quantity: Decimal) -> tuple[str, str | None]:
     trade_type = str(row.get("trade_type") or "").lower()
+    if trade_type in {"stock_award_grant", "stock_award_vesting"}:
+        return _trade_type_code_for_form(OPERATION_GRATUITOUS), None
+    if trade_type == "stock_award_withholding":
+        return _trade_type_code_for_form(OPERATION_GRATUITOUS_TRANSFERRED), None
     if trade_type.startswith("corporate_action:"):
         action_type = trade_type.split(":", 1)[1]
         if action_type in {"merger", "merged", "exchange", "acquisition"}:

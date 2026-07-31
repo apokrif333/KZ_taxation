@@ -15,10 +15,10 @@ form270_template = "data/templates/270 new template.json"
 # Задания выполняются сверху вниз. Поэтому можно сначала создать Excel,
 # а следующим заданием сразу сформировать JSON из него.
 
-#[[form270.jobs]]
-#id = "excel"
-#broker = "ib"
-#account_id = "U14219740"
+[[form270.jobs]]
+id = "excel"
+broker = "ib"
+account_id = "U22663222"
 
 # [[form270.jobs]]
 # id = "joint_excel"
@@ -35,19 +35,19 @@ form270_template = "data/templates/270 new template.json"
 # fio2 = "Чернооков"
 # fio3 = ""
 
- [[form270.jobs]]
- id = "270_json"
- file_name = "ib_U14219740_joint_audit.xlsx"
- civ_servant = false
- tax_year = 2025
- fio1 = "Наталья"
- fio2 = "Черноокова"
- fio3 = ""
- iin = "1"
- phone = ""
- email = ""
- ogd_residence = ""
- ogd_location = ""
+# [[form270.jobs]]
+# id = "270_json"
+# file_name = "ib_U14219740_joint_audit.xlsx"
+# civ_servant = false
+# tax_year = 2025
+# fio1 = "Наталья"
+# fio2 = "Черноокова"
+# fio3 = ""
+# iin = "1"
+# phone = ""
+# email = ""
+# ogd_residence = ""
+# ogd_location = ""
 
 # Параметры банка/брокера для CashBalances можно задать один раз:
 # [form270.banks.ib]

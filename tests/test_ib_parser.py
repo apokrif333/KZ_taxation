@@ -273,6 +273,21 @@ Open Positions,Data,Summary,Stocks,RUB,MAGN,10000,1,48.048,480480,54.42,544200,6
 """
 
 
+MIXED_TRANSFER_BASIS_IB_CSV = """Statement,Header,Field Name,Field Value
+Statement,Data,Period,"January 1, 2025 - December 31, 2025"
+Account Information,Header,Field Name,Field Value
+Account Information,Data,Account,UMIXED
+Account Information,Data,Base Currency,USD
+Financial Instrument Information,Header,Asset Category,Symbol,Description,Conid,Security ID,Underlying,Listing Exch,Multiplier,Type,Code
+Financial Instrument Information,Data,Stocks,AMD,ADVANCED MICRO DEVICES,1,US0079031078,AMD,NASDAQ,1,COMMON,
+Trades,Header,DataDiscriminator,Asset Category,Currency,Symbol,Date/Time,Quantity,T. Price,C. Price,Proceeds,Comm/Fee,Basis,Realized P/L,MTM P/L,Code
+Trades,Data,Order,Stocks,USD,AMD,"2024-07-31, 15:00:06",29,145.07,145.07,-4207.03,-1,4208.03,0,0,O
+Transfers,Header,Asset Category,Currency,Symbol,Date,Type,Direction,Xfer Company,Xfer Account,Qty,Xfer Price,Market Value,Realized P/L,Cash Amount,Code
+Transfers,Data,Stocks,USD,AMD,2025-01-06,ACATS,In,--,UOTHER,39,--,--,0.00,0.00,
+Trades,Data,Order,Stocks,USD,AMD,"2025-11-17, 09:30:01",-68,242.87,242.87,16515.16,-1.012784,-10054.07,6460.077216,0,C
+"""
+
+
 REVERSAL_IB_CSV = """Statement,Header,Field Name,Field Value
 Statement,Data,Period,"January 1, 2020 - December 31, 2020"
 Account Information,Header,Field Name,Field Value
@@ -723,6 +738,72 @@ class InteractiveBrokersParserTests(unittest.TestCase):
         self.assertNotIn("exit_calculation_price", pre_split)
         self.assertNotIn(post_split["enter_quantity"], {"0.25", "0.5"})
 
+    def test_stock_award_grants_have_zero_basis_and_follow_split_on_its_date(self) -> None:
+        report_2024 = """Statement,Header,Field Name,Field Value
+Statement,Data,Period,\"January 1, 2024 - December 31, 2024\"
+Account Information,Header,Field Name,Field Value
+Account Information,Data,Account,UGRANT
+Account Information,Data,Base Currency,USD
+Financial Instrument Information,Header,Asset Category,Symbol,Description,Conid,Security ID,Underlying,Listing Exch,Multiplier,Type,Code
+Financial Instrument Information,Data,Stocks,IBKR,INTERACTIVE BROKERS GRO-CL A,43645865,US45841N1072,IBKR,NASDAQ,1,COMMON,
+Grant Activity,Header,Account,Symbol,Report Date,Description,Award Date,Vesting Date,Quantity,Price,Value
+Grant Activity,Data,UGRANT,IBKR,2024-07-18,Stock Award Grant for Cash Deposit,2024-07-18,2025-07-18,6.2797,123.37,774.73
+Open Positions,Header,DataDiscriminator,Asset Category,Currency,Symbol,Open,Quantity,Mult,Cost Price,Cost Basis,Close Price,Value,Unrealized P/L,Code
+Open Positions,Data,Summary,Stocks,USD,IBKR,-,6.2797,1,123.37,774.73,176.67,1109.43,334.7,
+"""
+        report_2025 = """Statement,Header,Field Name,Field Value
+Statement,Data,Period,\"January 1, 2025 - December 31, 2025\"
+Account Information,Header,Field Name,Field Value
+Account Information,Data,Account,UGRANT
+Account Information,Data,Base Currency,USD
+Financial Instrument Information,Header,Asset Category,Symbol,Description,Conid,Security ID,Underlying,Listing Exch,Multiplier,Type,Code
+Financial Instrument Information,Data,Stocks,IBKR,INTERACTIVE BROKERS GRO-CL A,43645865,US45841N1072,IBKR,NASDAQ,1,COMMON,
+Corporate Actions,Header,Asset Category,Currency,Account,Report Date,Date/Time,Description,Quantity,Proceeds,Value,Realized P/L,Code
+Corporate Actions,Data,Stocks,USD,UGRANT,2025-06-18,\"2025-06-17, 20:25:00\",\"IBKR(US45841N1072) Split 4 for 1 (IBKR, INTERACTIVE BROKERS GRO-CL A, US45841N1072)\",22.395,0,0,0,
+Grant Activity,Header,Account,Symbol,Report Date,Description,Award Date,Vesting Date,Quantity,Price,Value
+Grant Activity,Data,UGRANT,IBKR,2025-01-08,Stock Award Grant for Cash Deposit,2025-01-07,2026-01-07,1.1853,190.07,225.29
+Grant Activity,Data,UGRANT,IBKR,2025-07-18,Stock Award Vesting,2024-07-18,2025-07-18,25.1188,64.05,1608.8592
+Grant Activity,Data,UGRANT,IBKR,2025-07-18,Stock Award Withholding,2024-07-18,2025-07-18,-7.5356,64.05,-482.66
+Open Positions,Header,DataDiscriminator,Asset Category,Currency,Symbol,Open,Quantity,Mult,Cost Price,Cost Basis,Close Price,Value,Unrealized P/L,Code
+Open Positions,Data,Summary,Stocks,USD,IBKR,-,22.3244,1,60.54,1351.49,64.31,1435.68,84.19,
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            raw_root = Path(tmp) / "raw"
+            ib_root = raw_root / "ib"
+            ib_root.mkdir(parents=True)
+            (ib_root / "UGRANT_2024_2024.csv").write_text(report_2024, encoding="utf-8")
+            (ib_root / "UGRANT_2025_2025.csv").write_text(report_2025, encoding="utf-8")
+
+            parser = InteractiveBrokersParser(AnnualFxRateProvider({(2024, "USD"): Decimal("470"), (2025, "USD"): Decimal("520")}))
+            result = parser.parse_reports(parser.discover_reports(raw_root, "UGRANT"), "UGRANT")
+
+        grant_trades = [row for row in result.dataset.tables["Trades"] if row["symbol"] == "IBKR"]
+        self.assertEqual(
+            [row["trade_type"] for row in grant_trades],
+            ["stock_award_grant", "stock_award_grant", "stock_award_vesting", "stock_award_withholding"],
+        )
+        self.assertTrue(all(row["price"] == "0" for row in grant_trades))
+
+        positions = result.dataset.tables["Positions"]
+        by_year = {
+            year: sum(Decimal(row["quantity"]) for row in positions if row["isin"] == "US45841N1072" and row["year"] == year)
+            for year in (2024, 2025)
+        }
+        self.assertEqual(by_year, {2024: Decimal("6.2797"), 2025: Decimal("22.3244")})
+        self.assertTrue(all(row["price"] == "0" for row in positions if row["isin"] == "US45841N1072"))
+
+        reconciliation = ReconciliationEngine().reconcile_dataset(result.dataset)
+        self.assertEqual(
+            [
+                item
+                for item in reconciliation
+                if item.metric == ReconciliationMetric.ENDING_POSITION_QUANTITY
+                and item.instrument_key == "US45841N1072"
+                and item.severity == ReconciliationSeverity.ERROR
+            ],
+            [],
+        )
+
     def test_exchange_preferential_dividend_keeps_amounts_and_zeroes_tax(self) -> None:
         dataset = CanonicalDataset.empty("ib", "UPREF")
         dataset.tables["Instruments"] = [{"symbol": "TEST", "isin": "US0000000001"}]
@@ -959,6 +1040,91 @@ class InteractiveBrokersParserTests(unittest.TestCase):
             and item.severity == ReconciliationSeverity.ERROR
         ]
         self.assertEqual(position_errors, [])
+
+    def test_mixed_sale_uses_residual_ib_basis_for_unresolved_transfer_lot(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            raw_root = Path(tmp) / "raw"
+            ib_root = raw_root / "ib"
+            ib_root.mkdir(parents=True)
+            (ib_root / "UMIXED_2025_2025.csv").write_text(MIXED_TRANSFER_BASIS_IB_CSV, encoding="utf-8")
+
+            parser = InteractiveBrokersParser(AnnualFxRateProvider({}))
+            result = parser.parse_reports(parser.discover_reports(raw_root, "UMIXED"), "UMIXED")
+
+        fifo_rows = [row for row in result.dataset.tables["Fifo"] if row["symbol"] == "AMD"]
+        self.assertEqual([row["enter_quantity"] for row in fifo_rows], ["29", "39"])
+        self.assertEqual(fifo_rows[1]["enter_price"], "149.89846154")
+        self.assertEqual(
+            sum((Decimal(row["pnl_after_all_commissions"]) for row in fifo_rows), Decimal("0")),
+            Decimal("6460.077216"),
+        )
+
+    def test_mixed_sale_uses_realized_pl_when_broker_does_not_provide_basis(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            raw_root = Path(tmp) / "raw"
+            ib_root = raw_root / "ib"
+            ib_root.mkdir(parents=True)
+            report = MIXED_TRANSFER_BASIS_IB_CSV.replace(",-10054.07,", ",,")
+            (ib_root / "UMIXED_2025_2025.csv").write_text(report, encoding="utf-8")
+
+            parser = InteractiveBrokersParser(AnnualFxRateProvider({}))
+            result = parser.parse_reports(parser.discover_reports(raw_root, "UMIXED"), "UMIXED")
+
+        fifo_rows = [row for row in result.dataset.tables["Fifo"] if row["symbol"] == "AMD"]
+        self.assertEqual(fifo_rows[1]["enter_price"], "149.89846154")
+        self.assertEqual(
+            sum((Decimal(row["pnl_after_all_commissions"]) for row in fifo_rows), Decimal("0")),
+            Decimal("6460.077216"),
+        )
+
+    def test_residual_transfer_basis_supports_broker_pl_without_commissions(self) -> None:
+        basis = ib_module._residual_broker_basis(
+            {
+                "quantity": "-68",
+                "calculation_quantity": "-68",
+                "commission": "1.012784",
+                "currency": "USD",
+                "_broker_realized_pl": "6462.09",
+                "_broker_realized_pl_includes_commissions": False,
+            },
+            exit_calculation_price=Decimal("242.87"),
+            exit_multiplier=Decimal("1"),
+            exit_commission_per_unit=Decimal("1.012784") / Decimal("68"),
+            position_type="long",
+            exit_broker_quantity=Decimal("39"),
+            matched_known_acquisition_cost=Decimal("4208.03"),
+            matched_known_gross_cost=Decimal("4207.03"),
+            matched_known_exit_gross=Decimal("7043.23"),
+            matched_known_exit_commission=Decimal("1.012784") * Decimal("29") / Decimal("68"),
+            matched_known_exit_broker_quantity=Decimal("29"),
+        )
+        self.assertEqual(basis, Decimal("5846.04"))
+
+    def test_residual_transfer_basis_is_split_between_multiple_unresolved_lots(self) -> None:
+        trade = {
+            "quantity": "-283",
+            "calculation_quantity": "-283",
+            "commission": "1.468204",
+            "currency": "USD",
+            "_broker_basis": "-7085.675001",
+            "_broker_realized_pl": "5364.856796",
+        }
+        common = {
+            "exit_calculation_price": Decimal("44"),
+            "exit_multiplier": Decimal("1"),
+            "exit_commission_per_unit": Decimal("1.468204") / Decimal("283"),
+            "position_type": "long",
+            "matched_known_acquisition_cost": Decimal("4240.945"),
+            "matched_known_gross_cost": Decimal("4240.945"),
+            "matched_known_exit_gross": Decimal("7524"),
+            "matched_known_exit_commission": Decimal("1.468204") * Decimal("171") / Decimal("283"),
+            "matched_known_exit_broker_quantity": Decimal("171"),
+        }
+        first_basis = ib_module._residual_broker_basis(trade, exit_broker_quantity=Decimal("109"), **common)
+        second_basis = ib_module._residual_broker_basis(trade, exit_broker_quantity=Decimal("3"), **common)
+
+        self.assertEqual(first_basis + second_basis, Decimal("2844.73"))
+        self.assertEqual(first_basis / Decimal("109"), second_basis / Decimal("3"))
 
     def test_security_transfer_in_uses_resolved_fifo_lots_from_source_workbook(self) -> None:
         seen_requests: list[TransferInRequest] = []

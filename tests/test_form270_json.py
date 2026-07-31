@@ -13,6 +13,8 @@ from kztax270.form270.json_builder import (
     CURRENCY_CODES_FILE,
     Form270JsonBuilder,
     Form270Owner,
+    OPERATION_GRATUITOUS,
+    OPERATION_GRATUITOUS_TRANSFERRED,
     ASSET_TYPES_FILE,
     TRADES_TYPES_FILE,
     _country_code_for_form,
@@ -268,6 +270,87 @@ class Form270JsonTests(unittest.TestCase):
         self.assertEqual(rows[0]["E"], "US912796ZK84")
         self.assertEqual(rows[0]["B"], "1")
         self.assertEqual(rows[0]["C"], "3")
+
+    def test_builder_marks_stock_award_grant_as_gratuitous(self) -> None:
+        dataset = CanonicalDataset.empty("ib", "UGRANT")
+        dataset.tables["Trades"] = [
+            {
+                "date_time": "2024-07-18 00:00:00",
+                "symbol": "IBKR",
+                "isin": "US45841N1072",
+                "asset_type": "Stocks",
+                "quantity": "6.2797",
+                "amount": "0",
+                "currency": "USD",
+                "country": "US",
+                "trade_type": "stock_award_grant",
+            },
+            {
+                "date_time": "2025-07-18 00:00:00",
+                "symbol": "IBKR",
+                "isin": "US45841N1072",
+                "asset_type": "Stocks",
+                "quantity": "25.1188",
+                "amount": "0",
+                "currency": "USD",
+                "country": "US",
+                "trade_type": "stock_award_vesting",
+            },
+        ]
+
+        form = _builder().build_account_draft(dataset, tax_year=2024)
+
+        rows = form["fnoContent"]["application_04"]["B"]
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["B"], _trade_type_code_for_form(OPERATION_GRATUITOUS))
+        self.assertEqual(rows[0]["D"], 6.2797)
+        self.assertEqual(rows[0]["val_J"], {"value": 0, "manual": True})
+
+    def test_builder_marks_stock_award_vesting_as_gratuitous(self) -> None:
+        dataset = CanonicalDataset.empty("ib", "UVEST")
+        dataset.tables["Trades"] = [
+            {
+                "date_time": "2025-07-18 00:00:00",
+                "symbol": "IBKR",
+                "isin": "US45841N1072",
+                "asset_type": "Stocks",
+                "quantity": "25.1188",
+                "amount": "0",
+                "currency": "USD",
+                "country": "US",
+                "trade_type": "stock_award_vesting",
+            }
+        ]
+
+        form = _builder().build_account_draft(dataset, tax_year=2025)
+
+        rows = form["fnoContent"]["application_04"]["B"]
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["B"], _trade_type_code_for_form(OPERATION_GRATUITOUS))
+        self.assertEqual(rows[0]["D"], 25.1188)
+
+    def test_builder_marks_stock_award_withholding_as_gratuitous_transfer(self) -> None:
+        dataset = CanonicalDataset.empty("ib", "UWITHHOLDING")
+        dataset.tables["Trades"] = [
+            {
+                "date_time": "2025-07-18 00:00:00",
+                "symbol": "IBKR",
+                "isin": "US45841N1072",
+                "asset_type": "Stocks",
+                "quantity": "-7.5356",
+                "amount": "0",
+                "currency": "USD",
+                "country": "US",
+                "trade_type": "stock_award_withholding",
+            }
+        ]
+
+        form = _builder().build_account_draft(dataset, tax_year=2025)
+
+        rows = form["fnoContent"]["application_04"]["B"]
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["B"], _trade_type_code_for_form(OPERATION_GRATUITOUS_TRANSFERRED))
+        self.assertEqual(rows[0]["D"], 7.5356)
 
     def test_builder_groups_cash_by_source_broker_for_merged_workbook(self) -> None:
         dataset = CanonicalDataset.empty("merged", "Test_User")

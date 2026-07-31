@@ -32,6 +32,7 @@ IB_SECTION_CASH = "Cash Report"
 IB_SECTION_DEPOSITS = "Deposits & Withdrawals"
 IB_SECTION_DIVIDENDS = "Dividends"
 IB_SECTION_FI = "Financial Instrument Information"
+IB_SECTION_GRANT = "Grant Activity"
 IB_SECTION_INTEREST = "Interest"
 IB_SECTION_MTM = "Mark-to-Market Performance Summary"
 IB_SECTION_NAV = "Change in NAV"
@@ -219,14 +220,21 @@ def build_canonical_dataset(
         instrument_lookup,
         date_fields=("date_time",),
     )
+    grant_activity_trades = _build_grant_activity_trades(reports, instrument_lookup)
+    stock_award_split_trades = _build_stock_award_split_trades(corporate_actions, instrument_lookup)
     synthetic_corporate_action_trades = _build_synthetic_corporate_action_trades(corporate_actions, instrument_lookup)
-    internal_trades = _sort_trades_by_datetime([*raw_internal_trades, *synthetic_corporate_action_trades])
+    internal_trades = _sort_trades_by_datetime(
+        [*raw_internal_trades, *grant_activity_trades, *synthetic_corporate_action_trades]
+    )
     _apply_broker_country_to_forex_trades(internal_trades, "ib")
     dataset.tables["Trades"] = _canonical_trade_rows(internal_trades)
     dataset.tables["_BrokerTradeRealizedPL"] = _build_broker_trade_realized_pl(internal_trades)
     fifo_input_trades = [
         trade
-        for trade in _apply_corporate_action_split_adjustments_to_fifo_trades(internal_trades, corporate_actions)
+        for trade in _apply_corporate_action_split_adjustments_to_fifo_trades(
+            _sort_trades_by_datetime([*internal_trades, *stock_award_split_trades]),
+            corporate_actions,
+        )
         if not _is_fx_trade(trade)
     ]
     fifo_rows, fifo_positions, transfer_rows = _build_fifo_and_positions(
@@ -1202,6 +1210,125 @@ def _trade_id(report: ParsedIbReport, idx: int) -> str:
     return f"{report.path.name}:{idx}"
 
 
+def _build_grant_activity_trades(
+    reports: Sequence[ParsedIbReport],
+    instrument_lookup: Mapping[tuple[str, int | None], dict[str, Any]],
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for report in reports:
+        for idx, row in enumerate(report.rows.get(IB_SECTION_GRANT, []), start=1):
+            description = _string_or_none(row.get("Description")) or ""
+            event_type = _grant_activity_event_type(description)
+            quantity = _decimal(row.get("Quantity"))
+            if event_type is None or quantity == 0:
+                continue
+            if event_type == "stock_award_grant" and quantity < 0:
+                continue
+            if event_type == "stock_award_withholding" and quantity > 0:
+                continue
+            event_dt = (
+                _parse_datetime(row.get("Report Date"))
+                if event_type in {"stock_award_vesting", "stock_award_withholding"}
+                else _parse_datetime(row.get("Award Date")) or _parse_datetime(row.get("Report Date"))
+            )
+            if event_dt is None:
+                continue
+            symbol = _strip_yield_suffix(_string_or_none(row.get("Symbol")))
+            if not symbol:
+                continue
+            instrument = _lookup_instrument(instrument_lookup, symbol, event_dt.year) or {}
+            isin = _string_or_none(instrument.get("isin"))
+            conid = _string_or_none(instrument.get("conid"))
+            asset_type = _string_or_none(instrument.get("asset_type")) or "Stocks"
+            multiplier = _normalize_multiplier(_decimal(instrument.get("multiplier") or "1"))
+            rows.append(
+                {
+                    "date_time": event_dt.isoformat(sep=" "),
+                    "trade_id": f"{report.path.name}:grant:{idx}",
+                    "trade_type": event_type,
+                    "symbol": symbol,
+                    "isin": isin,
+                    "asset_type": asset_type,
+                    "quantity": str(quantity),
+                    "calculation_quantity": str(quantity),
+                    "price": "0",
+                    "calculation_price": "0",
+                    "multiplier": _multiplier_text(multiplier),
+                    "_calculation_multiplier": str(multiplier),
+                    "amount": "0",
+                    "commission": "0",
+                    "amount_with_commission": "0",
+                    "currency": report.base_currency or "USD",
+                    "exchange": instrument.get("listing_exchange"),
+                    "country": instrument.get("country") or _country_from_instrument(asset_type, isin, instrument.get("listing_exchange")),
+                    "source_report": str(report.path),
+                    "_event_type": event_type,
+                    "_instrument_identity_key": _instrument_identity_key_from_values(isin=isin, conid=conid, symbol=symbol),
+                    "_conid": conid,
+                    "_broker_realized_pl": "0",
+                }
+            )
+    return rows
+
+
+def _grant_activity_event_type(description: str) -> str | None:
+    normalized = description.strip().lower()
+    if "stock award grant" in normalized:
+        return "stock_award_grant"
+    if "stock award vesting" in normalized:
+        return "stock_award_vesting"
+    if "stock award withholding" in normalized:
+        return "stock_award_withholding"
+    return None
+
+
+def _build_stock_award_split_trades(
+    corporate_actions: Sequence[Mapping[str, Any]],
+    instrument_lookup: Mapping[tuple[str, int | None], dict[str, Any]],
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for action in corporate_actions:
+        if action.get("action_type") != "split":
+            continue
+        action_dt = _parse_datetime(action.get("date_time") or action.get("date"))
+        isin = _string_or_none(action.get("isin"))
+        ratio = _split_ratio(_string_or_none(action.get("description")))
+        if action_dt is None or isin is None or ratio is None or ratio == 0:
+            continue
+        instrument = _lookup_instrument(instrument_lookup, isin, action_dt.year) or {}
+        symbol = _string_or_none(instrument.get("symbol")) or isin
+        conid = _string_or_none(instrument.get("conid"))
+        rows.append(
+            {
+                "date_time": action_dt.isoformat(sep=" "),
+                "trade_id": f"stock_award_split:{action.get('source_report')}:{action_dt.isoformat()}:{isin}",
+                "trade_type": "stock_award_split",
+                "symbol": symbol,
+                "isin": isin,
+                "asset_type": action.get("asset_type") or instrument.get("asset_type") or "Stocks",
+                "quantity": "0",
+                "calculation_quantity": "0",
+                "price": "0",
+                "calculation_price": "0",
+                "multiplier": _multiplier_text(_normalize_multiplier(_decimal(instrument.get("multiplier") or "1"))),
+                "_calculation_multiplier": str(_normalize_multiplier(_decimal(instrument.get("multiplier") or "1"))),
+                "amount": "0",
+                "commission": "0",
+                "amount_with_commission": "0",
+                "currency": action.get("currency"),
+                "exchange": instrument.get("listing_exchange"),
+                "country": instrument.get("country"),
+                "source_report": action.get("source_report"),
+                "_event_type": "stock_award_split",
+                "_split_ratio": str(ratio),
+                "_instrument_identity_key": _instrument_identity_key_from_values(isin=isin, conid=conid, symbol=symbol),
+                "_conid": conid,
+                "_broker_realized_pl": "0",
+            }
+        )
+    return rows
+
+
 def _build_trades(reports: Sequence[ParsedIbReport], instrument_lookup: Mapping[tuple[str, int | None], dict[str, Any]]) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for report in reports:
@@ -1393,6 +1520,8 @@ def _apply_corporate_action_split_adjustments_to_fifo_trades(
                 if trade_dt is None or trade_dt >= action_dt:
                     continue
                 if _string_or_none(trade.get("isin")) != isin:
+                    continue
+                if trade.get("_event_type") == "stock_award_grant":
                     continue
                 quantity = _decimal(trade.get("calculation_quantity") or trade.get("quantity"))
                 price = _decimal(trade.get("calculation_price") or trade.get("price"))
@@ -1807,6 +1936,11 @@ def _build_fifo_and_positions(
             if trade.get("_event_type") == "split":
                 _apply_split_to_open_lots(books, _decimal(trade.get("_split_ratio")))
                 continue
+            if trade.get("_event_type") == "stock_award_split":
+                _apply_split_to_stock_award_grant_lots(books["long"], _decimal(trade.get("_split_ratio")))
+                continue
+            if trade.get("_event_type") == "stock_award_vesting":
+                continue
             quantity = _decimal(trade.get("calculation_quantity") or trade.get("quantity"))
             if quantity == 0:
                 continue
@@ -1817,6 +1951,29 @@ def _build_fifo_and_positions(
             multiplier = _decimal(trade.get("_calculation_multiplier") or trade.get("multiplier") or "1")
             commission = _decimal(trade.get("commission"))
             commission_per_unit = commission / abs(quantity) if quantity else Decimal("0")
+            if trade.get("_event_type") == "stock_award_grant":
+                books["long"].append(
+                    _open_lot(
+                        trade,
+                        quantity,
+                        abs(quantity),
+                        price,
+                        calculation_price,
+                        multiplier,
+                        commission_per_unit,
+                        trade_dt,
+                        opening_lot_status="stock_award_grant",
+                    )
+                )
+                continue
+            if trade.get("_event_type") == "stock_award_withholding":
+                _consume_stock_award_withholding(books["long"], abs(quantity))
+                continue
+            matched_known_acquisition_cost = Decimal("0")
+            matched_known_gross_cost = Decimal("0")
+            matched_known_exit_gross = Decimal("0")
+            matched_known_exit_commission = Decimal("0")
+            matched_known_exit_broker_quantity = Decimal("0")
 
             if quantity > 0:
                 remaining = quantity
@@ -1826,6 +1983,12 @@ def _build_fifo_and_positions(
                     matched = min(remaining, opening.quantity)
                     opening_broker_matched = _matched_broker_quantity(opening, matched)
                     exit_broker_matched = matched * broker_quantity_per_calculation_unit
+                    if _is_costed_opening_lot(opening):
+                        matched_known_gross_cost += _opening_lot_gross_cost(opening, matched)
+                        matched_known_acquisition_cost += _opening_lot_basis_cost(opening, matched, "short")
+                        matched_known_exit_gross += calculation_price * matched * multiplier
+                        matched_known_exit_commission += abs(commission_per_unit * matched)
+                        matched_known_exit_broker_quantity += exit_broker_matched
                     if broker_cost_basis_method == "average":
                         _infer_average_cost_unknown_open_lots(
                             books["short"],
@@ -1852,6 +2015,19 @@ def _build_fifo_and_positions(
                             "short",
                             fx_provider,
                             warnings,
+                            broker_basis_override=_residual_broker_basis(
+                                trade,
+                                exit_calculation_price=calculation_price,
+                                exit_multiplier=multiplier,
+                                exit_commission_per_unit=commission_per_unit,
+                                position_type="short",
+                                exit_broker_quantity=exit_broker_matched,
+                                matched_known_acquisition_cost=matched_known_acquisition_cost,
+                                matched_known_gross_cost=matched_known_gross_cost,
+                                matched_known_exit_gross=matched_known_exit_gross,
+                                matched_known_exit_commission=matched_known_exit_commission,
+                                matched_known_exit_broker_quantity=matched_known_exit_broker_quantity,
+                            ),
                         )
                     )
                     opening.quantity -= matched
@@ -1875,6 +2051,19 @@ def _build_fifo_and_positions(
                                 "short",
                                 fx_provider,
                                 warnings,
+                                broker_basis_override=_residual_broker_basis(
+                                    trade,
+                                    exit_calculation_price=calculation_price,
+                                    exit_multiplier=multiplier,
+                                    exit_commission_per_unit=commission_per_unit,
+                                    position_type="short",
+                                    exit_broker_quantity=remaining * broker_quantity_per_calculation_unit,
+                                    matched_known_acquisition_cost=matched_known_acquisition_cost,
+                                    matched_known_gross_cost=matched_known_gross_cost,
+                                    matched_known_exit_gross=matched_known_exit_gross,
+                                    matched_known_exit_commission=matched_known_exit_commission,
+                                    matched_known_exit_broker_quantity=matched_known_exit_broker_quantity,
+                                ),
                             )
                         )
                     else:
@@ -1898,6 +2087,12 @@ def _build_fifo_and_positions(
                     matched = min(remaining, opening.quantity)
                     opening_broker_matched = _matched_broker_quantity(opening, matched)
                     exit_broker_matched = matched * broker_quantity_per_calculation_unit
+                    if _is_costed_opening_lot(opening):
+                        matched_known_gross_cost += _opening_lot_gross_cost(opening, matched)
+                        matched_known_acquisition_cost += _opening_lot_basis_cost(opening, matched, "long")
+                        matched_known_exit_gross += calculation_price * matched * multiplier
+                        matched_known_exit_commission += abs(commission_per_unit * matched)
+                        matched_known_exit_broker_quantity += exit_broker_matched
                     if broker_cost_basis_method == "average":
                         _infer_average_cost_unknown_open_lots(
                             books["long"],
@@ -1924,6 +2119,19 @@ def _build_fifo_and_positions(
                             "long",
                             fx_provider,
                             warnings,
+                            broker_basis_override=_residual_broker_basis(
+                                trade,
+                                exit_calculation_price=calculation_price,
+                                exit_multiplier=multiplier,
+                                exit_commission_per_unit=commission_per_unit,
+                                position_type="long",
+                                exit_broker_quantity=exit_broker_matched,
+                                matched_known_acquisition_cost=matched_known_acquisition_cost,
+                                matched_known_gross_cost=matched_known_gross_cost,
+                                matched_known_exit_gross=matched_known_exit_gross,
+                                matched_known_exit_commission=matched_known_exit_commission,
+                                matched_known_exit_broker_quantity=matched_known_exit_broker_quantity,
+                            ),
                         )
                     )
                     opening.quantity -= matched
@@ -1947,6 +2155,19 @@ def _build_fifo_and_positions(
                                 "long",
                                 fx_provider,
                                 warnings,
+                                broker_basis_override=_residual_broker_basis(
+                                    trade,
+                                    exit_calculation_price=calculation_price,
+                                    exit_multiplier=multiplier,
+                                    exit_commission_per_unit=commission_per_unit,
+                                    position_type="long",
+                                    exit_broker_quantity=remaining * broker_quantity_per_calculation_unit,
+                                    matched_known_acquisition_cost=matched_known_acquisition_cost,
+                                    matched_known_gross_cost=matched_known_gross_cost,
+                                    matched_known_exit_gross=matched_known_exit_gross,
+                                    matched_known_exit_commission=matched_known_exit_commission,
+                                    matched_known_exit_broker_quantity=matched_known_exit_broker_quantity,
+                                ),
                             )
                         )
                     else:
@@ -2175,6 +2396,18 @@ def _apply_split_to_open_lots(books: Mapping[str, deque[FifoOpenLot]], ratio: De
             lot.calculation_price = lot.calculation_price * ratio
 
 
+def _apply_split_to_stock_award_grant_lots(lots: deque[FifoOpenLot], ratio: Decimal) -> None:
+    if ratio == 0:
+        return
+    for lot in lots:
+        if lot.opening_lot_status != "stock_award_grant":
+            continue
+        lot.quantity = lot.quantity / ratio
+        lot.broker_quantity = lot.broker_quantity / ratio
+        lot.calculation_price = lot.calculation_price * ratio
+        lot.price = lot.price * ratio
+
+
 _UNPROCESSED_LOT_STATUSES = {
     "missing_opening_lot",
     "broker_pl_inferred_transfer_in",
@@ -2294,6 +2527,8 @@ def _open_lot(
     multiplier: Decimal,
     commission_per_unit: Decimal,
     trade_dt: datetime,
+    *,
+    opening_lot_status: str = "matched",
 ) -> FifoOpenLot:
     return FifoOpenLot(
         asset_type=str(trade.get("asset_type") or ""),
@@ -2313,7 +2548,41 @@ def _open_lot(
         broker_quantity=broker_quantity,
         commission_per_unit=commission_per_unit,
         trade_id=_string_or_none(trade.get("trade_id")),
+        opening_lot_status=opening_lot_status,
     )
+
+
+def _consume_stock_award_withholding(lots: deque[FifoOpenLot], quantity: Decimal) -> None:
+    remaining = quantity
+    retained: deque[FifoOpenLot] = deque()
+    while lots:
+        lot = lots.popleft()
+        if remaining > 0 and lot.opening_lot_status == "stock_award_grant":
+            consumed = min(remaining, lot.quantity)
+            consumed_broker_quantity = _matched_broker_quantity(lot, consumed)
+            lot.quantity -= consumed
+            lot.broker_quantity -= consumed_broker_quantity
+            remaining -= consumed
+        if lot.quantity > 0:
+            retained.append(lot)
+    lots.extend(retained)
+
+
+def _is_costed_opening_lot(lot: FifoOpenLot) -> bool:
+    return lot.opening_lot_status not in {
+        "missing_opening_lot",
+        "pending_transfer_out_fifo_cost_basis",
+    }
+
+
+def _opening_lot_basis_cost(lot: FifoOpenLot, quantity: Decimal, position_type: str) -> Decimal:
+    gross = _opening_lot_gross_cost(lot, quantity)
+    commission = abs(lot.commission_per_unit * quantity)
+    return gross - commission if position_type == "short" else gross + commission
+
+
+def _opening_lot_gross_cost(lot: FifoOpenLot, quantity: Decimal) -> Decimal:
+    return abs(lot.calculation_price * quantity * lot.multiplier)
 
 
 def _matched_broker_quantity(opening: FifoOpenLot, matched_quantity: Decimal) -> Decimal:
@@ -2468,10 +2737,16 @@ def _broker_implied_acquisition_cost(
     exit_multiplier: Decimal,
     exit_commission_per_unit: Decimal,
     position_type: str,
+    *,
+    broker_basis_override: Decimal | None = None,
 ) -> Decimal:
     broker_pnl = _allocated_broker_realized_pl(exit_trade, exit_broker_quantity)
     broker_pnl_includes_commissions = _broker_realized_pl_includes_commissions(exit_trade)
-    broker_basis = _allocated_broker_basis(exit_trade, exit_broker_quantity)
+    broker_basis = (
+        broker_basis_override
+        if broker_basis_override is not None
+        else _allocated_broker_basis(exit_trade, exit_broker_quantity)
+    )
     exit_gross = exit_calculation_price * quantity * exit_multiplier
     exit_commission = abs(exit_commission_per_unit * quantity)
     if broker_basis is not None and broker_basis != 0:
@@ -2501,8 +2776,8 @@ def _close_unknown_opening_lot(
     enter_dt: datetime | None = None,
     opening_status: str = "missing_opening_lot",
     entry_trade_id: str | None = None,
+    broker_basis_override: Decimal | None = None,
 ) -> dict[str, Any]:
-    broker_pnl = _allocated_broker_realized_pl(exit_trade, exit_broker_quantity)
     broker_pnl_includes_commissions = _broker_realized_pl_includes_commissions(exit_trade)
     exit_gross = exit_calculation_price * quantity * exit_multiplier
     exit_commission = abs(exit_commission_per_unit * quantity)
@@ -2514,6 +2789,18 @@ def _close_unknown_opening_lot(
         exit_multiplier,
         exit_commission_per_unit,
         position_type,
+        broker_basis_override=broker_basis_override,
+    )
+    broker_pnl = (
+        _broker_pnl_from_acquisition_cost(
+            implied_acquisition_cost,
+            exit_gross,
+            exit_commission,
+            position_type,
+            broker_pnl_includes_commissions,
+        )
+        if broker_basis_override is not None
+        else _allocated_broker_realized_pl(exit_trade, exit_broker_quantity)
     )
     broker_pnl_after_all_commissions = broker_pnl if broker_pnl_includes_commissions else broker_pnl - exit_commission
     implied_enter_price = _implied_enter_price(implied_acquisition_cost, quantity, exit_multiplier)
@@ -2598,6 +2885,77 @@ def _allocated_broker_basis(exit_trade: Mapping[str, Any], exit_broker_quantity:
     return broker_basis * abs(exit_broker_quantity) / total_broker_quantity
 
 
+def _residual_broker_basis(
+    exit_trade: Mapping[str, Any],
+    *,
+    exit_calculation_price: Decimal,
+    exit_multiplier: Decimal,
+    exit_commission_per_unit: Decimal,
+    position_type: str,
+    exit_broker_quantity: Decimal,
+    matched_known_acquisition_cost: Decimal,
+    matched_known_gross_cost: Decimal,
+    matched_known_exit_gross: Decimal,
+    matched_known_exit_commission: Decimal,
+    matched_known_exit_broker_quantity: Decimal,
+) -> Decimal | None:
+    if matched_known_acquisition_cost <= 0:
+        return None
+    total_broker_quantity = abs(_decimal(exit_trade.get("quantity")))
+    unresolved_broker_quantity = total_broker_quantity - matched_known_exit_broker_quantity
+    if (
+        unresolved_broker_quantity <= 0
+        or exit_broker_quantity <= 0
+        or exit_broker_quantity - unresolved_broker_quantity > Decimal("0.00000001")
+    ):
+        return None
+
+    broker_pnl_value = exit_trade.get("_broker_realized_pl")
+    broker_pnl_currency = _string_or_none(exit_trade.get("_broker_realized_pl_currency"))
+    trade_currency = _string_or_none(exit_trade.get("currency"))
+    if broker_pnl_value not in (None, "") and (not broker_pnl_currency or broker_pnl_currency == trade_currency):
+        broker_pnl_includes_commissions = _broker_realized_pl_includes_commissions(exit_trade)
+        known_cost = matched_known_acquisition_cost if broker_pnl_includes_commissions else matched_known_gross_cost
+        known_broker_pnl = _broker_pnl_from_acquisition_cost(
+            known_cost,
+            matched_known_exit_gross,
+            matched_known_exit_commission,
+            position_type,
+            broker_pnl_includes_commissions,
+        )
+        total_exit_quantity = abs(_decimal(exit_trade.get("calculation_quantity") or exit_trade.get("quantity")))
+        total_exit_gross = exit_calculation_price * total_exit_quantity * exit_multiplier
+        total_exit_commission = abs(_decimal(exit_trade.get("commission")))
+        residual_broker_pnl = _decimal(broker_pnl_value) - known_broker_pnl
+        residual_exit_gross = total_exit_gross - matched_known_exit_gross
+        residual_exit_commission = total_exit_commission - matched_known_exit_commission
+        commission = residual_exit_commission if broker_pnl_includes_commissions else Decimal("0")
+        if position_type == "short":
+            residual_basis = residual_exit_gross + commission + residual_broker_pnl
+        else:
+            residual_basis = residual_exit_gross - commission - residual_broker_pnl
+        return residual_basis * exit_broker_quantity / unresolved_broker_quantity if residual_basis >= 0 else None
+
+    if exit_trade.get("_broker_basis") not in (None, ""):
+        total_broker_basis = abs(_decimal(exit_trade.get("_broker_basis")))
+        residual_basis = total_broker_basis - matched_known_acquisition_cost
+        return residual_basis * exit_broker_quantity / unresolved_broker_quantity if residual_basis >= 0 else None
+    return None
+
+
+def _broker_pnl_from_acquisition_cost(
+    acquisition_cost: Decimal,
+    exit_gross: Decimal,
+    exit_commission: Decimal,
+    position_type: str,
+    includes_commissions: bool,
+) -> Decimal:
+    commission = exit_commission if includes_commissions else Decimal("0")
+    if position_type == "short":
+        return acquisition_cost - exit_gross - commission
+    return exit_gross - acquisition_cost - commission
+
+
 def _close_fifo_lot(
     opening: FifoOpenLot,
     exit_trade: Mapping[str, Any],
@@ -2612,6 +2970,8 @@ def _close_fifo_lot(
     position_type: str,
     fx_provider: AnnualFxRateProvider,
     warnings: list[str],
+    *,
+    broker_basis_override: Decimal | None = None,
 ) -> dict[str, Any]:
     if opening.opening_lot_status == "missing_opening_lot":
         return _close_unknown_opening_lot(
@@ -2628,6 +2988,7 @@ def _close_fifo_lot(
             warnings,
             enter_dt=opening.date_time,
             entry_trade_id=opening.trade_id,
+            broker_basis_override=broker_basis_override,
         )
     if opening.opening_lot_status == "pending_transfer_out_fifo_cost_basis" and _broker_realized_pl(exit_trade) != 0:
         return _close_unknown_opening_lot(
@@ -2645,6 +3006,7 @@ def _close_fifo_lot(
             enter_dt=opening.date_time,
             opening_status="broker_pl_inferred_transfer_in",
             entry_trade_id=opening.trade_id,
+            broker_basis_override=broker_basis_override,
         )
     entry_gross = opening.calculation_price * quantity * opening.multiplier
     exit_gross = exit_calculation_price * quantity * exit_multiplier
