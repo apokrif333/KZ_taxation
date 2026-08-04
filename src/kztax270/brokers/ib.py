@@ -1521,7 +1521,15 @@ def _apply_corporate_action_split_adjustments_to_fifo_trades(
                     continue
                 if _string_or_none(trade.get("isin")) != isin:
                     continue
-                if trade.get("_event_type") == "stock_award_grant":
+                # Grant Activity reports vesting and tax withholding in the
+                # pre-split units of the original award.  Grant lots themselves
+                # are adjusted by the dedicated stock_award_split event below,
+                # so none of these related events may be adjusted here.
+                if trade.get("_event_type") in {
+                    "stock_award_grant",
+                    "stock_award_vesting",
+                    "stock_award_withholding",
+                }:
                     continue
                 quantity = _decimal(trade.get("calculation_quantity") or trade.get("quantity"))
                 price = _decimal(trade.get("calculation_price") or trade.get("price"))

@@ -804,6 +804,48 @@ Open Positions,Data,Summary,Stocks,USD,IBKR,-,22.3244,1,60.54,1351.49,64.31,1435
             [],
         )
 
+    def test_pre_split_stock_award_vesting_and_withholding_do_not_exhaust_grant_lots(self) -> None:
+        report_2024 = """Statement,Header,Field Name,Field Value
+Statement,Data,Period,\"January 1, 2024 - December 31, 2024\"
+Account Information,Header,Field Name,Field Value
+Account Information,Data,Account,UGRANTPRE
+Account Information,Data,Base Currency,USD
+Financial Instrument Information,Header,Asset Category,Symbol,Description,Conid,Security ID,Underlying,Listing Exch,Multiplier,Type,Code
+Financial Instrument Information,Data,Stocks,IBKR,INTERACTIVE BROKERS GRO-CL A,43645865,US45841N1072,IBKR,NASDAQ,1,COMMON,
+Grant Activity,Header,Account,Symbol,Report Date,Description,Award Date,Vesting Date,Quantity,Price,Value
+Grant Activity,Data,UGRANTPRE,IBKR,2024-01-01,Stock Award Grant for Cash Deposit,2024-01-01,2025-01-01,2,100,200
+"""
+        report_2025 = """Statement,Header,Field Name,Field Value
+Statement,Data,Period,\"January 1, 2025 - December 31, 2025\"
+Account Information,Header,Field Name,Field Value
+Account Information,Data,Account,UGRANTPRE
+Account Information,Data,Base Currency,USD
+Financial Instrument Information,Header,Asset Category,Symbol,Description,Conid,Security ID,Underlying,Listing Exch,Multiplier,Type,Code
+Financial Instrument Information,Data,Stocks,IBKR,INTERACTIVE BROKERS GRO-CL A,43645865,US45841N1072,IBKR,NASDAQ,1,COMMON,
+Trades,Header,DataDiscriminator,Asset Category,Currency,Symbol,Date/Time,Quantity,T. Price,C. Price,Proceeds,Comm/Fee,Basis,Realized P/L,MTM P/L,Code
+Trades,Data,Order,Stocks,USD,IBKR,\"2025-10-01, 09:30:00\",-6,70,70,420,-1,-1,421,0,C
+Corporate Actions,Header,Asset Category,Currency,Account,Report Date,Date/Time,Description,Quantity,Proceeds,Value,Realized P/L,Code
+Corporate Actions,Data,Stocks,USD,UGRANTPRE,2025-06-18,\"2025-06-17, 20:25:00\",\"IBKR(US45841N1072) Split 4 for 1 (IBKR, INTERACTIVE BROKERS GRO-CL A, US45841N1072)\",6,0,0,0,
+Grant Activity,Header,Account,Symbol,Report Date,Description,Award Date,Vesting Date,Quantity,Price,Value
+Grant Activity,Data,UGRANTPRE,IBKR,2025-01-01,Stock Award Vesting,2024-01-01,2025-01-01,2,100,200
+Grant Activity,Data,UGRANTPRE,IBKR,2025-01-01,Stock Award Withholding,2024-01-01,2025-01-01,-0.5,100,-50
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            raw_root = Path(tmp) / "raw"
+            ib_root = raw_root / "ib"
+            ib_root.mkdir(parents=True)
+            (ib_root / "UGRANTPRE_2024_2024.csv").write_text(report_2024, encoding="utf-8")
+            (ib_root / "UGRANTPRE_2025_2025.csv").write_text(report_2025, encoding="utf-8")
+
+            parser = InteractiveBrokersParser()
+            result = parser.parse_reports(parser.discover_reports(raw_root, "UGRANTPRE"), "UGRANTPRE")
+
+        fifo_rows = result.dataset.tables["Fifo"]
+        self.assertEqual(len(fifo_rows), 1)
+        self.assertEqual(fifo_rows[0]["enter_quantity"], "6")
+        self.assertEqual(fifo_rows[0]["enter_price"], "0")
+        self.assertEqual(result.dataset.tables["Unprocessed"], [])
+
     def test_exchange_preferential_dividend_keeps_amounts_and_zeroes_tax(self) -> None:
         dataset = CanonicalDataset.empty("ib", "UPREF")
         dataset.tables["Instruments"] = [{"symbol": "TEST", "isin": "US0000000001"}]
