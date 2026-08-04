@@ -227,7 +227,12 @@ def build_canonical_dataset(
         [*raw_internal_trades, *grant_activity_trades, *synthetic_corporate_action_trades]
     )
     _apply_broker_country_to_forex_trades(internal_trades, "ib")
-    dataset.tables["Trades"] = _canonical_trade_rows(internal_trades)
+    # Vesting only changes an existing stock award from unvested to vested.
+    # Keep it in the internal event stream for FIFO, but do not expose it as a
+    # reportable trade in the audit workbook or Form 270.00 input.
+    dataset.tables["Trades"] = _canonical_trade_rows(
+        trade for trade in internal_trades if trade.get("_event_type") != "stock_award_vesting"
+    )
     dataset.tables["_BrokerTradeRealizedPL"] = _build_broker_trade_realized_pl(internal_trades)
     fifo_input_trades = [
         trade

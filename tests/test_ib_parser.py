@@ -780,7 +780,7 @@ Open Positions,Data,Summary,Stocks,USD,IBKR,-,22.3244,1,60.54,1351.49,64.31,1435
         grant_trades = [row for row in result.dataset.tables["Trades"] if row["symbol"] == "IBKR"]
         self.assertEqual(
             [row["trade_type"] for row in grant_trades],
-            ["stock_award_grant", "stock_award_grant", "stock_award_vesting", "stock_award_withholding"],
+            ["stock_award_grant", "stock_award_grant", "stock_award_withholding"],
         )
         self.assertTrue(all(row["price"] == "0" for row in grant_trades))
 

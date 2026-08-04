@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from kztax270.reference.fx import AnnualFxRateProvider
 from kztax270.transfers import TransferInFifoResolver
 
+from .alatay import AlatayParser
 from .base import BrokerParser
 from .exante import ExanteParser
 from .freedom import FreedomParser
@@ -44,6 +45,7 @@ def default_registry(
     transfer_in_resolver: TransferInFifoResolver | None = None,
 ) -> BrokerRegistry:
     registry = BrokerRegistry()
+    registry.register(AlatayParser(fx_provider=fx_provider))
     registry.register(InteractiveBrokersParser(fx_provider=fx_provider, transfer_in_resolver=transfer_in_resolver))
     registry.register(FreedomParser(fx_provider=fx_provider, transfer_in_resolver=transfer_in_resolver))
     registry.register(FreedomBankParser(fx_provider=fx_provider))

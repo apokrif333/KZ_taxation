@@ -15,10 +15,10 @@ form270_template = "data/templates/270 new template.json"
 # Задания выполняются сверху вниз. Поэтому можно сначала создать Excel,
 # а следующим заданием сразу сформировать JSON из него.
 
-[[form270.jobs]]
-id = "excel"
-broker = "ib"
-account_id = "U13415821"
+#[[form270.jobs]]
+#id = "excel"
+#broker = "alatay"
+#account_id = "010101ZJ470"
 
 # [[form270.jobs]]
 # id = "joint_excel"
@@ -27,26 +27,29 @@ account_id = "U13415821"
 # [[form270.jobs]]
 # id = "merge_excel"
 # workbooks = [
-#     "ib_U22663222_joint_audit.xlsx",
-#     "freedom_bank_620926301626_audit.xlsx"
+#     "freedom_7K9979 _audit.xlsx",
+#     "freedom_bank_720410400095_audit.xlsx",
+#     'ib_U13415821_audit.xlsx',
+#     'ib_U16819763_audit.xlsx',
+#     'alatay_010101ZJ470_audit.xlsx'
 # ]
-# fio1 = "Кужат"
-# fio2 = "Казиев"
+# fio1 = "Elvira"
+# fio2 = "Bekpeisova"
 # fio3 = ""
 
-# [[form270.jobs]]
-# id = "270_json"
-# file_name = "merged_Казиев_Кужат.xlsx"
-# civ_servant = false
-# tax_year = 2025
-# fio1 = "Кужат"
-# fio2 = "Казиев"
-# fio3 = ""
-# iin = "1"
-# phone = ""
-# email = ""
-# ogd_residence = ""
-# ogd_location = ""
+ [[form270.jobs]]
+ id = "270_json"
+ file_name = "merged_Bekpeisova_Elvira.xlsx"
+ civ_servant = false
+ tax_year = 2025
+ fio1 = "Elvira"
+ fio2 = "Bekpeisova"
+ fio3 = ""
+ iin = "1"
+ phone = ""
+ email = ""
+ ogd_residence = ""
+ ogd_location = ""
 
 # Параметры банка/брокера для CashBalances можно задать один раз:
 # [form270.banks.ib]
