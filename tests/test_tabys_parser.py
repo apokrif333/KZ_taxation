@@ -53,6 +53,152 @@ class TabysParserTests(unittest.TestCase):
         self.assertEqual(row["operation"], "Перевод ценных бумаг")
         self.assertEqual(row["quantity"], "100")
 
+    def test_english_metadata_header_and_continuation_table_are_recognized(self) -> None:
+        report = ParsedTabysReport(path=Path("english.pdf"))
+        tabys_module._populate_metadata(
+            report,
+            "Operations report\nfrom 2023-01-01 to 2026-08-02\n"
+            "Client name: Test Client\nAccount number: 007638948",
+        )
+        header = [
+            "¹",
+            "Date of transaction",
+            "Date of execution",
+            "Number of transaction",
+            "Account",
+            "Type of transaction",
+            "Security name",
+            "Number of securities",
+            "Price",
+            "Sum / Cash amount",
+            "Currency",
+            "Exchange rate",
+            "Equivalent in KZT",
+            "Status",
+            "Transaction fee in KZT",
+        ]
+        continuation_row = [
+            "18",
+            "13.01.2025 10:52",
+            "13.01.2025 17:16",
+            "withdrawal-id",
+            "Cash account",
+            "Cash withdrawal",
+            "USD",
+            "",
+            "",
+            "964",
+            "USD",
+            "522",
+            "503208",
+            "Executed",
+            "4.82",
+        ]
+
+        self.assertEqual(report.period_start, date(2023, 1, 1))
+        self.assertEqual(report.period_end, date(2026, 8, 2))
+        self.assertEqual(report.account_id, "007638948")
+        self.assertEqual(report.holder_name, "Test Client")
+        self.assertEqual(tabys_module._operation_header_index([header]), 0)
+        self.assertTrue(tabys_module._is_operation_continuation_table([continuation_row]))
+
+    def test_english_operations_build_trades_transfers_and_coupons(self) -> None:
+        reports = [
+            ParsedTabysReport(
+                path=Path("007638948 tabys 2025.pdf"),
+                account_id="007638948",
+                period_start=date(2025, 1, 1),
+                period_end=date(2025, 12, 31),
+                rows=[
+                    _row(
+                        sequence=1,
+                        transaction_datetime="2025-01-02 10:00:00",
+                        transaction_id="buy",
+                        account_type="Securities account",
+                        operation="Purchase",
+                        security="iX NASDAQ 100 Equities ETN (IXN)",
+                        quantity="10",
+                        price="50",
+                        amount="500",
+                        currency="USD",
+                    ),
+                    _row(
+                        sequence=2,
+                        transaction_datetime="2025-01-03 10:00:00",
+                        transaction_id="sell",
+                        account_type="Securities account",
+                        operation="Sale",
+                        security="iX NASDAQ 100 Equities ETN (IXN)",
+                        quantity="3",
+                        price="60",
+                        amount="180",
+                        currency="USD",
+                    ),
+                    _row(
+                        sequence=3,
+                        transaction_datetime="2025-01-04 10:00:00",
+                        settlement_datetime="2025-01-04 17:00:00",
+                        transaction_id="deposit",
+                        account_type="Cash account",
+                        operation="Cash replenishment",
+                        security="USD",
+                        amount="1000",
+                        currency="USD",
+                    ),
+                    _row(
+                        sequence=4,
+                        transaction_datetime="2025-01-05 10:00:00",
+                        settlement_datetime="2025-01-05 17:00:00",
+                        transaction_id="withdrawal",
+                        account_type="Cash account",
+                        operation="Cash withdrawal",
+                        security="USD",
+                        amount="200",
+                        currency="USD",
+                    ),
+                    _row(
+                        sequence=5,
+                        transaction_datetime="2025-01-06 10:00:00",
+                        transaction_id="internal",
+                        account_type="Cash account",
+                        operation="Transfer between accounts",
+                        security="USD",
+                        amount="1.3",
+                        currency="USD",
+                    ),
+                    _row(
+                        sequence=6,
+                        transaction_datetime="2025-01-07 10:00:00",
+                        transaction_id="coupon",
+                        account_type="Cash account",
+                        operation="Receipt of dividends or coupon",
+                        security="IXN",
+                        amount="2.5",
+                        currency="USD",
+                    ),
+                ],
+            )
+        ]
+        provider = AnnualFxRateProvider({(2025, "USD"): Decimal("520")})
+
+        with tempfile.TemporaryDirectory() as tmp:
+            resolver = _local_ixn_resolver(Path(tmp) / "aix_instruments.xlsx")
+            dataset = build_canonical_dataset(
+                reports,
+                "007638948",
+                provider,
+                instrument_resolver=resolver,
+            )
+
+        self.assertEqual([row["symbol"] for row in dataset.tables["Trades"]], ["IXN", "IXN"])
+        self.assertEqual([row["quantity"] for row in dataset.tables["Trades"]], ["10", "-3"])
+        cash_transfers = [row for row in dataset.tables["Transfers"] if row["transfer_type"] == "cash"]
+        self.assertEqual([row["amount"] for row in cash_transfers], ["1000", "-200"])
+        self.assertEqual([row["gross_amount"] for row in dataset.tables["Dividends"]], ["2.50"])
+        self.assertEqual(dataset.tables["Coupons"], [])
+        self.assertEqual(dataset.tables["Instruments"][0]["type"], "ETN")
+        self.assertEqual(dataset.tables["Unprocessed"], [])
+
     def test_purchase_coupons_and_outgoing_transfer_build_canonical_history(self) -> None:
         reports = [
             ParsedTabysReport(
@@ -296,6 +442,27 @@ def _local_solv_resolver(path: Path) -> AixInstrumentResolver:
             "securityGroup": "Debt",
             "currency": "USD",
             "listingDate": "2024-05-27",
+        }
+    )
+    pd.DataFrame([record], columns=AIX_COLUMNS).to_excel(path, index=False)
+    return AixInstrumentResolver(aix_path=path, profile_cache_path=path.with_name("tabys_instruments.xlsx"))
+
+
+def _local_ixn_resolver(path: Path) -> AixInstrumentResolver:
+    record = {column: None for column in AIX_COLUMNS}
+    record.update(
+        {
+            "year": 2025,
+            "snapshot_type": "full",
+            "isin": "KZX000000674",
+            "secCode": "IXN",
+            "shortName": "iX NASDAQ 100 Equities",
+            "issuer": "IX Nasdaq 100 Equities SPC Limited",
+            "instrument": "Debt",
+            "assetClass": "Debt",
+            "securityGroup": "Debt",
+            "currency": "USD",
+            "listingDate": "2021-05-17",
         }
     )
     pd.DataFrame([record], columns=AIX_COLUMNS).to_excel(path, index=False)

@@ -126,7 +126,7 @@ def prep_trades(dfs: dict, need_year: int, split: bool) -> list:
     return trades_list
 
 
-def prep_civ_servant(dfs: dict, need_year: int, split: bool, fio1: str, fio2: str, fio3: str, iin: str) -> tuple:
+def prep_form_270_05(dfs: dict, need_year: int, split: bool, fio1: str, fio2: str, fio3: str, iin: str) -> tuple:
     if 'Trades' not in dfs.keys():
         return ([], [])
 
@@ -253,10 +253,10 @@ def prep_assets(dfs: dict, need_year: int) -> list:
     return assets_list
 
 
-def fill_270_04(root: etree.Element, dfs: dict, tax_data: dict, need_year: int, template_form, split, civ_servant
+def fill_270_04(root: etree.Element, dfs: dict, tax_data: dict, need_year: int, template_form, split, form270_05
                 ) -> dict:
 
-    if civ_servant:
+    if form270_05:
         trades_list = []
     else:
         trades_list = prep_trades(dfs, need_year, split)
@@ -309,7 +309,7 @@ def fill_270_04(root: etree.Element, dfs: dict, tax_data: dict, need_year: int, 
 
 def fill_270_05(root: etree.Element, dfs: dict, tax_data: dict, need_year: int, template_form, split, fio1, fio2, fio3,
                 iin):
-    buy_list, sell_list = prep_civ_servant(dfs, need_year, split, fio1, fio2, fio3, iin)
+    buy_list, sell_list = prep_form_270_05(dfs, need_year, split, fio1, fio2, fio3, iin)
     num_buys = len(buy_list)
     num_sells = len(sell_list)
     if (num_buys > 0) or (num_sells > 0):
@@ -509,7 +509,7 @@ def save_new_form(root: etree.ElementTree, tree: etree.ElementTree, account: str
     return None
 
 
-def run(account, broker, need_year, fio1, fio2, fio3, iin, split=False, civ_servant=False):
+def run(account, broker, need_year, fio1, fio2, fio3, iin, split=False, form270_05=False):
     tax_data = {
         'form_270_00': {'page_270_00_01': {'fio1': fio1, 'fio2': fio2, 'fio3': fio3, 'iin': iin,
                                            'head_name': f"{fio1} {fio2} {fio3}", 'period_year': str(need_year)}}
@@ -519,8 +519,8 @@ def run(account, broker, need_year, fio1, fio2, fio3, iin, split=False, civ_serv
     tree, root = load_xml_template(iin)
 
     form_270_04 = get_exist_form(root, 'form_270_04')
-    tax_data = fill_270_04(root, dfs, tax_data, need_year, form_270_04, split, civ_servant)
-    if civ_servant:
+    tax_data = fill_270_04(root, dfs, tax_data, need_year, form_270_04, split, form270_05)
+    if form270_05:
         form_270_05 = get_exist_form(root, 'form_270_05')
         fill_270_05(root, dfs, tax_data, need_year, form_270_05, split, fio1, fio2, fio3, iin)
     fill_taxes(root, dfs, tax_data, need_year, split)
@@ -545,10 +545,10 @@ if __name__ == "__main__":
     fio23: str = 'Нурлановна'
     iin2: str = '840811401930'
 
-    civ_servant: bool = False
+    form270_05: bool = False
 
     if split_form:
-        run(account, broker, need_year, fio1, fio2, fio3, iin, split_form, civ_servant)
-        run(account, broker, need_year, fio21, fio22, fio23, iin2, split_form, civ_servant)
+        run(account, broker, need_year, fio1, fio2, fio3, iin, split_form, form270_05)
+        run(account, broker, need_year, fio21, fio22, fio23, iin2, split_form, form270_05)
     else:
-        run(account, broker, need_year, fio1, fio2, fio3, iin, split_form, civ_servant)
+        run(account, broker, need_year, fio1, fio2, fio3, iin, split_form, form270_05)

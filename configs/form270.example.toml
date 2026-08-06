@@ -28,7 +28,7 @@ file_name = ""
 [[form270.jobs]]
 id = ""
 file_name = ""
-civ_servant = false
+form270_05 = false
 tax_year = 0
 fio1 = ""
 fio2 = ""

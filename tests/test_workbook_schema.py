@@ -57,6 +57,9 @@ class WorkbookSchemaTests(unittest.TestCase):
     def test_trades_columns_include_trade_type_marker(self) -> None:
         columns = required_columns("Trades")
         self.assertIn("trade_type", columns)
+        self.assertIn("kzt_rate", columns)
+        self.assertIn("amount_kzt", columns)
+        self.assertIn("source_of_expense", columns)
 
     def test_cash_balances_include_source_account(self) -> None:
         columns = required_columns("CashBalances")
@@ -108,6 +111,7 @@ class WorkbookSchemaTests(unittest.TestCase):
         self.assertEqual(display_column_name("only_profit_kzt"), "OnlyProfit_KZT")
         self.assertEqual(display_column_name("pnl_kzt"), "PnL_KZT")
         self.assertEqual(display_column_name("source_trade_id"), "Source_Trade_ID")
+        self.assertEqual(display_column_name("source_of_expense"), "Source_Of_Expense")
 
     def test_excel_writer_writes_numeric_columns_as_numbers(self) -> None:
         from openpyxl import load_workbook

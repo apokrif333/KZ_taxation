@@ -96,9 +96,10 @@ def parse_tabys_pdf(path: Path, *, account_id: str | None = None) -> ParsedTabys
             _populate_metadata(parsed, text)
             for table in page.extract_tables() or []:
                 header_index = _operation_header_index(table)
-                if header_index is None:
+                if header_index is None and not _is_operation_continuation_table(table):
                     continue
-                for source_row, raw_row in enumerate(table[header_index + 1 :], start=header_index + 2):
+                first_data_index = header_index + 1 if header_index is not None else 0
+                for source_row, raw_row in enumerate(table[first_data_index:], start=first_data_index + 1):
                     row = _parse_operation_row(
                         raw_row,
                         source_report=str(path),
@@ -129,7 +130,7 @@ def build_canonical_dataset(
     instrument_lookup = {str(row["symbol"]): row for row in instruments}
     dataset.tables["Instruments"] = instruments
     dataset.tables["CorporateActions"] = []
-    dataset.tables["Dividends"] = []
+    dataset.tables["Dividends"] = _build_dividends(reports, instrument_lookup, fx_provider, dataset.warnings)
 
     internal_trades = _sort_trades_by_datetime(_build_trades(reports, instrument_lookup, dataset.warnings))
     transfers, transfer_totals = _build_transfers(reports, instrument_lookup, internal_trades)
@@ -163,16 +164,20 @@ def build_canonical_dataset(
 
 def _populate_metadata(report: ParsedTabysReport, text: str) -> None:
     if report.period_start is None or report.period_end is None:
-        match = re.search(r"[cс]\s+(\d{4}-\d{2}-\d{2})\s+по\s+(\d{4}-\d{2}-\d{2})", text, re.IGNORECASE)
+        match = re.search(
+            r"(?:[cс]\s+|from\s+)(\d{4}-\d{2}-\d{2})\s+(?:по|to)\s+(\d{4}-\d{2}-\d{2})",
+            text,
+            re.IGNORECASE,
+        )
         if match:
             report.period_start = date.fromisoformat(match.group(1))
             report.period_end = date.fromisoformat(match.group(2))
     if report.account_id is None:
-        match = re.search(r"Номер\s+счета:\s*(\S+)", text, re.IGNORECASE)
+        match = re.search(r"(?:Номер\s+счета|Account\s+number):\s*(\S+)", text, re.IGNORECASE)
         if match:
             report.account_id = match.group(1)
     if report.holder_name is None:
-        match = re.search(r"ФИО:\s*(.+)", text)
+        match = re.search(r"(?:ФИО|Client\s+name):\s*(.+)", text, re.IGNORECASE)
         if match:
             report.holder_name = _clean_text(match.group(1))
 
@@ -180,9 +185,23 @@ def _populate_metadata(report: ParsedTabysReport, text: str) -> None:
 def _operation_header_index(table: Sequence[Sequence[Any]]) -> int | None:
     for index, row in enumerate(table):
         values = [_clean_text(value) for value in row]
-        if len(values) >= 15 and values[0] == "№" and values[5] == "Тип сделки":
+        if len(values) >= 15 and values[5].casefold() in {"тип сделки", "type of transaction"}:
             return index
     return None
+
+
+def _is_operation_continuation_table(table: Sequence[Sequence[Any]]) -> bool:
+    return any(_looks_like_operation_row(row) for row in table)
+
+
+def _looks_like_operation_row(raw_row: Sequence[Any]) -> bool:
+    values = [_clean_text(value) for value in raw_row[:15]]
+    return (
+        len(values) >= 15
+        and values[0].isdigit()
+        and _parse_datetime(values[1]) is not None
+        and bool(values[5])
+    )
 
 
 def _parse_operation_row(
@@ -300,7 +319,7 @@ def _build_trades(
             symbol = _security_symbol(row)
             instrument = instruments.get(symbol or "", {})
             quantity = _decimal(row.get("quantity"))
-            if _operation_key(row) == "продажа":
+            if _is_sale_operation(row):
                 quantity = -quantity
             price = _decimal(row.get("price"))
             amount = abs(_decimal(row.get("amount"))) or abs(quantity * price)
@@ -431,9 +450,8 @@ def _build_transfers(
         for row in report.rows:
             if not _is_executed(row) or not _is_cash_transfer_operation(row):
                 continue
-            operation = _operation_key(row)
             amount = abs(_decimal(row.get("amount")))
-            if operation == "вывод средств":
+            if _is_cash_withdrawal_operation(row):
                 amount = -amount
             currency = _text(row.get("currency")) or _security_symbol(row) or TABYS_BASE_CURRENCY
             totals_by_currency[currency] += amount
@@ -510,6 +528,53 @@ def _build_coupons(
     return coupons
 
 
+def _build_dividends(
+    reports: Sequence[ParsedTabysReport],
+    instruments: Mapping[str, Mapping[str, Any]],
+    fx_provider: AnnualFxRateProvider,
+    warnings: list[str],
+) -> list[dict[str, Any]]:
+    dividends: list[dict[str, Any]] = []
+    for report in reports:
+        for row in report.rows:
+            if not _is_executed(row) or not _is_income_operation(row):
+                continue
+            symbol = _security_symbol(row)
+            instrument = instruments.get(symbol or "", {})
+            if _text(instrument.get("type")) not in {"ETN", "Stocks"}:
+                continue
+            event_dt = _parse_datetime(row.get("settlement_datetime") or row.get("transaction_datetime"))
+            year = event_dt.year if event_dt else _year_for_report(report)
+            currency = _text(row.get("currency")) or _text(instrument.get("_currency")) or TABYS_BASE_CURRENCY
+            gross = _decimal(row.get("amount"))
+            withholding = Decimal("0")
+            rate = _annual_rate(fx_provider, year, currency, warnings)
+            tax = gross * Decimal("0.10")
+            isin = _text(instrument.get("isin"))
+            dividends.append(
+                {
+                    "date": event_dt.date().isoformat() if event_dt else None,
+                    "pay_date": event_dt.date().isoformat() if event_dt else None,
+                    "symbol": symbol,
+                    "isin": isin,
+                    "country": _text(instrument.get("country")) or _country_from_isin(isin),
+                    "currency": currency,
+                    "gross_amount": _money_text(gross),
+                    "withholding_tax": _money_text(withholding),
+                    "net_amount": _money_text(gross + withholding),
+                    "kzt_rate": str(rate) if rate is not None else None,
+                    "gross_amount_kzt": _amount_kzt(gross, rate),
+                    "tax": _money_text(tax),
+                    "tax_kzt": _amount_kzt(tax, rate),
+                    "offshore_flag": False,
+                    "kase_aix_preferential_flag": None,
+                    "dividend_type": "dividend",
+                    "source_report": row.get("source_report"),
+                }
+            )
+    return dividends
+
+
 def _build_tabys_unprocessed_rows(
     reports: Sequence[ParsedTabysReport],
     instruments: Mapping[str, Mapping[str, Any]],
@@ -522,7 +587,7 @@ def _build_tabys_unprocessed_rows(
                 continue
             if _is_income_operation(row):
                 instrument = instruments.get(_security_symbol(row) or "", {})
-                if _text(instrument.get("type")) not in {"Bonds", "Stocks"}:
+                if _text(instrument.get("type")) not in {"Bonds", "ETN", "Stocks"}:
                     rows.append(
                         _unprocessed_row(
                             row,
@@ -530,6 +595,8 @@ def _build_tabys_unprocessed_rows(
                             "The PDF labels this as dividend or coupon, but the instrument type is unknown.",
                         )
                     )
+                continue
+            if _is_internal_transfer_operation(row):
                 continue
             if not (_is_trade_operation(row) or _is_security_transfer_operation(row) or _is_cash_transfer_operation(row)):
                 rows.append(_unprocessed_row(row, "unsupported_tabys_operation", "Tabys operation type is not supported."))
@@ -563,12 +630,17 @@ def _populate_raw_totals(
 ) -> None:
     trade_amount = sum((_decimal(row.get("amount")) for row in trades), Decimal("0"))
     trade_commission = sum((_decimal(row.get("commission")) for row in trades), Decimal("0"))
+    dividends_gross = sum((_decimal(row.get("gross_amount")) for row in dataset.tables["Dividends"]), Decimal("0"))
+    dividends_tax = sum((_decimal(row.get("withholding_tax")) for row in dataset.tables["Dividends"]), Decimal("0"))
     coupon_amount = sum((_decimal(row.get("gross_amount")) for row in dataset.tables["Coupons"]), Decimal("0"))
     transfer_amount = sum(transfer_totals.values(), Decimal("0"))
     dataset.raw_totals.scalar_totals.update(
         {
             ReconciliationMetric.TOTAL_TRADES_GROSS_AMOUNT.value: trade_amount,
             ReconciliationMetric.TOTAL_COMMISSIONS.value: trade_commission,
+            ReconciliationMetric.TOTAL_DIVIDENDS_GROSS.value: dividends_gross,
+            ReconciliationMetric.TOTAL_DIVIDENDS_TAX.value: dividends_tax,
+            ReconciliationMetric.TOTAL_DIVIDENDS_NET.value: dividends_gross + dividends_tax,
             ReconciliationMetric.TOTAL_COUPONS.value: coupon_amount,
             ReconciliationMetric.TOTAL_DEPOSITS_WITHDRAWALS_TRANSFERS.value: transfer_amount,
         }
@@ -601,11 +673,23 @@ def _security_symbol(row: Mapping[str, Any]) -> str | None:
     symbol = _text(row.get("security"))
     if symbol in {"KZT", "USD", "EUR", "RUB", "GBP", "CHF"} and not _is_security_account(row):
         return None
+    if symbol is None:
+        return None
+    ticker_match = re.search(r"\(([A-Z0-9][A-Z0-9._-]*)\)\s*$", symbol)
+    if ticker_match:
+        return ticker_match.group(1)
+    alias = {
+        "real estate": "IXR",
+        "islamic etn": "IXI",
+    }.get(" ".join(symbol.casefold().split()))
+    if alias:
+        return alias
     return symbol
 
 
 def _is_security_account(row: Mapping[str, Any]) -> bool:
-    return "ценные бумаги" in (_text(row.get("account_type")) or "").casefold()
+    account_type = (_text(row.get("account_type")) or "").casefold()
+    return "ценные бумаги" in account_type or "securities" in account_type
 
 
 def _operation_key(row: Mapping[str, Any]) -> str:
@@ -613,23 +697,50 @@ def _operation_key(row: Mapping[str, Any]) -> str:
 
 
 def _is_trade_operation(row: Mapping[str, Any]) -> bool:
-    return _is_security_account(row) and _operation_key(row) in {"покупка", "продажа"}
+    return _is_security_account(row) and _operation_key(row) in {"покупка", "продажа", "purchase", "sale"}
+
+
+def _is_sale_operation(row: Mapping[str, Any]) -> bool:
+    return _operation_key(row) in {"продажа", "sale"}
 
 
 def _is_security_transfer_operation(row: Mapping[str, Any]) -> bool:
-    return _is_security_account(row) and "перевод ценных бумаг" in _operation_key(row)
+    operation = _operation_key(row)
+    return _is_security_account(row) and (
+        "перевод ценных бумаг" in operation
+        or "transfer of securities" in operation
+        or "securities transfer" in operation
+    )
 
 
 def _is_cash_transfer_operation(row: Mapping[str, Any]) -> bool:
-    return _operation_key(row) in {"вывод средств", "пополнение средств", "ввод средств"}
+    return _operation_key(row) in {
+        "вывод средств",
+        "пополнение средств",
+        "ввод средств",
+        "cash withdrawal",
+        "cash replenishment",
+        "cash deposit",
+        "funds withdrawal",
+        "funds deposit",
+    }
+
+
+def _is_cash_withdrawal_operation(row: Mapping[str, Any]) -> bool:
+    return _operation_key(row) in {"вывод средств", "cash withdrawal", "funds withdrawal"}
+
+
+def _is_internal_transfer_operation(row: Mapping[str, Any]) -> bool:
+    return _operation_key(row) in {"перевод между счетами", "transfer between accounts"}
 
 
 def _is_income_operation(row: Mapping[str, Any]) -> bool:
-    return "получение дивидендов или купонов" in _operation_key(row)
+    operation = _operation_key(row)
+    return "получение дивидендов или купонов" in operation or "receipt of dividends or coupon" in operation
 
 
 def _is_executed(row: Mapping[str, Any]) -> bool:
-    return (_text(row.get("status")) or "").casefold() == "исполнен"
+    return (_text(row.get("status")) or "").casefold() in {"исполнен", "executed"}
 
 
 def _max_report_year(reports: Sequence[ParsedTabysReport]) -> int | None:

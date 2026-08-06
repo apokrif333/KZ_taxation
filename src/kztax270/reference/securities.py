@@ -365,12 +365,22 @@ def _aix_asset_type(record: Mapping[str, Any]) -> str | None:
         _first_text(record, "instrument"),
         _first_text(record, "assetClass"),
         _first_text(record, "securityGroup"),
+        _first_text(record, "securityName"),
+        _first_text(record, "shortName"),
     ]
     combined = " ".join(value.casefold() for value in values if value)
+    # AIX classifies retail ETNs under its broad DEBT group.  The explicit ETN
+    # marker is more specific and must win: ETNs are not bonds for FIFO and
+    # tax reporting purposes.
+    issuer = (_first_text(record, "issuer") or "").casefold()
+    ticker = (_normalize_ticker(record.get("secCode")) or "").casefold()
+    # Older iX products (for example IXG and IXU) have no ``ETN`` label in the
+    # AIX profile, although their issuer identifies them as the same iX SPC
+    # ETN programme.  AIX still puts them into the broad Debt group.
+    if "etn" in combined or (ticker.startswith("ix") and issuer.startswith("ix ") and "spc" in issuer):
+        return "ETN"
     if any(token in combined for token in ("debt", "bond", "облигац")):
         return "Bonds"
-    if "etn" in combined:
-        return "ETN"
     if any(token in combined for token in ("equity", "share", "stock", "etf", "fund", "акци")):
         return "Stocks"
     return values[0] or values[1] or values[2]

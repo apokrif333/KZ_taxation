@@ -5,17 +5,22 @@ from __future__ import annotations
 import copy
 import json
 import re
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Mapping, Sequence
-
-import pandas as pd
+from typing import Any
 
 from kztax270.canonical.schema import CanonicalDataset
-
+from kztax270.canonical.trade_enrichment import (
+    SOURCE_ASSET_SALE_CODE,
+    SOURCE_OWN_FUNDS_CODE,
+    classify_form270_05_sources,
+    is_forex_trade,
+    is_real_form270_05_trade,
+)
 
 ZERO = Decimal("0")
 HALF = Decimal("0.5")
@@ -36,11 +41,7 @@ COUNTRY_CODES_FILE = "ThreeSymbolsISOCountres.json"
 CURRENCY_CODES_FILE = "ThreeSymbolsCurrency.json"
 TRADES_TYPES_FILE = "TradesTypes.json"
 ASSET_TYPES_FILE = "AssetsTypes.json"
-SOURCE_OWN_FUNDS = (
-    "собственные средства (денежные средства, полученный доход с момента представления "
-    "первоначальной Декларации об активах и обязательствах)"
-)
-SOURCE_ASSET_SALE = "денежные средства от реализации активов"
+SOURCE_OF_EXPENSE_FILE = "SourceOfExpense.json"
 
 COUNTRY_ISO3_BY_ISO2 = {
     "BM": "BMU",
@@ -178,7 +179,7 @@ class Form270JsonBuilder:
         tax_year: int,
         taxpayer: Mapping[str, Any] | Form270Owner | None = None,
         split: bool = False,
-        civ_servant: bool = False,
+        form270_05: bool = False,
         bank_info: Mapping[str, Any] | BrokerBankInfo | None = None,
         bank_infos: Mapping[str, BrokerBankInfo] | None = None,
     ) -> dict[str, Any]:
@@ -189,7 +190,7 @@ class Form270JsonBuilder:
             taxpayer=taxpayer,
             broker=broker,
             split=split,
-            civ_servant=civ_servant,
+            form270_05=form270_05,
             bank_info=bank_info,
             bank_infos=bank_infos,
         )
@@ -203,7 +204,7 @@ class Form270JsonBuilder:
         broker: str | None = None,
         account_id: str | None = None,
         split: bool = False,
-        civ_servant: bool = False,
+        form270_05: bool = False,
         bank_info: Mapping[str, Any] | BrokerBankInfo | None = None,
         bank_infos: Mapping[str, BrokerBankInfo] | None = None,
     ) -> dict[str, Any]:
@@ -215,7 +216,7 @@ class Form270JsonBuilder:
             taxpayer=taxpayer,
             broker=broker or resolved_broker,
             split=split,
-            civ_servant=civ_servant,
+            form270_05=form270_05,
             bank_info=bank_info,
             bank_infos=bank_infos,
         )
@@ -228,7 +229,7 @@ class Form270JsonBuilder:
         taxpayer: Mapping[str, Any] | Form270Owner | None,
         broker: str,
         split: bool,
-        civ_servant: bool,
+        form270_05: bool,
         bank_info: Mapping[str, Any] | BrokerBankInfo | None,
         bank_infos: Mapping[str, BrokerBankInfo] | None,
     ) -> dict[str, Any]:
@@ -247,7 +248,7 @@ class Form270JsonBuilder:
             selected_applications.append("application_01")
 
         application_04 = content.setdefault("application_04", {"B": [], "C": [], "D": [], "E": []})
-        application_04["B"] = [] if civ_servant else _build_application_04_b(tables, tax_year=tax_year, split=split)
+        application_04["B"] = [] if form270_05 else _build_application_04_b(tables, tax_year=tax_year, split=split)
         application_04["C"] = _build_application_04_c(
             tables,
             tax_year=tax_year,
@@ -262,13 +263,11 @@ class Form270JsonBuilder:
             selected_applications.append("application_04")
 
         application_05 = content.setdefault("application_05", {"B": [], "C": []})
-        if civ_servant:
-            owner = _owner_from_taxpayer(taxpayer)
+        if form270_05:
             application_05["B"], application_05["C"] = _build_application_05(
                 tables,
                 tax_year=tax_year,
                 split=split,
-                owner=owner,
             )
             if application_05["B"] or application_05["C"]:
                 selected_applications.append("application_05")
@@ -698,82 +697,72 @@ def _build_application_05(
     *,
     tax_year: int,
     split: bool,
-    owner: Form270Owner | None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    trades = [
-        row
-        for row in tables.get("Trades", [])
-        if not _is_excluded_security(row) and not _is_forex(row) and _parse_date(row.get("date_time")) is not None
-    ]
+    trades = [dict(row) for row in tables.get("Trades", []) if _parse_date(row.get("date_time")) is not None]
     if not trades:
         return [], []
 
     rates = _rate_lookup(tables)
-    running_sale_funds = ZERO
-    source_by_key: dict[int, tuple[str, str, str]] = {}
-    for idx, row in sorted(enumerate(trades), key=lambda item: _parse_date(item[1].get("date_time")) or datetime.min):
-        signed_amount = _signed_trade_amount(row)
+    for row in trades:
+        parsed_date = _parse_date(row.get("date_time"))
         currency = _str_or_none(row.get("currency")) or "KZT"
-        year = (_parse_date(row.get("date_time")) or datetime(tax_year, 1, 1)).year
-        amount_kzt = signed_amount * rates.get((year, currency), Decimal("1"))
-        if amount_kzt < ZERO:
-            running_sale_funds += amount_kzt
-            source_by_key[idx] = ("", "", "")
-            continue
-        if amount_kzt > ZERO and abs(running_sale_funds) > amount_kzt:
-            running_sale_funds += amount_kzt
-            source_by_key[idx] = _source_tuple(owner, SOURCE_ASSET_SALE)
-        elif amount_kzt > ZERO:
-            source_by_key[idx] = _source_tuple(owner, SOURCE_OWN_FUNDS)
-        else:
-            source_by_key[idx] = ("", "", "")
+        rate = _decimal(row.get("kzt_rate"))
+        if rate <= ZERO and parsed_date is not None:
+            rate = rates.get((parsed_date.year, currency), Decimal("1") if currency == "KZT" else ZERO)
+        row["kzt_rate"] = rate
+        row["amount_kzt"] = abs(_decimal(row.get("amount"))) * rate
+    trades = classify_form270_05_sources(trades)
 
     buys: list[dict[str, Any]] = []
     sells: list[dict[str, Any]] = []
-    for idx, row in sorted(enumerate(trades), key=lambda item: _parse_date(item[1].get("date_time")) or datetime.min):
+    for row in trades:
         parsed_date = _parse_date(row.get("date_time"))
-        if parsed_date is None or parsed_date.year != tax_year:
+        if parsed_date is None or parsed_date.year != tax_year or not is_real_form270_05_trade(row):
             continue
         quantity = _decimal(row.get("quantity"))
         identifier = _instrument_identifier(row)
-        if identifier is None or quantity == ZERO:
+        if identifier is None:
             continue
         country = _country_code_for_form(_country_from_row(row))
-        currency = _str_or_none(row.get("currency")) or ""
-        amount = abs(_decimal(row.get("amount_with_commission") or row.get("amount")))
+        country_name = COUNTRY_NAME_RU_BY_CODE.get(country, country)
+        currency = _currency_code_for_form(_str_or_none(row.get("currency")))
+        amount = abs(_decimal(row.get("amount")))
+        amount_kzt = abs(_decimal(row.get("amount_kzt")))
         if split:
             amount *= HALF
+            amount_kzt *= HALF
         if quantity > ZERO:
-            source, source_id, source_name = source_by_key.get(idx, ("", "", ""))
+            source = _source_of_expense_code(_str_or_none(row.get("source_of_expense")))
             buys.append(
                 {
                     "A": _row_no(len(buys) + 1),
                     "B": _asset_kind_code(row),
+                    "_01": None,
                     "C": identifier,
                     "D": _format_date(parsed_date),
                     "E": country,
-                    "F": "-",
+                    "F": country_name,
                     "G": currency,
                     "H": _decimal_json(amount, places=2),
                     "I": source,
-                    "J": source_id,
-                    "K": source_name,
-                    "L": currency,
-                    "M": _decimal_json(amount, places=2),
+                    "_02": None,
+                    "J": "-",
+                    "K": "-",
+                    "L": "KZT",
+                    "val_M": {"value": _decimal_json(amount_kzt, places=2), "manual": True},
                     "index": len(buys),
                 }
             )
         else:
-            year = parsed_date.year
-            amount_kzt = amount * rates.get((year, currency), Decimal("1"))
             sells.append(
                 {
                     "A": _row_no(len(sells) + 1),
                     "B": _asset_kind_code(row),
+                    "_01": None,
                     "C": identifier,
                     "D": _format_date(parsed_date),
                     "E": country,
-                    "F": "-",
+                    "F": country_name,
                     "G": "-",
                     "H": "-",
                     "I": _decimal_json(amount_kzt, places=2),
@@ -865,12 +854,6 @@ def _taxpayer_mapping(taxpayer: Mapping[str, Any] | Form270Owner | None) -> dict
     return dict(taxpayer or {})
 
 
-def _source_tuple(owner: Form270Owner | None, source: str) -> tuple[str, str, str]:
-    if owner is None:
-        return source, "", ""
-    return source, owner.iin, owner.full_name
-
-
 def _sum_positive(
     rows: Sequence[Mapping[str, Any]],
     field: str,
@@ -955,6 +938,7 @@ def _is_preferential_dividend(row: Mapping[str, Any]) -> bool:
 def _rate_lookup(tables: Mapping[str, Sequence[Mapping[str, Any]]]) -> dict[tuple[int, str], Decimal]:
     rates: dict[tuple[int, str], Decimal] = {}
     for sheet_name, date_field in (
+        ("Trades", "date_time"),
         ("Dividends", "date"),
         ("Interest", "date"),
         ("Coupons", "date"),
@@ -975,12 +959,6 @@ def _rate_lookup(tables: Mapping[str, Sequence[Mapping[str, Any]]]) -> dict[tupl
         if year and currency and cash != ZERO and cash_kzt != ZERO:
             rates[(year, currency)] = abs(cash_kzt / cash)
     return rates
-
-
-def _signed_trade_amount(row: Mapping[str, Any]) -> Decimal:
-    amount = abs(_decimal(row.get("amount_with_commission") or row.get("amount")))
-    quantity = _decimal(row.get("quantity"))
-    return amount if quantity > ZERO else -amount
 
 
 def _asset_kind_code(row: Mapping[str, Any]) -> str:
@@ -1043,9 +1021,7 @@ def _is_excluded_security(row: Mapping[str, Any]) -> bool:
 
 
 def _is_forex(row: Mapping[str, Any]) -> bool:
-    asset_type = str(row.get("asset_type") or row.get("Asset_Type") or "").lower()
-    symbol = str(row.get("symbol") or row.get("Symbol") or "").upper()
-    return asset_type in {"currency", "forex", "fx_spot", "cash"} or "FOREX" in asset_type or ".FX" in symbol
+    return is_forex_trade(row)
 
 
 def _instrument_identifier(row: Mapping[str, Any]) -> str | None:
@@ -1082,6 +1058,13 @@ def _currency_code_for_form(currency: str | None) -> str:
 
 def _trade_type_code_for_form(operation: str | None) -> str:
     return _reference_code_or_original(operation, TRADES_TYPES_FILE)
+
+
+def _source_of_expense_code(value: str | None) -> str:
+    code = _reference_code_or_original(value, SOURCE_OF_EXPENSE_FILE)
+    if code in _reference_codes(SOURCE_OF_EXPENSE_FILE):
+        return code
+    return SOURCE_OWN_FUNDS_CODE if value != SOURCE_ASSET_SALE_CODE else SOURCE_ASSET_SALE_CODE
 
 
 def _reference_code_or_original(value: str | None, filename: str) -> str:

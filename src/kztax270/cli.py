@@ -17,9 +17,11 @@ from kztax270.config import (
     load_form270_run_config,
     load_project_config,
 )
+from kztax270.excel.form270_05_trades import prepare_form270_05_trades_workbook
 from kztax270.excel.joint_workbook import create_joint_audit_workbook
 from kztax270.excel.merge_workbooks import merge_audit_workbooks
 from kztax270.form270.json_builder import BrokerBankInfo, Form270JsonBuilder, Form270Owner
+from kztax270.reference.fx import AnnualFxRateProvider
 from kztax270.reference.nbk import ensure_nbk_rates_current, upsert_nbk_average_annual_rates_xlsx
 from kztax270.reference.repositories import ReferenceDataStore
 from kztax270.reference.securities import ensure_aix_instruments_current
@@ -63,6 +65,7 @@ def build_parser() -> argparse.ArgumentParser:
     fill_270.add_argument("--form-year", type=int, required=True)
     fill_270.add_argument("--processed-root", default="data/processed")
     fill_270.add_argument("--output-root", default="data/output")
+    fill_270.add_argument("--nbk-rates", default="data/nb_rates.xlsx")
     fill_270.add_argument("--template", default="data/templates/270 new template.json")
     fill_270.add_argument("--workbook", type=Path, default=None)
     fill_270.add_argument("--fio1", required=True, help="Фамилия владельца")
@@ -80,7 +83,12 @@ def build_parser() -> argparse.ArgumentParser:
     fill_270.add_argument("--second-fio2", default=None, help="Имя второго владельца")
     fill_270.add_argument("--second-fio3", default="", help="Отчество второго владельца")
     fill_270.add_argument("--second-iin", default=None)
-    fill_270.add_argument("--civ-servant", action="store_true", help="Fill application_05 instead of application_04.B trades")
+    fill_270.add_argument(
+        "--form270-05",
+        dest="form270_05",
+        action="store_true",
+        help="Fill application_05 instead of application_04.B trades",
+    )
     fill_270.add_argument("--phone", default=None)
     fill_270.add_argument("--email", default=None)
     fill_270.add_argument("--ogd-residence", default=None)
@@ -164,6 +172,12 @@ def main(argv: list[str] | None = None) -> int:
             second_owner = Form270Owner(args.second_fio1, args.second_fio2, args.second_fio3, args.second_iin)
             owners = [(first_owner, second_owner.iin), (second_owner, first_owner.iin)]
 
+        if args.form270_05:
+            ensure_nbk_rates_current(Path(args.nbk_rates))
+            prepare_form270_05_trades_workbook(
+                workbook_path,
+                AnnualFxRateProvider.from_nbk_rates_xlsx(Path(args.nbk_rates)),
+            )
         for owner, spouse_iin in owners:
             taxpayer = _taxpayer_payload_from_args(args, owner, spouse_iin=spouse_iin if args.split_joint else None)
             draft = builder.build_processed_workbook_draft(
@@ -173,7 +187,7 @@ def main(argv: list[str] | None = None) -> int:
                 broker=args.broker,
                 account_id=args.account_id,
                 split=args.split_joint,
-                civ_servant=args.civ_servant,
+                form270_05=args.form270_05,
                 bank_info=bank_info,
             )
             output_path = output_root / _form270_output_name(args.form_year, args.broker, args.account_id, owner)
@@ -234,7 +248,14 @@ def _run_form270_config(config: Form270RunConfig, *, only: list[str] | None = No
         if tax_year is None:
             raise SystemExit(f"form270 job mode={job.mode} requires tax_year in the job or [form270]")
         joint_account = config.defaults.joint_account if job.joint_account is None else job.joint_account
-        civ_servant = config.defaults.civ_servant if job.civ_servant is None else job.civ_servant
+        form270_05 = config.defaults.form270_05 if job.form270_05 is None else job.form270_05
+
+        if form270_05:
+            ensure_nbk_rates_current(config.paths.nbk_rates)
+            prepare_form270_05_trades_workbook(
+                workbook_path,
+                AnnualFxRateProvider.from_nbk_rates_xlsx(config.paths.nbk_rates),
+            )
 
         owners: list[tuple[Form270OwnerConfig, str | None]] = [(job.owner, None)]
         if joint_account:
@@ -252,7 +273,7 @@ def _run_form270_config(config: Form270RunConfig, *, only: list[str] | None = No
                 broker=broker or None,
                 account_id=account_id or None,
                 split=joint_account,
-                civ_servant=civ_servant,
+                form270_05=form270_05,
                 bank_info=bank_info,
                 bank_infos=configured_bank_infos,
             )
@@ -350,7 +371,7 @@ def _job_from_legacy_form(form: Form270FillConfig) -> Form270JobConfig:
         workbooks=form.workbooks,
         second_owner=form.second_owner,
         joint_account=form.joint_account,
-        civ_servant=form.civ_servant,
+        form270_05=form.form270_05,
         phone=form.phone,
         email=form.email,
         ogd_residence=form.ogd_residence,

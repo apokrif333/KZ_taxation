@@ -29,8 +29,11 @@
             "selectedApplications": [
                 "application_04",
                 "application_01",
-                "application_06"
-            ]
+                "application_06",
+                "application_05"
+            ],
+            "fileUpload": [],
+            "fileUpload_2": []
         },
         "application_01": {
             "A": {
@@ -373,8 +376,133 @@
             ]
         },
         "application_05": {
-            "B": [],
-            "C": []
+            "B": [
+                {
+                    "A": "00000001",
+                    "B": "1",
+                    "_01": null,
+                    "C": "FDSfE$f2",
+                    "D": "16.10.2025",
+                    "E": "CZE",
+                    "F": "Прага, Чешская 12",
+                    "G": "CZK",
+                    "H": 12312414,
+                    "I": "11",
+                    "_02": null,
+                    "J": "-",
+                    "K": "-",
+                    "L": "KZT",
+                    "val_M": {
+                        "value": 274689956,
+                        "manual": true
+                    },
+                    "index": 0
+                },
+                {
+                    "A": "00000002",
+                    "B": "3",
+                    "_01": null,
+                    "C": "US57636Q1040",
+                    "D": "09.10.2025",
+                    "E": "USA",
+                    "F": "США",
+                    "G": "USD",
+                    "H": 33453,
+                    "I": "12",
+                    "_02": null,
+                    "J": "-",
+                    "K": "-",
+                    "L": "KZT",
+                    "val_M": {
+                        "value": 16726500,
+                        "manual": true
+                    },
+                    "index": 1
+                },
+                {
+                    "A": "00000003",
+                    "B": "4",
+                    "_01": null,
+                    "C": "SPY C350 020225",
+                    "D": "14.08.2025",
+                    "E": "USA",
+                    "F": "США",
+                    "G": "USD",
+                    "H": 2352,
+                    "I": "12",
+                    "_02": null,
+                    "J": "-",
+                    "K": "-",
+                    "L": "KZT",
+                    "val_M": {
+                        "value": 1176000,
+                        "manual": true
+                    },
+                    "index": 2
+                },
+                {
+                    "A": "00000004",
+                    "B": "3",
+                    "_01": null,
+                    "C": "IE00B86MWN23",
+                    "D": "25.07.2025",
+                    "E": "IRL",
+                    "F": "Ирландия",
+                    "G": "EUR",
+                    "H": 24522,
+                    "I": "12",
+                    "_02": null,
+                    "J": "-",
+                    "K": "-",
+                    "L": "KZT",
+                    "val_M": {
+                        "value": 13261988,
+                        "manual": true
+                    },
+                    "index": 3
+                }
+            ],
+            "C": [
+                {
+                    "A": "00000001",
+                    "B": "1",
+                    "_01": null,
+                    "C": "SFDG34v34",
+                    "D": "15.05.2025",
+                    "E": "RUS",
+                    "F": "Москва, Российская 12",
+                    "G": "-",
+                    "H": "-",
+                    "I": 152541242,
+                    "index": 0
+                },
+                {
+                    "A": "00000002",
+                    "B": "3",
+                    "_01": null,
+                    "C": "CH0106027193",
+                    "D": "13.08.2025",
+                    "E": "CHE",
+                    "F": "Швейцария",
+                    "G": "-",
+                    "H": "-",
+                    "I": 1223425,
+                    "index": 1
+                },
+                {
+                    "A": "00000003",
+                    "B": "4",
+                    "_01": null,
+                    "C": "QQQ C300 230224",
+                    "D": "23.10.2025",
+                    "E": "USA",
+                    "F": "США",
+                    "G": "-",
+                    "H": "-",
+                    "I": 4534534,
+                    "index": 2
+                }
+            ]
         },
         "application_06": {
             "B": []
@@ -386,7 +514,7 @@
             "DisclosureOfInformation": false,
             "isResponsible": false,
             "fullNameOfHead": "АШИХМИН АЛЕКСЕЙ МИХАЙЛОВИЧ",
-            "declarationDate": "23.06.2026",
+            "declarationDate": "06.08.2026",
             "fullNameOfAuthorizedPerson": "",
             "fullNameOfEmployeeWhoAcceptedDeclaration": "",
             "declarationReceiptDate": null,

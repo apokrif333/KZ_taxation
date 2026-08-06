@@ -10,7 +10,7 @@ form270_template = "data/templates/270 new template.json"
 # tax_year filters rows in processed Excel workbooks.
 tax_year = 2024
 joint_account = false
-civ_servant = false
+form270_05 = false
 phone = "+7 (707) 878-71-33"
 email = "alex.ah@list.ru"
 ogd_residence = ""

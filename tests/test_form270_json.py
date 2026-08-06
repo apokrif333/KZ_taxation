@@ -1,22 +1,22 @@
 from __future__ import annotations
 
-from decimal import Decimal
 import tempfile
 import unittest
+from decimal import Decimal
 from pathlib import Path
 
 from conftest_imports import ROOT, SRC  # noqa: F401
 from kztax270.canonical.schema import CanonicalDataset
 from kztax270.config import load_form270_run_config
 from kztax270.form270.json_builder import (
+    ASSET_TYPES_FILE,
     COUNTRY_CODES_FILE,
     CURRENCY_CODES_FILE,
-    Form270JsonBuilder,
-    Form270Owner,
     OPERATION_GRATUITOUS,
     OPERATION_GRATUITOUS_TRANSFERRED,
-    ASSET_TYPES_FILE,
     TRADES_TYPES_FILE,
+    Form270JsonBuilder,
+    Form270Owner,
     _country_code_for_form,
     _currency_code_for_form,
     _reference_codes,
@@ -352,6 +352,121 @@ class Form270JsonTests(unittest.TestCase):
         self.assertEqual(rows[0]["B"], _trade_type_code_for_form(OPERATION_GRATUITOUS_TRANSFERRED))
         self.assertEqual(rows[0]["D"], 7.5356)
 
+    def test_builder_fills_application_05_from_real_trades_and_global_sale_pool(self) -> None:
+        dataset = CanonicalDataset.empty("merged", "Bekenova_Daniya")
+        dataset.tables["Trades"] = [
+            {
+                "date_time": "2024-12-31 10:00:00",
+                "trade_type": "trade",
+                "symbol": "OLD",
+                "isin": "US0000000001",
+                "asset_type": "Stocks",
+                "quantity": "-1",
+                "amount": "100",
+                "amount_with_commission": "101",
+                "kzt_rate": "1",
+                "currency": "KZT",
+                "country": "US",
+            },
+            {
+                "date_time": "2025-01-02 10:00:00",
+                "trade_type": "trade",
+                "symbol": "BIG",
+                "isin": "US0000000002",
+                "asset_type": "Stocks",
+                "quantity": "1",
+                "amount": "150",
+                "amount_with_commission": "999",
+                "kzt_rate": "1",
+                "currency": "KZT",
+                "country": "US",
+            },
+            {
+                "date_time": "2025-01-03 10:00:00",
+                "trade_type": "trade",
+                "symbol": "KZSTOCK",
+                "isin": "KZ0000000001",
+                "asset_type": "Stocks",
+                "quantity": "1",
+                "amount": "100",
+                "kzt_rate": "1",
+                "currency": "KZT",
+                "country": "KZ",
+            },
+            {
+                "date_time": "2025-01-04 10:00:00",
+                "trade_type": "trade",
+                "symbol": "EUR/USD.FX",
+                "asset_type": "FX Spot",
+                "quantity": "1",
+                "amount": "10",
+                "kzt_rate": "1",
+                "currency": "KZT",
+                "country": "CY",
+            },
+            {
+                "date_time": "2025-01-05 10:00:00",
+                "trade_type": "trade",
+                "symbol": "CURRENT-SALE",
+                "isin": "US0000000003",
+                "asset_type": "Stocks",
+                "quantity": "-1",
+                "amount": "20",
+                "kzt_rate": "1",
+                "currency": "KZT",
+                "country": "US",
+            },
+            {
+                "date_time": "2025-01-06 10:00:00",
+                "trade_type": "trade",
+                "symbol": "EUR.USD",
+                "asset_type": "Forex",
+                "quantity": "1",
+                "amount": "50",
+                "kzt_rate": "1",
+                "currency": "KZT",
+            },
+            {
+                "date_time": "2025-01-07 10:00:00",
+                "trade_type": "trade",
+                "symbol": "TEST.REPO",
+                "asset_type": "Stocks",
+                "quantity": "1",
+                "amount": "50",
+                "kzt_rate": "1",
+                "currency": "KZT",
+            },
+            {
+                "date_time": "2025-01-08 10:00:00",
+                "trade_type": "stock_award_grant",
+                "symbol": "GRANT",
+                "asset_type": "Stocks",
+                "quantity": "1",
+                "amount": "0",
+                "kzt_rate": "1",
+                "currency": "KZT",
+            },
+        ]
+
+        form = _builder().build_account_draft(dataset, tax_year=2025, form270_05=True)
+        content = form["fnoContent"]
+
+        self.assertEqual(content["application_04"]["B"], [])
+        buys = content["application_05"]["B"]
+        sells = content["application_05"]["C"]
+        self.assertEqual([row["C"] for row in buys], ["US0000000002", "KZ0000000001", "EUR/USD.FX"])
+        self.assertEqual([row["I"] for row in buys], ["11", "12", "11"])
+        self.assertEqual(buys[0]["H"], 150)
+        self.assertEqual(buys[0]["J"], "-")
+        self.assertEqual(buys[0]["K"], "-")
+        self.assertEqual(buys[0]["L"], "KZT")
+        self.assertEqual(buys[0]["val_M"], {"value": 150, "manual": True})
+        self.assertEqual(buys[1]["E"], "KAZ")
+        self.assertEqual(buys[2]["B"], "4")
+        self.assertEqual(len(sells), 1)
+        self.assertEqual(sells[0]["C"], "US0000000003")
+        self.assertEqual(sells[0]["I"], 20)
+
     def test_builder_groups_cash_by_source_broker_for_merged_workbook(self) -> None:
         dataset = CanonicalDataset.empty("merged", "Test_User")
         dataset.tables["CashBalances"] = [
@@ -612,6 +727,29 @@ iin = "000000000001"
             config.jobs[1].workbooks,
             (Path("ib_UTEST_audit.xlsx"), Path("exante_ETEST_audit.xlsx")),
         )
+
+    def test_form270_run_config_loads_exact_form270_05_key(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "form270.toml"
+            path.write_text(
+                """
+[form270]
+
+[[form270.jobs]]
+id = "270_json"
+file_name = "merged_Client.xlsx"
+form270_05 = true
+tax_year = 2025
+fio1 = "Client"
+fio2 = "Test"
+iin = "1"
+""",
+                encoding="utf-8",
+            )
+
+            config = load_form270_run_config(path)
+
+        self.assertTrue(config.jobs[0].form270_05)
 
     def test_reference_dictionaries_normalize_form_codes(self) -> None:
         self.assertEqual(_country_code_for_form("US"), "USA")

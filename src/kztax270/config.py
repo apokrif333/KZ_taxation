@@ -64,7 +64,7 @@ class Form270BankConfig:
 class Form270DefaultsConfig:
     tax_year: int | None = None
     joint_account: bool = False
-    civ_servant: bool = False
+    form270_05: bool = False
     phone: str | None = None
     email: str | None = None
     ogd_residence: str | None = None
@@ -81,7 +81,7 @@ class Form270FillConfig:
     workbooks: tuple[Path, ...] = ()
     second_owner: Form270OwnerConfig | None = None
     joint_account: bool | None = None
-    civ_servant: bool | None = None
+    form270_05: bool | None = None
     phone: str | None = None
     email: str | None = None
     ogd_residence: str | None = None
@@ -111,7 +111,7 @@ class Form270JobConfig:
     workbooks: tuple[Path, ...] = ()
     second_owner: Form270OwnerConfig | None = None
     joint_account: bool | None = None
-    civ_servant: bool | None = None
+    form270_05: bool | None = None
     phone: str | None = None
     email: str | None = None
     ogd_residence: str | None = None
@@ -184,12 +184,19 @@ def _load_form270_defaults(data: dict[str, Any]) -> Form270DefaultsConfig:
     return Form270DefaultsConfig(
         tax_year=int(data["tax_year"]) if data.get("tax_year") is not None else None,
         joint_account=_load_bool(data, ("joint_account", "split_joint"), default=False),
-        civ_servant=bool(data.get("civ_servant", False)),
+        form270_05=_load_form270_05(data, default=False),
         phone=data.get("phone"),
         email=data.get("email"),
         ogd_residence=data.get("ogd_residence"),
         ogd_location=data.get("ogd_location"),
     )
+
+
+def _load_form270_05(data: dict[str, Any], *, default: bool | None) -> bool | None:
+    """Read the canonical Form 270.05 switch from TOML."""
+
+    value = data.get("form270_05", default)
+    return bool(value) if value is not None else None
 
 
 def _load_form270_fill(data: dict[str, Any]) -> Form270FillConfig:
@@ -206,7 +213,7 @@ def _load_form270_fill(data: dict[str, Any]) -> Form270FillConfig:
         workbooks=workbooks,
         second_owner=_load_form270_owner(data, prefix="second_") if data.get("second_iin") else None,
         joint_account=_load_optional_bool(data, ("joint_account", "split_joint")),
-        civ_servant=bool(data["civ_servant"]) if data.get("civ_servant") is not None else None,
+        form270_05=_load_form270_05(data, default=None),
         phone=data.get("phone"),
         email=data.get("email"),
         ogd_residence=data.get("ogd_residence"),
@@ -258,7 +265,7 @@ def _load_form270_job(data: dict[str, Any]) -> Form270JobConfig:
         workbooks=workbooks,
         second_owner=_load_form270_owner(data, prefix="second_") if data.get("second_iin") else None,
         joint_account=joint_account_mode,
-        civ_servant=bool(data["civ_servant"]) if data.get("civ_servant") is not None else None,
+        form270_05=_load_form270_05(data, default=None),
         phone=data.get("phone"),
         email=data.get("email"),
         ogd_residence=data.get("ogd_residence"),
