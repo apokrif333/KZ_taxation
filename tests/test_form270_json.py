@@ -271,6 +271,20 @@ class Form270JsonTests(unittest.TestCase):
         self.assertEqual(rows[0]["B"], "1")
         self.assertEqual(rows[0]["C"], "3")
 
+    def test_application_04_b_is_sorted_by_date_then_isin(self) -> None:
+        dataset = CanonicalDataset.empty("ib", "USORT04")
+        dataset.tables["Trades"] = [
+            _sorting_trade("2025-02-02 09:00:00", "US0000000003", "1"),
+            _sorting_trade("2025-02-01 12:00:00", "US0000000002", "1"),
+            _sorting_trade("2025-02-01 09:00:00", "US0000000001", "1"),
+        ]
+
+        form = _builder().build_account_draft(dataset, tax_year=2025)
+
+        rows = form["fnoContent"]["application_04"]["B"]
+        self.assertEqual([row["E"] for row in rows], ["US0000000001", "US0000000002", "US0000000003"])
+        self.assertEqual([row["F"] for row in rows], ["01.02.2025", "01.02.2025", "02.02.2025"])
+
     def test_builder_marks_stock_award_grant_as_gratuitous(self) -> None:
         dataset = CanonicalDataset.empty("ib", "UGRANT")
         dataset.tables["Trades"] = [
@@ -382,6 +396,18 @@ class Form270JsonTests(unittest.TestCase):
                 "country": "US",
             },
             {
+                "date_time": "2025-01-02 12:00:00",
+                "trade_type": "corporate_action:merged",
+                "symbol": "CASH-MERGER",
+                "isin": "US0000000004",
+                "asset_type": "Stocks",
+                "quantity": "-1",
+                "amount": "200",
+                "kzt_rate": "1",
+                "currency": "KZT",
+                "country": "US",
+            },
+            {
                 "date_time": "2025-01-03 10:00:00",
                 "trade_type": "trade",
                 "symbol": "KZSTOCK",
@@ -455,7 +481,7 @@ class Form270JsonTests(unittest.TestCase):
         buys = content["application_05"]["B"]
         sells = content["application_05"]["C"]
         self.assertEqual([row["C"] for row in buys], ["US0000000002", "KZ0000000001", "EUR/USD.FX"])
-        self.assertEqual([row["I"] for row in buys], ["11", "12", "11"])
+        self.assertEqual([row["I"] for row in buys], ["11", "12", "12"])
         self.assertEqual(buys[0]["H"], 150)
         self.assertEqual(buys[0]["J"], "-")
         self.assertEqual(buys[0]["K"], "-")
@@ -463,9 +489,51 @@ class Form270JsonTests(unittest.TestCase):
         self.assertEqual(buys[0]["val_M"], {"value": 150, "manual": True})
         self.assertEqual(buys[1]["E"], "KAZ")
         self.assertEqual(buys[2]["B"], "4")
-        self.assertEqual(len(sells), 1)
-        self.assertEqual(sells[0]["C"], "US0000000003")
-        self.assertEqual(sells[0]["I"], 20)
+        self.assertEqual([row["C"] for row in sells], ["US0000000004", "US0000000003"])
+        self.assertEqual([row["I"] for row in sells], [200, 20])
+
+    def test_application_05_b_and_c_are_sorted_by_date_then_isin(self) -> None:
+        dataset = CanonicalDataset.empty("ib", "USORT05")
+        dataset.tables["Trades"] = [
+            _sorting_trade("2025-02-02 09:00:00", "US0000000005", "1"),
+            _sorting_trade("2025-02-01 12:00:00", "US0000000004", "1"),
+            _sorting_trade("2025-02-01 09:00:00", "US0000000001", "1"),
+            _sorting_trade("2025-02-01 11:00:00", "US0000000003", "-1"),
+            _sorting_trade("2025-02-01 10:00:00", "US0000000002", "-1"),
+        ]
+
+        form = _builder().build_account_draft(dataset, tax_year=2025, form270_05=True)
+
+        app = form["fnoContent"]["application_05"]
+        self.assertEqual(
+            [row["C"] for row in app["B"]],
+            ["US0000000001", "US0000000004", "US0000000005"],
+        )
+        self.assertEqual(
+            [row["C"] for row in app["C"]],
+            ["US0000000002", "US0000000003"],
+        )
+
+    def test_application_05_c_sale_value_is_rounded_to_whole_tenge(self) -> None:
+        dataset = CanonicalDataset.empty("ib", "UROUND05")
+        dataset.tables["Trades"] = [
+            {
+                "date_time": "2025-02-01 10:00:00",
+                "trade_type": "trade",
+                "symbol": "ROUND",
+                "isin": "US0000000001",
+                "asset_type": "Stocks",
+                "quantity": "-1",
+                "amount": "1",
+                "kzt_rate": "1.5",
+                "currency": "USD",
+                "country": "US",
+            }
+        ]
+
+        form = _builder().build_account_draft(dataset, tax_year=2025, form270_05=True)
+
+        self.assertEqual(form["fnoContent"]["application_05"]["C"][0]["I"], 2)
 
     def test_builder_groups_cash_by_source_broker_for_merged_workbook(self) -> None:
         dataset = CanonicalDataset.empty("merged", "Test_User")
@@ -785,6 +853,22 @@ iin = "1"
 
 def _builder() -> Form270JsonBuilder:
     return Form270JsonBuilder(ROOT / "data" / "templates" / "270 new template.json")
+
+
+def _sorting_trade(date_time: str, isin: str, quantity: str) -> dict[str, str]:
+    return {
+        "date_time": date_time,
+        "trade_type": "trade",
+        "symbol": isin,
+        "isin": isin,
+        "asset_type": "Stocks",
+        "quantity": quantity,
+        "amount": "100",
+        "amount_with_commission": "100",
+        "kzt_rate": "1",
+        "currency": "KZT",
+        "country": "US",
+    }
 
 
 def _dataset_with_application_04_rows() -> CanonicalDataset:

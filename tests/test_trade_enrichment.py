@@ -53,11 +53,47 @@ class TradeEnrichmentTests(unittest.TestCase):
         self.assertEqual(by_symbol["FX-SPOT"]["source_of_expense"], "11")
         self.assertIsNone(by_symbol["FOREX"]["source_of_expense"])
 
+    def test_paid_corporate_action_disposal_adds_to_sale_pool(self) -> None:
+        trades = [
+            _trade("2022-01-13", "PRIOR-BUY", "1", "100"),
+            _trade(
+                "2022-10-28",
+                "TWTR",
+                "-40",
+                "2168",
+                trade_type="corporate_action:merged",
+            ),
+            _trade("2022-11-01", "KSPI", "1", "650"),
+            _trade("2022-11-01 09:35:49", "MSFT", "1", "703.765"),
+            _trade(
+                "2022-11-02",
+                "ZERO-REDEMPTION",
+                "-1",
+                "0",
+                trade_type="corporate_action:redemption",
+            ),
+        ]
+
+        classified = classify_form270_05_sources(trades)
+        by_symbol = {row["symbol"]: row for row in classified}
+
+        self.assertEqual(by_symbol["KSPI"]["source_of_expense"], "12")
+        self.assertEqual(by_symbol["MSFT"]["source_of_expense"], "12")
+        self.assertIsNone(by_symbol["ZERO-REDEMPTION"]["source_of_expense"])
+
     def test_workbook_preparation_adds_columns_and_sorts_trades(self) -> None:
         dataset = CanonicalDataset.empty("ib", "U1")
         dataset.tables["Trades"] = [
             _trade("2025-01-02", "BUY", "1", "100", currency="USD"),
             _trade("2024-01-01", "SALE", "-1", "100", currency="USD"),
+            _trade(
+                "2024-06-01",
+                "ZERO-SPINOFF",
+                "1",
+                "0",
+                currency="USD",
+                trade_type="corporate_action:spinoff",
+            ),
         ]
         provider = AnnualFxRateProvider({(2024, "USD"): Decimal("400"), (2025, "USD"): Decimal("400")})
 
@@ -67,10 +103,12 @@ class TradeEnrichmentTests(unittest.TestCase):
             prepare_form270_05_trades_workbook(path, provider)
             rows = load_processed_workbook_tables(path)["Trades"]
 
-        self.assertEqual([row["symbol"] for row in rows], ["SALE", "BUY"])
+        self.assertEqual([row["symbol"] for row in rows], ["SALE", "ZERO-SPINOFF", "BUY"])
         self.assertEqual(Decimal(str(rows[0]["kzt_rate"])), Decimal("400"))
         self.assertEqual(Decimal(str(rows[0]["amount_kzt"])), Decimal("40000"))
-        self.assertEqual(str(rows[1]["source_of_expense"]), "12")
+        self.assertEqual(Decimal(str(rows[1]["amount"])), Decimal("0"))
+        self.assertIsNone(rows[1]["source_of_expense"])
+        self.assertEqual(str(rows[2]["source_of_expense"]), "12")
 
 
 def _trade(
@@ -81,11 +119,12 @@ def _trade(
     *,
     asset_type: str = "Stocks",
     currency: str = "KZT",
+    trade_type: str = "trade",
 ) -> dict[str, str]:
     return {
         "date_time": date_time,
         "trade_id": symbol,
-        "trade_type": "trade",
+        "trade_type": trade_type,
         "symbol": symbol,
         "isin": "KZ0000000001",
         "asset_type": asset_type,

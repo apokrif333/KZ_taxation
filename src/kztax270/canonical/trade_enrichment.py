@@ -87,11 +87,13 @@ def classify_form270_05_sources(
 
 
 def is_real_form270_05_trade(row: Mapping[str, Any]) -> bool:
-    """Return whether a row is a non-zero market purchase or sale for 270.05."""
+    """Return whether a row is a non-zero purchase or disposal for 270.05.
 
-    trade_type = str(row.get("trade_type") or "trade").strip().casefold()
-    if trade_type != "trade":
-        return False
+    Paid corporate actions (cash mergers, redemptions, buybacks, and similar
+    events) are purchases or disposals too. Eligibility therefore follows the
+    economic values, not the broker-specific event name.
+    """
+
     if is_swap_or_repo(row) or is_forex_trade(row):
         return False
     return decimal_value(row.get("quantity")) != ZERO and abs(decimal_value(row.get("amount"))) > ZERO

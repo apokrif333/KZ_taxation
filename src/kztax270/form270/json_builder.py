@@ -566,6 +566,7 @@ def _build_application_04_b(
         registration_date = _format_date(parsed_date)
         key = (
             parsed_date.date().isoformat(),
+            identifier.casefold(),
             registration_date,
             operation,
             operation_other,
@@ -580,7 +581,17 @@ def _build_application_04_b(
 
     rows: list[dict[str, Any]] = []
     for index, (key, values) in enumerate(sorted(grouped.items(), key=lambda item: item[0]), start=1):
-        _sort_date, registration_date, operation, operation_other, asset_code, identifier, country_code, currency_code = key
+        (
+            _sort_date,
+            _sort_identifier,
+            registration_date,
+            operation,
+            operation_other,
+            asset_code,
+            identifier,
+            country_code,
+            currency_code,
+        ) = key
         quantity = values["quantity"] * HALF if split else values["quantity"]
         amount = values["amount"] * HALF if split else values["amount"]
         rows.append(
@@ -713,16 +724,21 @@ def _build_application_05(
         row["amount_kzt"] = abs(_decimal(row.get("amount"))) * rate
     trades = classify_form270_05_sources(trades)
 
-    buys: list[dict[str, Any]] = []
-    sells: list[dict[str, Any]] = []
+    current_trades: list[tuple[Mapping[str, Any], datetime, str]] = []
     for row in trades:
         parsed_date = _parse_date(row.get("date_time"))
         if parsed_date is None or parsed_date.year != tax_year or not is_real_form270_05_trade(row):
             continue
-        quantity = _decimal(row.get("quantity"))
         identifier = _instrument_identifier(row)
         if identifier is None:
             continue
+        current_trades.append((row, parsed_date, identifier))
+    current_trades.sort(key=lambda item: (item[1].date(), item[2].casefold()))
+
+    buys: list[dict[str, Any]] = []
+    sells: list[dict[str, Any]] = []
+    for row, parsed_date, identifier in current_trades:
+        quantity = _decimal(row.get("quantity"))
         country = _country_code_for_form(_country_from_row(row))
         country_name = COUNTRY_NAME_RU_BY_CODE.get(country, country)
         currency = _currency_code_for_form(_str_or_none(row.get("currency")))
@@ -765,7 +781,7 @@ def _build_application_05(
                     "F": country_name,
                     "G": "-",
                     "H": "-",
-                    "I": _decimal_json(amount_kzt, places=2),
+                    "I": _decimal_json(amount_kzt, places=0),
                     "index": len(sells),
                 }
             )
