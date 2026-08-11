@@ -78,6 +78,9 @@ TRANSACTION_REQUIRED_COLUMNS = {
     "Sum",
     "Asset",
 }
+EXANTE_HEADER_CANONICAL_NAMES = {
+    "operation type": "Operation type",
+}
 HANDLED_TRANSACTION_OPERATION_TYPES = {
     "TRADE",
     "DIVIDEND",
@@ -175,7 +178,7 @@ def parse_exante_csv_report(path: Path) -> ParsedExanteReport:
 
     trade_header_idx = _find_header(rows, "Time", required_columns=TRADE_REQUIRED_COLUMNS)
     if trade_header_idx is not None:
-        trade_header = rows[trade_header_idx]
+        trade_header = _canonicalize_header(rows[trade_header_idx])
         for row in rows[trade_header_idx + 1 :]:
             if not row or not any(row):
                 continue
@@ -189,7 +192,7 @@ def parse_exante_csv_report(path: Path) -> ParsedExanteReport:
 
     transaction_header_idx = _find_header(rows, "Transaction ID", required_columns=TRANSACTION_REQUIRED_COLUMNS)
     if transaction_header_idx is not None:
-        transaction_header = rows[transaction_header_idx]
+        transaction_header = _canonicalize_header(rows[transaction_header_idx])
         for row in rows[transaction_header_idx + 1 :]:
             if not row or not any(row):
                 continue
@@ -344,10 +347,16 @@ def _find_header(
     for idx, row in enumerate(rows):
         if not row or row[0] != first_cell:
             continue
-        if required_columns is not None and not required_columns.issubset(set(row)):
+        if required_columns is not None and not required_columns.issubset(set(_canonicalize_header(row))):
             continue
         return idx
     return None
+
+
+def _canonicalize_header(header: Sequence[str]) -> list[str]:
+    """Normalize known Exante column-name variants to canonical names."""
+
+    return [EXANTE_HEADER_CANONICAL_NAMES.get(value.casefold(), value) for value in header]
 
 
 def _is_trade_data_row(header: Sequence[str], row: Sequence[str]) -> bool:

@@ -388,6 +388,36 @@ class ExanteParserTests(unittest.TestCase):
         self.assertFalse(any(row["symbol"] == "SPY" for row in dataset.tables["Trades"]))
         self.assertFalse(any(row["reason"] == "unhandled_exante_transaction" for row in dataset.tables["Unprocessed"]))
 
+    def test_capitalized_operation_type_parses_transfers_in_and_requests_fifo_source(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            raw_root = Path(tmp) / "raw"
+            broker_root = raw_root / "exante"
+            broker_root.mkdir(parents=True)
+            path = broker_root / "Custom_HXR2208.001.csv"
+            path.write_text(
+                HXR_TRANSFER_KSPI_OPTION_EXANTE_CSV.replace('"Operation type"', '"Operation Type"'),
+                encoding="utf-16",
+            )
+            requests = []
+
+            def resolver(request):
+                requests.append(request)
+                return None
+
+            rates = AnnualFxRateProvider({(2022, "USD"): Decimal("460"), (2023, "USD"): Decimal("456")})
+            parser = ExanteParser(
+                fx_provider=rates,
+                transfer_in_resolver=resolver,
+            )
+            result = parser.parse_reports(parser.discover_reports(raw_root, "HXR2208.001"), "HXR2208.001")
+
+        self.assertEqual(len(requests), 1)
+        self.assertEqual(requests[0].transfer_date.isoformat(), "2022-09-02")
+        self.assertEqual(requests[0].isin, "US48581R2058")
+        self.assertEqual(requests[0].quantity, Decimal("86"))
+        transfer = next(row for row in result.dataset.tables["Transfers"] if row["symbol"] == "KSPI")
+        self.assertEqual(transfer["direction"], "in")
+
 
 if __name__ == "__main__":
     unittest.main()

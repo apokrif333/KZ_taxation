@@ -231,6 +231,354 @@ class FreedomParserTests(unittest.TestCase):
         self.assertEqual(fifo["symbol"], "TEST.US")
         self.assertEqual(fifo["_opening_lot_status"], "matched")
 
+    def test_split_security_legs_do_not_become_transfers_or_request_fifo_source(self) -> None:
+        import pandas as pd  # type: ignore
+
+        seen_requests: list[TransferInRequest] = []
+
+        def resolver(request: TransferInRequest) -> None:
+            seen_requests.append(request)
+            return None
+
+        with tempfile.TemporaryDirectory() as tmp:
+            raw_root = Path(tmp) / "raw"
+            broker_root = raw_root / fe.BROKER_CODE
+            broker_root.mkdir(parents=True)
+            report_path = broker_root / "703847_2024-01-01 00_00_00_2024-12-31 23_59_59_all.xlsx"
+            split_comment = "Stock split FORD.US (US3498624093). Factor 10/1."
+
+            with pd.ExcelWriter(report_path) as writer:
+                pd.DataFrame(
+                    [
+                        {
+                            fe.COL_TICKER: "FORD.US",
+                            fe.COL_ISIN: "US3498624093",
+                            fe.COL_MARKET: "NYSE/NASDAQ",
+                            fe.COL_OPERATION: "Buy",
+                            fe.COL_QTY: 16,
+                            fe.COL_PRICE: 4,
+                            fe.COL_CURRENCY: "USD",
+                            fe.COL_AMOUNT: 64,
+                            fe.COL_REALIZED_PL: 0,
+                            fe.COL_COMMISSION: 0,
+                            fe.COL_TRADE_DATE: "2024-01-02 10:00:00",
+                            fe.COL_ORDER_ID: "ford-buy",
+                        }
+                    ]
+                ).to_excel(writer, sheet_name="Trades 20240101 - 20241231", index=False)
+                pd.DataFrame(
+                    [
+                        {
+                            fe.COL_TYPE: "Split",
+                            fe.COL_DATE: "2024-06-18",
+                            fe.COL_ASSET: "Securities",
+                            fe.COL_AMOUNT: -16,
+                            fe.COL_CURRENCY: "USD",
+                            fe.COL_TICKER: "FORD.US",
+                            fe.COL_ISIN: "US3498624093",
+                            fe.COL_COMMENT: split_comment,
+                        },
+                        {
+                            fe.COL_TYPE: "Split",
+                            fe.COL_DATE: "2024-06-18",
+                            fe.COL_ASSET: "Securities",
+                            fe.COL_AMOUNT: 2,
+                            fe.COL_CURRENCY: "USD",
+                            fe.COL_TICKER: "FORD.US",
+                            fe.COL_ISIN: "US3498624093",
+                            fe.COL_COMMENT: split_comment,
+                        },
+                    ]
+                ).to_excel(writer, sheet_name="Corpactions 20240101 - 20241231", index=False)
+                pd.DataFrame(
+                    [
+                        {
+                            fe.COL_TYPE: "Split",
+                            fe.COL_DATE: "2024-06-18 15:00:00",
+                            fe.COL_QTY: -16,
+                            fe.COL_TICKER: "FORD.US",
+                            fe.COL_ISIN: "US3498624093",
+                            fe.COL_COMMENT: split_comment,
+                        },
+                        {
+                            fe.COL_TYPE: "Split",
+                            fe.COL_DATE: "2024-06-18 15:00:01",
+                            fe.COL_QTY: 2,
+                            fe.COL_TICKER: "FORD.US",
+                            fe.COL_ISIN: "US3498624093",
+                            fe.COL_COMMENT: split_comment,
+                        },
+                    ]
+                ).to_excel(writer, sheet_name="Sec In Out 20240101 - 20241231", index=False)
+
+            rates = AnnualFxRateProvider({(2024, "USD"): Decimal("469")})
+            parser = FreedomParser(
+                fx_provider=rates,
+                transfer_in_resolver=resolver,
+            )
+            result = parser.parse_reports(parser.discover_reports(raw_root, "703847"), "703847")
+
+        self.assertEqual(seen_requests, [])
+        self.assertFalse(any(row["symbol"] == "FORD.US" for row in result.dataset.tables["Transfers"]))
+        ford_positions = [
+            row
+            for row in result.dataset.tables["Positions"]
+            if row["symbol"] == "FORD.US" and row["year"] == 2024
+        ]
+        self.assertEqual(sum(Decimal(row["quantity"]) for row in ford_positions), Decimal("1.6"))
+
+    def test_spinoff_security_dividend_does_not_become_transfer_in(self) -> None:
+        import pandas as pd  # type: ignore
+
+        seen_requests: list[TransferInRequest] = []
+
+        def resolver(request: TransferInRequest) -> None:
+            seen_requests.append(request)
+            return None
+
+        with tempfile.TemporaryDirectory() as tmp:
+            raw_root = Path(tmp) / "raw"
+            broker_root = raw_root / fe.BROKER_CODE
+            broker_root.mkdir(parents=True)
+            report_path = broker_root / "703847_2022-01-01 00_00_00_2022-12-31 23_59_59_all.xlsx"
+            with pd.ExcelWriter(report_path) as writer:
+                pd.DataFrame(
+                    [
+                        {
+                            fe.COL_TYPE: "Stock dividend",
+                            fe.COL_DATE: "2022-04-13 15:00:00",
+                            fe.COL_QTY: 1,
+                            fe.COL_TICKER: "WBD.US",
+                            fe.COL_ISIN: "US9344231041",
+                            fe.COL_COMMENT: "Spin-off: T.US (US00206R1023) -> WBD.US (US9344231041). Factor: 1/0.241917.",
+                        }
+                    ]
+                ).to_excel(writer, sheet_name="Sec In Out 20220101 - 20221231", index=False)
+
+            rates = AnnualFxRateProvider({(2022, "USD"): Decimal("460")})
+            parser = FreedomParser(fx_provider=rates, transfer_in_resolver=resolver)
+            result = parser.parse_reports(parser.discover_reports(raw_root, "703847"), "703847")
+
+        self.assertEqual(seen_requests, [])
+        self.assertEqual(result.dataset.tables["Transfers"], [])
+        spinoff = result.dataset.tables["CorporateActions"][0]
+        self.assertEqual((spinoff["symbol"], spinoff["action_type"], spinoff["quantity"]), ("WBD.US", "spinoff", "1"))
+        trade = result.dataset.tables["Trades"][0]
+        self.assertEqual((trade["symbol"], trade["trade_type"], trade["amount"]), ("WBD.US", "corporate_action:spinoff", "0"))
+
+    def test_cash_only_reorg_and_split_liquidations_create_fifo_exits(self) -> None:
+        import pandas as pd  # type: ignore
+
+        seen_requests: list[TransferInRequest] = []
+
+        def resolver(request: TransferInRequest) -> None:
+            seen_requests.append(request)
+            return None
+
+        with tempfile.TemporaryDirectory() as tmp:
+            raw_root = Path(tmp) / "raw"
+            broker_root = raw_root / fe.BROKER_CODE
+            broker_root.mkdir(parents=True)
+            report_path = broker_root / "703847_2021-01-01 00_00_00_2022-12-31 23_59_59_all.xlsx"
+            wifi_comment = "Reorg New Symbol: 1 WIFI (US09739C1027) -> 0 WIFI (US09739C1027); Reorg Cash: 1 WIFI -> $ 14"
+            potx_comment = "Stock split POTX.US (US37954Y4263). Record date 2022-06-10, factor: 6/1."
+
+            with pd.ExcelWriter(report_path) as writer:
+                pd.DataFrame(
+                    [
+                        {
+                            fe.COL_TICKER: "WIFI.US",
+                            fe.COL_ISIN: "US09739C1027",
+                            fe.COL_OPERATION: "Buy",
+                            fe.COL_QTY: 3,
+                            fe.COL_PRICE: 14.04,
+                            fe.COL_AMOUNT: 42.12,
+                            fe.COL_CURRENCY: "USD",
+                            fe.COL_COMMISSION: 0,
+                            fe.COL_TRADE_DATE: "2021-03-05 10:00:00",
+                            fe.COL_ORDER_ID: "wifi-buy",
+                        },
+                        {
+                            fe.COL_TICKER: "POTX.US",
+                            fe.COL_ISIN: "US37954Y1459",
+                            fe.COL_OPERATION: "Buy",
+                            fe.COL_QTY: 2,
+                            fe.COL_PRICE: 16,
+                            fe.COL_AMOUNT: 32,
+                            fe.COL_CURRENCY: "USD",
+                            fe.COL_COMMISSION: 0,
+                            fe.COL_TRADE_DATE: "2021-04-06 10:00:00",
+                            fe.COL_ORDER_ID: "potx-buy",
+                        },
+                    ]
+                ).to_excel(writer, sheet_name="Trades 20210101 - 20221231", index=False)
+                pd.DataFrame(
+                    [
+                        {
+                            fe.COL_TYPE: "Split",
+                            fe.COL_DATE: "2021-06-03",
+                            fe.COL_ASSET: "Securities",
+                            fe.COL_AMOUNT: -3,
+                            fe.COL_TICKER: "WIFI.US",
+                            fe.COL_ISIN: "US09739C1027",
+                            fe.COL_CURRENCY: "USD",
+                            fe.COL_COMMENT: wifi_comment,
+                        },
+                        {
+                            fe.COL_TYPE: "Split",
+                            fe.COL_DATE: "2022-06-13",
+                            fe.COL_ASSET: "Securities",
+                            fe.COL_AMOUNT: -2,
+                            fe.COL_TICKER: "POTX.US",
+                            fe.COL_ISIN: "US37954Y1459",
+                            fe.COL_CURRENCY: "USD",
+                            fe.COL_COMMENT: potx_comment,
+                        },
+                    ]
+                ).to_excel(writer, sheet_name="Corpactions 20210101 - 20221231", index=False)
+                pd.DataFrame(
+                    [
+                        {fe.COL_TYPE: "Corporate actions", fe.COL_DATE: "2021-06-04", fe.COL_AMOUNT: 42, fe.COL_CURRENCY: "USD", fe.COL_COMMENT: wifi_comment},
+                        {
+                            fe.COL_TYPE: "Split",
+                            fe.COL_DATE: "2022-07-11",
+                            fe.COL_AMOUNT: 6.06,
+                            fe.COL_CURRENCY: "USD",
+                            fe.COL_COMMENT: "Компенсация при проведении корпоративного действия с бумагами (POTX.US), цена для оценки выбывающих бумаг 3.03 USD",
+                        },
+                    ]
+                ).to_excel(writer, sheet_name="Cash In Out 20210101 - 20221231", index=False)
+
+            parser = FreedomParser(
+                fx_provider=AnnualFxRateProvider({(2021, "USD"): Decimal("426"), (2022, "USD"): Decimal("460")}),
+                transfer_in_resolver=resolver,
+            )
+            result = parser.parse_reports(parser.discover_reports(raw_root, "703847"), "703847")
+
+        self.assertEqual(seen_requests, [])
+        exits = {
+            row["symbol"]: (row["trade_type"], Decimal(row["quantity"]), Decimal(row["price"]), Decimal(row["amount"]))
+            for row in result.dataset.tables["Trades"]
+            if str(row["trade_type"]).startswith("corporate_action:")
+        }
+        self.assertEqual(exits["WIFI.US"], ("corporate_action:reorg_cash", Decimal("-3"), Decimal("14"), Decimal("42")))
+        self.assertEqual(exits["POTX.US"], ("corporate_action:split_compensation", Decimal("-2"), Decimal("3.03"), Decimal("6.06")))
+        self.assertTrue(all(row["_opening_lot_status"] == "matched" for row in result.dataset.tables["Fifo"]))
+        self.assertEqual(result.dataset.tables["Transfers"], [])
+        self.assertEqual(result.dataset.tables["Unprocessed"], [])
+
+    def test_spinoff_and_split_rounding_compensations_use_cash_direction(self) -> None:
+        import pandas as pd  # type: ignore
+
+        with tempfile.TemporaryDirectory() as tmp:
+            raw_root = Path(tmp) / "raw"
+            broker_root = raw_root / fe.BROKER_CODE
+            broker_root.mkdir(parents=True)
+            report_path = broker_root / "703847_2023-01-01 00_00_00_2025-12-31 23_59_59_all.xlsx"
+            ford_split = "Сплит по FORD.US (US3498624093). Дата среза 2024-06-17, коэффициент: 10/1."
+            fgen_split = "Сплит по FGEN.US (US31572Q8814). Дата среза 2025-06-16, коэффициент: 25/1."
+            solv_compensation = "Компенсация при проведении корпоративного действия с бумагами (MMM.US), расчетное количество бумаг SOLV.US к получению 0.5, получено 1, цена для оценки выбывающих бумаг 67.76 USD"
+            ford_compensation = "Компенсация при проведении корпоративного действия с бумагами (FORD.US), расчетное количество бумаг к получению 1.6, получено 2, цена для оценки выбывающих бумаг 0.487 USD"
+            fgen_compensation = "Компенсация при проведении корпоративного действия с бумагами (FGEN.US), расчетное количество бумаг к получению 7.52, получено 7, цена для оценки выбывающих бумаг 0.2661 USD"
+
+            with pd.ExcelWriter(report_path) as writer:
+                pd.DataFrame(
+                    [
+                        {fe.COL_TICKER: "MMM.US", fe.COL_ISIN: "US88579Y1010", fe.COL_OPERATION: "Buy", fe.COL_QTY: 2, fe.COL_PRICE: 100, fe.COL_AMOUNT: 200, fe.COL_CURRENCY: "USD", fe.COL_COMMISSION: 0, fe.COL_TRADE_DATE: "2023-08-01", fe.COL_ORDER_ID: "mmm-buy"},
+                        {fe.COL_TICKER: "FORD.US", fe.COL_ISIN: "US3498624093", fe.COL_OPERATION: "Buy", fe.COL_QTY: 16, fe.COL_PRICE: 3, fe.COL_AMOUNT: 48, fe.COL_CURRENCY: "USD", fe.COL_COMMISSION: 0, fe.COL_TRADE_DATE: "2024-01-01", fe.COL_ORDER_ID: "ford-buy-16"},
+                        {fe.COL_TICKER: "FGEN.US", fe.COL_ISIN: "US31572Q8814", fe.COL_OPERATION: "Buy", fe.COL_QTY: 188, fe.COL_PRICE: 2, fe.COL_AMOUNT: 376, fe.COL_CURRENCY: "USD", fe.COL_COMMISSION: 0, fe.COL_TRADE_DATE: "2024-02-01", fe.COL_ORDER_ID: "fgen-buy"},
+                        {fe.COL_TICKER: "SOLV.US", fe.COL_ISIN: "US83444M1018", fe.COL_OPERATION: "Sell", fe.COL_QTY: 1, fe.COL_PRICE: 75, fe.COL_AMOUNT: 75, fe.COL_REALIZED_PL: 20, fe.COL_CURRENCY: "USD", fe.COL_COMMISSION: 0, fe.COL_TRADE_DATE: "2025-01-31", fe.COL_ORDER_ID: "solv-sell"},
+                        {fe.COL_TICKER: "FORD.US", fe.COL_ISIN: "US3498624093", fe.COL_OPERATION: "Buy", fe.COL_QTY: 7, fe.COL_PRICE: 6, fe.COL_AMOUNT: 42, fe.COL_CURRENCY: "USD", fe.COL_COMMISSION: 0, fe.COL_TRADE_DATE: "2025-02-03", fe.COL_ORDER_ID: "ford-buy-7"},
+                        {fe.COL_TICKER: "FORD.US", fe.COL_ISIN: "US3498624093", fe.COL_OPERATION: "Sell", fe.COL_QTY: 9, fe.COL_PRICE: 7, fe.COL_AMOUNT: 63, fe.COL_REALIZED_PL: 10, fe.COL_CURRENCY: "USD", fe.COL_COMMISSION: 0, fe.COL_TRADE_DATE: "2025-06-13", fe.COL_ORDER_ID: "ford-sell-9"},
+                    ]
+                ).to_excel(writer, sheet_name="Trades 20230101 - 20251231", index=False)
+                pd.DataFrame(
+                    [
+                        {fe.COL_TYPE: "Spin-off", fe.COL_DATE: "2024-04-01", fe.COL_ASSET: "Securities", fe.COL_AMOUNT: 1, fe.COL_PER_ONE: 67.76, fe.COL_TICKER: "SOLV.US", fe.COL_ISIN: "US83444M1018", fe.COL_CURRENCY: "USD", fe.COL_COMMENT: "Corporate action MMM.US (US88579Y1010) -> SOLV.US (US83444M1018). Factor 4/1."},
+                        {fe.COL_TYPE: "Corporate action compensation", fe.COL_DATE: "2024-04-01", fe.COL_ASSET: "Money", fe.COL_AMOUNT: -33.88, fe.COL_PER_ONE: 67.76, fe.COL_TICKER: "MMM.US", fe.COL_ISIN: "US88579Y1010", fe.COL_CURRENCY: "USD", fe.COL_COMMENT: solv_compensation},
+                        {fe.COL_TYPE: "Split", fe.COL_DATE: "2024-06-18", fe.COL_ASSET: "Securities", fe.COL_AMOUNT: -16, fe.COL_TICKER: "FORD.US", fe.COL_ISIN: "US3498624093", fe.COL_CURRENCY: "USD", fe.COL_COMMENT: ford_split},
+                        {fe.COL_TYPE: "Split", fe.COL_DATE: "2024-06-18", fe.COL_ASSET: "Securities", fe.COL_AMOUNT: 2, fe.COL_TICKER: "FORD.US", fe.COL_ISIN: "US3498624093", fe.COL_CURRENCY: "USD", fe.COL_COMMENT: ford_split},
+                        {fe.COL_TYPE: "Corporate action compensation", fe.COL_DATE: "2024-06-18", fe.COL_ASSET: "Money", fe.COL_AMOUNT: -1.95, fe.COL_PER_ONE: 0.487, fe.COL_TICKER: "FORD.US", fe.COL_ISIN: "US3498624093", fe.COL_CURRENCY: "USD", fe.COL_COMMENT: ford_compensation},
+                        {fe.COL_TYPE: "Split", fe.COL_DATE: "2025-06-18", fe.COL_ASSET: "Securities", fe.COL_AMOUNT: -188, fe.COL_TICKER: "FGEN.US", fe.COL_ISIN: "US31572Q8814", fe.COL_CURRENCY: "USD", fe.COL_COMMENT: fgen_split},
+                        {fe.COL_TYPE: "Split", fe.COL_DATE: "2025-06-18", fe.COL_ASSET: "Securities", fe.COL_AMOUNT: 7, fe.COL_TICKER: "FGEN.US", fe.COL_ISIN: "US31572Q8814", fe.COL_CURRENCY: "USD", fe.COL_COMMENT: fgen_split},
+                        {fe.COL_TYPE: "Split", fe.COL_DATE: "2025-06-20", fe.COL_ASSET: "Money", fe.COL_AMOUNT: 3.46, fe.COL_PER_ONE: 0.2661, fe.COL_TICKER: "FGEN.US", fe.COL_ISIN: "US31572Q8814", fe.COL_CURRENCY: "USD", fe.COL_COMMENT: fgen_compensation},
+                    ]
+                ).to_excel(writer, sheet_name="Corpactions 20230101 - 20251231", index=False)
+
+            parser = FreedomParser(fx_provider=AnnualFxRateProvider({(2023, "USD"): Decimal("456"), (2024, "USD"): Decimal("469"), (2025, "USD"): Decimal("521")}))
+            result = parser.parse_reports(parser.discover_reports(raw_root, "703847"), "703847")
+
+        corporate_trades = [row for row in result.dataset.tables["Trades"] if str(row["trade_type"]).startswith("corporate_action:")]
+        solv_entries = [(Decimal(row["quantity"]), Decimal(row["price"])) for row in corporate_trades if row["symbol"] == "SOLV.US"]
+        self.assertEqual(solv_entries, [(Decimal("0.5"), Decimal("0")), (Decimal("0.5"), Decimal("67.76"))])
+        ford_compensation_trade = next(row for row in corporate_trades if row["trade_type"] == "corporate_action:split_compensation" and row["symbol"] == "FORD.US")
+        self.assertEqual((Decimal(ford_compensation_trade["quantity"]), Decimal(ford_compensation_trade["price"])), (Decimal("0.4"), Decimal("4.875")))
+        fgen_compensation_trade = next(row for row in corporate_trades if row["trade_type"] == "corporate_action:split_compensation" and row["symbol"] == "FGEN.US")
+        self.assertEqual(Decimal(fgen_compensation_trade["quantity"]), Decimal("-0.52"))
+        self.assertEqual(Decimal(fgen_compensation_trade["amount"]), Decimal("3.46"))
+        self.assertEqual(sum(Decimal(row["exit_quantity"]) for row in result.dataset.tables["Fifo"] if row["symbol"] == "FORD.US"), Decimal("9"))
+        self.assertTrue(all(row["_opening_lot_status"] == "matched" for row in result.dataset.tables["Fifo"] if row["symbol"] in {"SOLV.US", "FORD.US", "FGEN.US"}))
+        self.assertEqual(result.dataset.tables["Unprocessed"], [])
+
+    def test_conversion_and_delayed_redemption_cash_are_linked_to_fifo(self) -> None:
+        import pandas as pd  # type: ignore
+
+        with tempfile.TemporaryDirectory() as tmp:
+            raw_root = Path(tmp) / "raw"
+            broker_root = raw_root / fe.BROKER_CODE
+            broker_root.mkdir(parents=True)
+            report_path = broker_root / "703847_2021-01-01 00_00_00_2026-12-31 23_59_59_all.xlsx"
+            conversion = "Conversion of securities SHI.US (US82935M1099) -> SHIIY.US (US82935M1099). Cut date 2022-11-08, ratio: 1/1."
+
+            with pd.ExcelWriter(report_path) as writer:
+                pd.DataFrame(
+                    [
+                        {fe.COL_TICKER: "SHI.US", fe.COL_ISIN: "US82935M1099", fe.COL_OPERATION: "Buy", fe.COL_QTY: 10, fe.COL_PRICE: 23.71, fe.COL_AMOUNT: 237.1, fe.COL_CURRENCY: "USD", fe.COL_COMMISSION: 0, fe.COL_TRADE_DATE: "2021-06-25", fe.COL_ORDER_ID: "shi-buy"},
+                        {fe.COL_TICKER: "MFRFB11.KZ", fe.COL_ISIN: "KZ2P00010937", fe.COL_OPERATION: "Buy", fe.COL_QTY: 10, fe.COL_PRICE: 100.6, fe.COL_AMOUNT: 10100, fe.COL_CURRENCY: "KZT", fe.COL_COMMISSION: 0, fe.COL_TRADE_DATE: "2025-04-22", fe.COL_ORDER_ID: "bond-buy"},
+                    ]
+                ).to_excel(writer, sheet_name="Trades 20210101 - 20261231", index=False)
+                pd.DataFrame(
+                    [
+                        {fe.COL_TYPE: "Split", fe.COL_DATE: "2022-11-09", fe.COL_ASSET: "Securities", fe.COL_AMOUNT: -10, fe.COL_TICKER: "SHI.US", fe.COL_ISIN: "US82935M1099", fe.COL_CURRENCY: "USD", fe.COL_COMMENT: conversion},
+                        {fe.COL_TYPE: "Split", fe.COL_DATE: "2022-11-09", fe.COL_ASSET: "Securities", fe.COL_AMOUNT: 10, fe.COL_TICKER: "SHIIY.US", fe.COL_ISIN: "US82935M1099", fe.COL_CURRENCY: "USD", fe.COL_COMMENT: conversion},
+                        {fe.COL_TYPE: "Redemption", fe.COL_DATE: "2024-06-11", fe.COL_ASSET: "Securities", fe.COL_AMOUNT: -10, fe.COL_PER_ONE: 13.602935, fe.COL_TICKER: "SHIIY.US", fe.COL_ISIN: "US82935M1099", fe.COL_CURRENCY: "USD", fe.COL_COMMENT: "Redemption of SHIIY.US"},
+                        {fe.COL_TYPE: "Redemption", fe.COL_DATE: "2024-06-09", fe.COL_ASSET: "Money", fe.COL_AMOUNT: 136.03, fe.COL_PER_ONE: 13.602935, fe.COL_TICKER: "SHIIY.US", fe.COL_ISIN: "US82935M1099", fe.COL_CURRENCY: "USD", fe.COL_COMMENT: "Redemption payment SHIIY.US"},
+                        {fe.COL_TYPE: "Redemption", fe.COL_DATE: "2026-02-06", fe.COL_ASSET: "Money", fe.COL_AMOUNT: 10000, fe.COL_PER_ONE: 1000, fe.COL_TICKER: "MFRFB11.KZ", fe.COL_ISIN: "KZ2P00010937", fe.COL_CURRENCY: "KZT", fe.COL_COMMENT: "Redemption payment MFRFB11.KZ"},
+                        {fe.COL_TYPE: "Redemption", fe.COL_DATE: "2026-02-10", fe.COL_ASSET: "Securities", fe.COL_AMOUNT: -10, fe.COL_PER_ONE: 1000, fe.COL_TICKER: "MFRFB11.KZ", fe.COL_ISIN: "KZ2P00010937", fe.COL_CURRENCY: "KZT", fe.COL_COMMENT: "Redemption of MFRFB11.KZ"},
+                    ]
+                ).to_excel(writer, sheet_name="Corpactions 20210101 - 20261231", index=False)
+                pd.DataFrame(
+                    [
+                        {fe.COL_TICKER: "SHIIY.US", fe.COL_ISIN: "US82935M1099", fe.COL_ASSET_TYPE: "Stocks", fe.COL_END_QTY: 0},
+                        {fe.COL_TICKER: "MFRFB11.KZ", fe.COL_ISIN: "KZ2P00010937", fe.COL_ASSET_TYPE: "Bonds", fe.COL_END_QTY: 0},
+                    ]
+                ).to_excel(writer, sheet_name="Securities 20210101 - 20261231", index=False)
+
+            rates = AnnualFxRateProvider({(2021, "USD"): Decimal("426"), (2024, "USD"): Decimal("469"), (2025, "KZT"): Decimal("1"), (2026, "KZT"): Decimal("1")})
+            result = FreedomParser(fx_provider=rates).parse_reports(FreedomParser().discover_reports(raw_root, "703847"), "703847")
+
+        trades_by_symbol = {row["symbol"]: row for row in result.dataset.tables["Trades"] if row["trade_type"] == "corporate_action:redemption"}
+        self.assertEqual((Decimal(trades_by_symbol["SHIIY.US"]["quantity"]), Decimal(trades_by_symbol["SHIIY.US"]["amount"])), (Decimal("-10"), Decimal("136.03")))
+        self.assertEqual((trades_by_symbol["MFRFB11.KZ"]["asset_type"], Decimal(trades_by_symbol["MFRFB11.KZ"]["amount"])), ("Bonds", Decimal("10000")))
+        self.assertNotIn("SHI.US", {row["symbol"] for row in result.dataset.tables["Trades"]})
+        redemption_fifo = [row for row in result.dataset.tables["Fifo"] if row["corporate_action_type"] == "redemption"]
+        self.assertEqual({row["symbol"] for row in redemption_fifo}, {"SHIIY.US", "MFRFB11.KZ"})
+        self.assertTrue(all(row["_opening_lot_status"] == "matched" for row in redemption_fifo))
+        bond_fifo = next(row for row in redemption_fifo if row["symbol"] == "MFRFB11.KZ")
+        self.assertEqual((bond_fifo["enter_multiplier"], bond_fifo["exit_multiplier"]), ("10", "1"))
+        self.assertEqual(Decimal(bond_fifo["pnl"]), Decimal("-60"))
+
+    def test_ticker_change_round_trip_normalizes_to_latest_symbol(self) -> None:
+        actions = [
+            {"date_time": "2023-10-06 17:00:00", "action_type": "ticker_change", "isin": "US31572Q8814", "description": "Ticker change FGEN.US -> FGEN.ITS"},
+            {"date_time": "2023-11-03 10:00:00", "action_type": "ticker_change", "isin": "US31572Q8814", "description": "Ticker change FGEN.ITS -> FGEN.US"},
+        ]
+
+        aliases = fe._ticker_change_aliases(actions)
+
+        self.assertEqual(aliases[("US31572Q8814", "FGEN.US")], "FGEN.US")
+        self.assertEqual(aliases[("US31572Q8814", "FGEN.ITS")], "FGEN.US")
+
     def test_transfer_in_before_conversion_still_resolves_fifo_source(self) -> None:
         import pandas as pd  # type: ignore
 
@@ -412,6 +760,76 @@ class FreedomParserTests(unittest.TestCase):
             Decimal("131"),
         )
         self.assertFalse(any(row["symbol"] == "AIRA.AIX.KZ" for row in result.dataset.tables["Positions"]))
+
+    def test_conversion_alias_preserves_dividend_isin_and_country(self) -> None:
+        import pandas as pd  # type: ignore
+
+        conversion = "Conversion of securities GOLD.US (CA0679011084) -> B.US (CA06849F1080). Cut date 2025-05-08, ratio: 1/1."
+        with tempfile.TemporaryDirectory() as tmp:
+            raw_root = Path(tmp) / "raw"
+            broker_root = raw_root / fe.BROKER_CODE
+            broker_root.mkdir(parents=True)
+            report_path = broker_root / "GOLD_2023-01-01 00_00_00_2025-12-31 23_59_59_all.xlsx"
+
+            with pd.ExcelWriter(report_path) as writer:
+                pd.DataFrame(
+                    [
+                        {fe.COL_TICKER: "B.US", fe.COL_ISIN: "CA06849F1080", fe.COL_ASSET_TYPE: "Stocks", fe.COL_END_QTY: 155, fe.COL_CURRENCY: "USD"},
+                    ]
+                ).to_excel(writer, sheet_name="Securities 20230101 - 20251231", index=False)
+                pd.DataFrame(
+                    [
+                        {fe.COL_TYPE: "Conversion", fe.COL_DATE: "2025-05-09", fe.COL_ASSET: "Securities", fe.COL_AMOUNT: -155, fe.COL_TICKER: "GOLD_OLD.US", fe.COL_ISIN: "CA0679011084", fe.COL_CURRENCY: "USD", fe.COL_COMMENT: conversion},
+                        {fe.COL_TYPE: "Conversion", fe.COL_DATE: "2025-05-09", fe.COL_ASSET: "Securities", fe.COL_AMOUNT: 155, fe.COL_TICKER: "B.US", fe.COL_ISIN: "CA06849F1080", fe.COL_CURRENCY: "USD", fe.COL_COMMENT: conversion},
+                    ]
+                ).to_excel(writer, sheet_name="Corpactions 20230101 - 20251231", index=False)
+                pd.DataFrame(
+                    [
+                        {fe.COL_TYPE: "Dividends", fe.COL_DATE: "2024-12-18", fe.COL_AMOUNT: 14.10, fe.COL_CURRENCY: "USD", fe.COL_COMMENT: "Dividends on security (Barrick Gold Corporation (GOLD.US)), record date 2024-11-29"},
+                    ]
+                ).to_excel(writer, sheet_name="Cash In Out 20230101 - 20251231", index=False)
+
+            parser = FreedomParser(fx_provider=AnnualFxRateProvider({(2024, "USD"): Decimal("469"), (2025, "USD"): Decimal("522")}))
+            result = parser.parse_reports(parser.discover_reports(raw_root, "GOLD"), "GOLD")
+
+        dividend = result.dataset.tables["Dividends"][0]
+        self.assertEqual(dividend["symbol"], "GOLD.US")
+        self.assertEqual(dividend["isin"], "CA0679011084")
+        self.assertEqual(dividend["country"], "CA")
+
+    def test_split_isin_change_preserves_fifo_entry_date(self) -> None:
+        import pandas as pd  # type: ignore
+
+        split = "Stock split SQQQ.US (US74347G4322). Record date 2024-11-06, factor: 5/1."
+        with tempfile.TemporaryDirectory() as tmp:
+            raw_root = Path(tmp) / "raw"
+            broker_root = raw_root / fe.BROKER_CODE
+            broker_root.mkdir(parents=True)
+            report_path = broker_root / "SQQQ_2023-01-01 00_00_00_2025-12-31 23_59_59_all.xlsx"
+
+            with pd.ExcelWriter(report_path) as writer:
+                pd.DataFrame(
+                    [
+                        {fe.COL_TICKER: "SQQQ.US", fe.COL_ISIN: "US74347G1922", fe.COL_OPERATION: "Buy", fe.COL_QTY: 300, fe.COL_PRICE: 38.93, fe.COL_AMOUNT: 11679, fe.COL_CURRENCY: "USD", fe.COL_COMMISSION: 0, fe.COL_TRADE_DATE: "2023-03-15 17:11:59", fe.COL_ORDER_ID: "sqqq-buy"},
+                        {fe.COL_TICKER: "SQQQ.US", fe.COL_ISIN: "US74350P6759", fe.COL_OPERATION: "Sell", fe.COL_QTY: 60, fe.COL_PRICE: 46.28, fe.COL_AMOUNT: 2776.8, fe.COL_REALIZED_PL: -8902.2, fe.COL_CURRENCY: "USD", fe.COL_COMMISSION: 14.6, fe.COL_TRADE_DATE: "2025-04-07 19:19:00", fe.COL_ORDER_ID: "sqqq-sell"},
+                    ]
+                ).to_excel(writer, sheet_name="Trades 20230101 - 20251231", index=False)
+                pd.DataFrame(
+                    [
+                        {fe.COL_TYPE: "Split", fe.COL_DATE: "2024-11-07", fe.COL_ASSET: "Securities", fe.COL_AMOUNT: -300, fe.COL_TICKER: "SQQQ.US", fe.COL_ISIN: "US74347G1922", fe.COL_CURRENCY: "USD", fe.COL_COMMENT: split},
+                        {fe.COL_TYPE: "Split", fe.COL_DATE: "2024-11-07", fe.COL_ASSET: "Securities", fe.COL_AMOUNT: 60, fe.COL_TICKER: "SQQQ.US", fe.COL_ISIN: "US74347G1922", fe.COL_CURRENCY: "USD", fe.COL_COMMENT: split},
+                    ]
+                ).to_excel(writer, sheet_name="Corpactions 20230101 - 20251231", index=False)
+
+            parser = FreedomParser(fx_provider=AnnualFxRateProvider({(2023, "USD"): Decimal("450"), (2025, "USD"): Decimal("522")}))
+            result = parser.parse_reports(parser.discover_reports(raw_root, "SQQQ"), "SQQQ")
+
+        fifo = result.dataset.tables["Fifo"]
+        self.assertEqual(len(fifo), 1)
+        self.assertEqual(fifo[0]["isin"], "US74350P6759")
+        self.assertEqual(fifo[0]["enter_date"], "2023-03-15 17:11:59")
+        self.assertEqual(fifo[0]["enter_quantity"], "60")
+        self.assertEqual(fifo[0]["enter_price"], "194.65")
 
     def test_ticker_change_positions_match_raw_by_isin_without_duplicates(self) -> None:
         import pandas as pd  # type: ignore

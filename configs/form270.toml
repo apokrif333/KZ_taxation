@@ -15,10 +15,10 @@ form270_template = "data/templates/270 new template.json"
 # Задания выполняются сверху вниз. Поэтому можно сначала создать Excel,
 # а следующим заданием сразу сформировать JSON из него.
 
-#[[form270.jobs]]
-#id = "excel"
-#broker = "freedom_bank"
-#account_id = "840307450294"
+[[form270.jobs]]
+id = "excel"
+broker = "freedom"
+account_id = "731784"
 
 # [[form270.jobs]]
 # id = "joint_excel"
@@ -27,26 +27,26 @@ form270_template = "data/templates/270 new template.json"
 # [[form270.jobs]]
 # id = "merge_excel"
 # workbooks = [
-#     "ib_U5927652_audit.xlsx",
-#     'freedom_bank_840307450294 _audit.xlsx'
+#     "freedom_bank_871102401071_audit.xlsx",
+#     'ib_U13920935_audit.xlsx'
 # ]
-# fio1 = "Daniya"
-# fio2 = "Bekenova"
+# fio1 = "Olga"
+# fio2 = "Kressova"
 # fio3 = ""
 
- [[form270.jobs]]
- id = "270_json"
- file_name = "merged_Bekenova_Daniya.xlsx"
- form270_05 = true
- tax_year = 2025
- fio1 = "Daniya"
- fio2 = "Bekenova"
- fio3 = ""
- iin = "1"
- phone = ""
- email = ""
- ogd_residence = ""
- ogd_location = ""
+# [[form270.jobs]]
+# id = "270_json"
+# file_name = "merged_Kressova_Olga.xlsx"
+# form270_05 = false
+# tax_year = 2025
+# fio1 = "Olga"
+# fio2 = "Kressova"
+# fio3 = ""
+# iin = "1"
+# phone = ""
+# email = ""
+# ogd_residence = ""
+# ogd_location = ""
 
 # Параметры банка/брокера для CashBalances можно задать один раз:
 # [form270.banks.ib]

@@ -3312,16 +3312,21 @@ def _build_years_results(
             flags = _issuer_outside_kz_flags()
             table_name = "Yearly FX Trades"
         else:
-            pnl_kzt = _decimal(record.get("pnl_kzt"))
+            raw_pnl_kzt = _decimal(record.get("pnl_kzt"))
             table_name = (
                 "Yearly Bonds Redemption"
-                if _is_bond_redemption_fifo_row(record) and pnl_kzt > 0
+                if _is_bond_redemption_fifo_row(record) and raw_pnl_kzt > 0
                 else "Yearly Trades"
             )
         key = _years_result_key(table_name, year, record, flags)
         values = pnl_groups[key]
         pnl = _decimal(record.get("pnl"))
         pnl_kzt = _decimal(record.get("pnl_kzt"))
+        # A Kazakh issuer's bond redemption stays visible in the audit as the
+        # native-currency PnL, but it is outside Form 270.00.  Do not let its
+        # KZT equivalent flow into the form aggregation.
+        if _is_bond_redemption_fifo_row(record) and _is_kz_security_record(record, flags):
+            pnl_kzt = Decimal("0")
         tax_pnl = _derivative_tax_pnl(record)
         tax_pnl_kzt = _derivative_tax_pnl_kzt(record)
         values["pnl"] += pnl
@@ -3589,7 +3594,7 @@ def _is_swap_interest_record(record: Mapping[str, Any]) -> bool:
     return description.startswith("swap reward")
 
 
-def _is_kz_coupon(record: Mapping[str, Any], flags: Mapping[str, Any]) -> bool:
+def _is_kz_security_record(record: Mapping[str, Any], flags: Mapping[str, Any]) -> bool:
     if flags.get("issuer_outside_kz_flag") is False:
         return True
     issuer_country = _string_or_none(
@@ -3601,6 +3606,10 @@ def _is_kz_coupon(record: Mapping[str, Any], flags: Mapping[str, Any]) -> bool:
         return True
     isin = _string_or_none(record.get("isin") or flags.get("isin"))
     return str(isin or "").strip().upper().startswith("KZ")
+
+
+def _is_kz_coupon(record: Mapping[str, Any], flags: Mapping[str, Any]) -> bool:
+    return _is_kz_security_record(record, flags)
 
 
 def _build_dividend_year_groups(

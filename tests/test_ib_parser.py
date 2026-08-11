@@ -1739,6 +1739,39 @@ Grant Activity,Data,UGRANTPRE,IBKR,2025-01-01,Stock Award Withholding,2024-01-01
         self.assertEqual(coupon_rows[0]["tax_kzt"], "0.00")
         self.assertEqual(coupon_rows[0]["tax_kzt_withhold"], "0.00")
 
+    def test_kz_bond_redemption_keeps_native_pnl_but_zeroes_pnl_kzt(self) -> None:
+        dataset = CanonicalDataset.empty("ib", "UKZREDEMPTION")
+        dataset.tables["Instruments"] = [
+            {
+                "symbol": "KZBOND",
+                "isin": "KZ0000000001",
+                "issuer_country": "KZ",
+                "issuer_outside_kz_flag": False,
+            }
+        ]
+        dataset.tables["Fifo"] = [
+            {
+                "exit_date": "2025-06-11",
+                "symbol": "KZBOND",
+                "isin": "KZ0000000001",
+                "country": "KZ",
+                "currency": "KZT",
+                "asset_type": "Bonds",
+                "pnl": "685.54",
+                "pnl_kzt": "685.54",
+                "source_trade_id": "CA:bond-redemption",
+                "corporate_action_type": "redemption",
+            }
+        ]
+
+        yearly = ib_module._build_years_results(dataset)
+
+        redemption_rows = [row for row in yearly if row["table"] == "Yearly Bonds Redemption"]
+        self.assertEqual(len(redemption_rows), 1)
+        self.assertEqual(redemption_rows[0]["pnl"], "685.54")
+        self.assertEqual(redemption_rows[0]["pnl_kzt"], "0.00")
+        self.assertEqual(redemption_rows[0]["tax_kzt"], "0.00")
+
     def test_kz_yearly_dividends_keep_amount_but_zero_reporting_columns(self) -> None:
         dataset = CanonicalDataset.empty("ib", "UKZDIV")
         dataset.tables["Instruments"] = [

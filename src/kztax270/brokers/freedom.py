@@ -405,6 +405,26 @@ def _build_instruments(reports: Sequence[ParsedFreedomReport], account_id: str) 
                 asset_type="Stocks",
                 year=transfer_dt.year if transfer_dt else report_year,
             )
+        # Cash-income descriptions frequently retain a pre-conversion ticker,
+        # while the account's Securities section has only the new ticker.  Add
+        # both identities explicitly stated by Freedom in the conversion event
+        # so dividend and coupon rows can always resolve their ISIN and country.
+        for section in (SECTION_CORPACTIONS, SECTION_SEC_IN_OUT):
+            for row in report.rows.get(section, []):
+                event_dt = _parse_datetime(_cell(row, COL_DATE))
+                old_symbol, old_isin, new_symbol, new_isin = _conversion_identities(
+                    _none_text(_cell(row, COL_COMMENT)) or ""
+                )
+                for symbol, isin in ((old_symbol, old_isin), (new_symbol, new_isin)):
+                    if isin:
+                        add(
+                            report=report,
+                            symbol=symbol,
+                            isin=isin,
+                            currency=_cell(row, COL_CURRENCY),
+                            asset_type="Stocks",
+                            year=event_dt.year if event_dt else report_year,
+                        )
     return _dedupe_instruments(instruments)
 
 
@@ -523,7 +543,7 @@ def _new_trade_row(
     broker_amount = abs(_decimal(_cell(row, COL_AMOUNT)))
     instrument_multiplier = _decimal(instrument.get("multiplier") or "1") or Decimal("1")
     multiplier = (
-        _normalize_multiplier(instrument_multiplier)
+        _bond_transaction_multiplier(instrument_multiplier, signed_quantity, price, broker_amount)
         if asset_type == "Bonds"
         else _effective_transaction_multiplier(instrument_multiplier, signed_quantity, price, broker_amount)
     )
@@ -557,15 +577,40 @@ def _new_trade_row(
     }
 
 
+def _bond_transaction_multiplier(
+    instrument_multiplier: Decimal,
+    quantity: Decimal,
+    price: Decimal,
+    broker_amount: Decimal,
+) -> Decimal:
+    if not quantity or not price or not broker_amount:
+        return _normalize_multiplier(instrument_multiplier or Decimal("1"))
+    computed = abs(broker_amount / (quantity * price))
+    for common in (
+        Decimal("0.001"),
+        Decimal("0.01"),
+        Decimal("0.1"),
+        Decimal("1"),
+        Decimal("10"),
+        Decimal("100"),
+        Decimal("1000"),
+    ):
+        # Bond Amount may include accrued coupon, so its ratio to the clean
+        # price is only an approximation of the face-value multiplier.
+        if abs(computed - common) <= common * Decimal("0.05"):
+            return common
+    return _normalize_multiplier(instrument_multiplier or Decimal("1"))
+
+
 def _build_corporate_actions(
     reports: Sequence[ParsedFreedomReport],
     instrument_lookup: Mapping[tuple[str, int | None], dict[str, Any]],
 ) -> list[dict[str, Any]]:
     actions: list[dict[str, Any]] = []
-    redemption_proceeds = _redemption_proceeds_by_key(reports)
     for report in reports:
         for idx, row in enumerate(report.rows.get(SECTION_CORPACTIONS, []), start=1):
-            action_type = _corporate_action_type(_cell(row, COL_TYPE), _cell(row, COL_ASSET))
+            description = _none_text(_cell(row, COL_COMMENT))
+            action_type = _corporate_action_type(_cell(row, COL_TYPE), _cell(row, COL_ASSET), description)
             if action_type is None:
                 continue
             event_dt = _parse_datetime(_cell(row, COL_DATE))
@@ -574,9 +619,9 @@ def _build_corporate_actions(
             asset = str(_cell(row, COL_ASSET) or "").strip()
             quantity = _decimal(_cell(row, COL_AMOUNT)) if _is_security_asset(asset) else Decimal("0")
             proceeds = Decimal("0")
-            if action_type == "redemption" and _is_security_asset(asset):
-                proceeds = redemption_proceeds.get((_date_key(event_dt), isin), Decimal("0"))
-            elif action_type in {"conversion_compensation", "spinoff_compensation"} and _is_money_asset(asset):
+            if action_type == "reorg_cash" and quantity < 0:
+                proceeds = abs(quantity) * _cash_action_price(description)
+            elif action_type in {"conversion_compensation", "spinoff_compensation", "split_compensation"} and _is_money_asset(asset):
                 proceeds = abs(_decimal(_cell(row, COL_AMOUNT)))
             actions.append(
                 {
@@ -585,7 +630,7 @@ def _build_corporate_actions(
                     "symbol": symbol,
                     "isin": isin,
                     "action_type": action_type,
-                    "description": _none_text(_cell(row, COL_COMMENT)),
+                    "description": description,
                     "quantity": str(quantity),
                     "proceeds": str(proceeds),
                     "value": str(_decimal(_cell(row, COL_AMOUNT))),
@@ -598,14 +643,170 @@ def _build_corporate_actions(
                     "_source_index": idx,
                 }
             )
+        for action in _cash_corporate_actions(report, instrument_lookup):
+            if not _is_duplicate_cash_corporate_action(actions, action):
+                actions.append(action)
+        known_spinoffs = {
+            (_none_text(action.get("date")), _none_text(action.get("symbol")), _none_text(action.get("isin")))
+            for action in actions
+            if action.get("action_type") == "spinoff"
+        }
+        for action in _spinoff_actions_from_security_income(report):
+            key = (_none_text(action.get("date")), _none_text(action.get("symbol")), _none_text(action.get("isin")))
+            if key not in known_spinoffs:
+                actions.append(action)
+                known_spinoffs.add(key)
         actions.extend(_internal_ticker_change_actions(report, instrument_lookup))
         actions.extend(_internal_depository_change_actions(report, instrument_lookup))
+    _attach_redemption_proceeds(actions)
     return actions
 
 
 def _canonical_corporate_actions(actions: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
     columns = ("date", "symbol", "isin", "action_type", "description", "quantity", "proceeds", "value", "currency", "realized_pl", "source_report")
     return [{column: action.get(column) for column in columns} for action in actions]
+
+
+def _spinoff_actions_from_security_income(report: ParsedFreedomReport) -> list[dict[str, Any]]:
+    """Convert stock-dividend legs explicitly described as spin-offs into corporate actions."""
+
+    actions: list[dict[str, Any]] = []
+    for idx, row in enumerate(report.rows.get(SECTION_SEC_IN_OUT, []), start=1):
+        quantity = _decimal(_cell(row, COL_QTY))
+        description = _none_text(_cell(row, COL_COMMENT))
+        if quantity <= 0 or not _is_spinoff_description(description):
+            continue
+        event_dt = _parse_datetime(_cell(row, COL_DATE))
+        isin = _normalize_isin(_cell(row, COL_ISIN))
+        symbol = _clean_symbol(_cell(row, COL_TICKER)) or isin
+        if event_dt is None or symbol is None:
+            continue
+        actions.append(
+            {
+                "date": event_dt.date().isoformat(),
+                "date_time": event_dt.isoformat(sep=" "),
+                "symbol": symbol,
+                "isin": isin,
+                "action_type": "spinoff",
+                "description": description,
+                "quantity": str(quantity),
+                "proceeds": "0",
+                "value": "0",
+                "currency": FREEDOM_BASE_CURRENCY,
+                "realized_pl": "0",
+                "source_report": str(report.path),
+                "_asset": "Securities",
+                "_amount_per_one": "0",
+                "_record_qty": "0",
+                "_source_index": idx,
+            }
+        )
+    return actions
+
+
+def _cash_corporate_actions(
+    report: ParsedFreedomReport,
+    instrument_lookup: Mapping[tuple[str, int | None], dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Recover corporate-action cash legs omitted from older Corpactions sheets."""
+
+    actions: list[dict[str, Any]] = []
+    for idx, row in enumerate(report.rows.get(SECTION_CASH_IN_OUT, []), start=1):
+        description = _none_text(_cell(row, COL_COMMENT))
+        action_type = _corporate_action_type(_cell(row, COL_TYPE), "Money", description)
+        if action_type not in {
+            "redemption",
+            "reorg_cash",
+            "conversion_compensation",
+            "spinoff_compensation",
+            "split_compensation",
+        }:
+            continue
+        amount = _decimal(_cell(row, COL_AMOUNT))
+        event_dt = _parse_datetime(_cell(row, COL_DATE))
+        if amount == 0 or event_dt is None:
+            continue
+        symbol = _corporate_action_symbol(description)
+        instrument = _lookup_instrument(instrument_lookup, symbol=symbol, year=event_dt.year) or {}
+        canonical_symbol = symbol or _none_text(instrument.get("symbol"))
+        isin = _none_text(instrument.get("isin"))
+        actions.append(
+            {
+                "date": event_dt.date().isoformat(),
+                "date_time": event_dt.isoformat(sep=" "),
+                "symbol": canonical_symbol or isin,
+                "isin": isin,
+                "action_type": action_type,
+                "description": description,
+                "quantity": "0",
+                "proceeds": str(abs(amount)) if action_type != "redemption" else "0",
+                "value": str(amount),
+                "currency": _normalize_currency(_cell(row, COL_CURRENCY)) or FREEDOM_BASE_CURRENCY,
+                "realized_pl": "0",
+                "source_report": str(report.path),
+                "_asset": "Money",
+                "_amount_per_one": str(_cash_action_price(description)),
+                "_record_qty": "0",
+                "_source_index": idx,
+            }
+        )
+    return actions
+
+
+def _is_duplicate_cash_corporate_action(
+    actions: Sequence[Mapping[str, Any]],
+    candidate: Mapping[str, Any],
+) -> bool:
+    candidate_description = _normalized_comment_key(_none_text(candidate.get("description")))
+    candidate_value = _decimal(candidate.get("value"))
+    for action in actions:
+        if _none_text(action.get("source_report")) != _none_text(candidate.get("source_report")):
+            continue
+        if _normalized_comment_key(_none_text(action.get("description"))) != candidate_description:
+            continue
+        if action.get("action_type") == "reorg_cash" and _decimal(action.get("quantity")) < 0:
+            return True
+        if _is_money_asset(action.get("_asset")) and _decimal(action.get("value")) == candidate_value:
+            return True
+    return False
+
+
+def _attach_redemption_proceeds(actions: Sequence[dict[str, Any]]) -> None:
+    cash_legs = [
+        action
+        for action in actions
+        if action.get("action_type") == "redemption"
+        and _decimal(action.get("quantity")) == 0
+        and _decimal(action.get("value")) > 0
+    ]
+    used: set[int] = set()
+    for security_action in actions:
+        if security_action.get("action_type") != "redemption" or _decimal(security_action.get("quantity")) >= 0:
+            continue
+        security_dt = _parse_datetime(security_action.get("date_time") or security_action.get("date"))
+        candidates: list[tuple[int, int, dict[str, Any]]] = []
+        for index, cash_action in enumerate(cash_legs):
+            if index in used or not _same_corporate_action_instrument(security_action, cash_action):
+                continue
+            cash_dt = _parse_datetime(cash_action.get("date_time") or cash_action.get("date"))
+            if security_dt is None or cash_dt is None:
+                continue
+            distance = abs((security_dt.date() - cash_dt.date()).days)
+            if distance <= 10:
+                candidates.append((distance, index, cash_action))
+        if not candidates:
+            continue
+        _, index, cash_action = min(candidates, key=lambda item: item[0])
+        security_action["proceeds"] = str(abs(_decimal(cash_action.get("value"))))
+        used.add(index)
+
+
+def _same_corporate_action_instrument(left: Mapping[str, Any], right: Mapping[str, Any]) -> bool:
+    left_isin = _normalize_isin(left.get("isin"))
+    right_isin = _normalize_isin(right.get("isin"))
+    if left_isin and right_isin:
+        return left_isin == right_isin
+    return _clean_symbol(left.get("symbol")) == _clean_symbol(right.get("symbol"))
 
 
 def _internal_ticker_change_actions(
@@ -730,25 +931,31 @@ def _internal_depository_change_actions(
     return actions
 
 
-def _redemption_proceeds_by_key(reports: Sequence[ParsedFreedomReport]) -> dict[tuple[str | None, str | None], Decimal]:
-    proceeds: dict[tuple[str | None, str | None], Decimal] = defaultdict(Decimal)
-    for report in reports:
-        for row in report.rows.get(SECTION_CORPACTIONS, []):
-            if not _is_redemption_type(_cell(row, COL_TYPE)) or not _is_money_asset(_cell(row, COL_ASSET)):
-                continue
-            proceeds[(_date_key(_parse_datetime(_cell(row, COL_DATE))), _normalize_isin(_cell(row, COL_ISIN)))] += abs(_decimal(_cell(row, COL_AMOUNT)))
-    return proceeds
-
-
-def _corporate_action_type(action_value: Any, asset_value: Any) -> str | None:
+def _corporate_action_type(
+    action_value: Any,
+    asset_value: Any,
+    description: str | None = None,
+) -> str | None:
+    if _is_reorg_cash_description(description):
+        return "reorg_cash"
+    if _is_compensation_description(description):
+        if _is_conversion_type(action_value):
+            return "conversion_compensation"
+        source_symbol = _corporate_action_symbol(description)
+        target_symbol = _compensation_symbol(description)
+        if source_symbol and target_symbol and source_symbol != target_symbol:
+            return "spinoff_compensation"
+        return "split_compensation"
+    if _text_in(action_value, {"спин-офф", "спинофф", "spin-off", "spinoff"}):
+        return "spinoff"
+    if _conversion_identities(description or "")[1]:
+        return "conversion_compensation" if _is_money_asset(asset_value) else "conversion"
     if _is_redemption_type(action_value):
         return "redemption"
     if _is_conversion_type(action_value):
         return "conversion_compensation" if _is_money_asset(asset_value) else "conversion"
     if _text_in(action_value, {"сплит", "split"}):
         return "split"
-    if _text_in(action_value, {"спин-офф", "спинофф", "spin-off", "spinoff"}):
-        return "spinoff"
     if _text_in(action_value, {"зачисление прав", "rights issue", "rights"}):
         return "rights"
     if _text_in(action_value, {"компенсация по корпоративному действию", "corporate action compensation"}):
@@ -763,11 +970,11 @@ def _build_corporate_action_trades(
     trades: list[dict[str, Any]] = []
     for action in _net_corporate_actions_for_synthetic_trades(actions):
         action_type = _none_text(action.get("action_type"))
-        if action_type == "redemption":
+        if action_type in {"redemption", "reorg_cash"}:
             trade = _synthetic_exit_trade(action, instrument_lookup, action_type)
         elif action_type in {"spinoff", "rights"}:
             trade = _synthetic_zero_cost_trade(action, instrument_lookup, action_type)
-        elif action_type in {"conversion_compensation", "spinoff_compensation"}:
+        elif action_type in {"conversion_compensation", "spinoff_compensation", "split_compensation"}:
             trade = _synthetic_compensation_trade(action, instrument_lookup, action_type)
         elif action_type == "split":
             trade = _synthetic_split_event(action)
@@ -782,6 +989,7 @@ def _net_corporate_actions_for_synthetic_trades(actions: Sequence[Mapping[str, A
     result: list[Mapping[str, Any]] = []
     grouped: dict[tuple[str | None, str | None, str | None, str | None], list[Mapping[str, Any]]] = defaultdict(list)
     expected_spinoff_quantity_by_symbol: dict[str, Decimal] = {}
+    seen_split_actions: set[tuple[str | None, str | None, str | None, str]] = set()
     for action in actions:
         if action.get("action_type") != "spinoff_compensation":
             continue
@@ -791,6 +999,20 @@ def _net_corporate_actions_for_synthetic_trades(actions: Sequence[Mapping[str, A
             expected_spinoff_quantity_by_symbol[symbol] = max(expected_spinoff_quantity_by_symbol.get(symbol, Decimal("0")), expected_quantity)
     for action in actions:
         action_type = _none_text(action.get("action_type"))
+        if action_type == "split":
+            if _is_fully_cash_settled_split(action, actions):
+                continue
+            key = (
+                _none_text(action.get("date_time") or action.get("date")),
+                _none_text(action.get("isin")),
+                _none_text(action.get("symbol")),
+                str(action.get("description") or "").strip(),
+            )
+            if key in seen_split_actions:
+                continue
+            seen_split_actions.add(key)
+            result.append(action)
+            continue
         if action_type in {"spinoff", "rights"}:
             description = str(action.get("description") or "").replace("Reverted:", "").strip()
             grouped[(action_type, _none_text(action.get("isin")), _none_text(action.get("symbol")), description)].append(action)
@@ -803,10 +1025,38 @@ def _net_corporate_actions_for_synthetic_trades(actions: Sequence[Mapping[str, A
         source = dict(group[-1])
         symbol = _none_text(source.get("symbol"))
         if source.get("action_type") == "spinoff" and symbol in expected_spinoff_quantity_by_symbol:
-            quantity = max(quantity, expected_spinoff_quantity_by_symbol[symbol])
+            quantity = expected_spinoff_quantity_by_symbol[symbol]
         source["quantity"] = str(quantity)
         result.append(source)
     return result
+
+
+def _is_fully_cash_settled_split(
+    split_action: Mapping[str, Any],
+    actions: Sequence[Mapping[str, Any]],
+) -> bool:
+    if _decimal(split_action.get("quantity")) >= 0:
+        return False
+    split_dt = _parse_datetime(split_action.get("date_time") or split_action.get("date"))
+    for action in actions:
+        if action is split_action or action.get("action_type") != "split":
+            continue
+        if _decimal(action.get("quantity")) <= 0 or not _same_corporate_action_instrument(split_action, action):
+            continue
+        action_dt = _parse_datetime(action.get("date_time") or action.get("date"))
+        if split_dt and action_dt and split_dt.date() == action_dt.date():
+            return False
+    for action in actions:
+        if action.get("action_type") != "split_compensation":
+            continue
+        if _decimal(action.get("value")) <= 0 or _compensation_expected_quantity(action) != 0:
+            continue
+        if not _same_corporate_action_instrument(split_action, action):
+            continue
+        action_dt = _parse_datetime(action.get("date_time") or action.get("date"))
+        if split_dt and action_dt and abs((split_dt.date() - action_dt.date()).days) <= 90:
+            return True
+    return False
 
 
 def _synthetic_exit_trade(action: Mapping[str, Any], instrument_lookup: Mapping[tuple[str, int | None], dict[str, Any]], action_type: str) -> dict[str, Any] | None:
@@ -820,7 +1070,7 @@ def _synthetic_exit_trade(action: Mapping[str, Any], instrument_lookup: Mapping[
         return None
     instrument = _lookup_instrument(instrument_lookup, symbol=_none_text(action.get("symbol")), isin=isin, year=action_dt.year) or {}
     price = abs(proceeds / quantity)
-    symbol = _none_text(instrument.get("symbol")) or _none_text(action.get("symbol")) or isin
+    symbol = _none_text(action.get("symbol")) or _none_text(instrument.get("symbol")) or isin
     return _synthetic_trade_dict(action, action_dt, symbol, isin, quantity, price, proceeds, instrument, action_type)
 
 
@@ -838,8 +1088,8 @@ def _synthetic_zero_cost_trade(action: Mapping[str, Any], instrument_lookup: Map
 
 
 def _synthetic_compensation_trade(action: Mapping[str, Any], instrument_lookup: Mapping[tuple[str, int | None], dict[str, Any]], action_type: str) -> dict[str, Any] | None:
-    proceeds = _decimal(action.get("proceeds"))
-    if proceeds <= 0:
+    amount = abs(_decimal(action.get("proceeds")))
+    if amount <= 0:
         return None
     action_dt = _parse_datetime(action.get("date_time") or action.get("date"))
     if action_dt is None:
@@ -853,12 +1103,12 @@ def _synthetic_compensation_trade(action: Mapping[str, Any], instrument_lookup: 
     quantity = _compensation_quantity(action)
     if quantity == 0:
         price_hint = _decimal(action.get("_amount_per_one"))
-        quantity = -(proceeds / price_hint) if price_hint else Decimal("0")
-    if quantity >= 0:
-        quantity = -abs(quantity)
-    price = abs(proceeds / quantity) if quantity else _decimal(action.get("_amount_per_one"))
+        cash_value = _decimal(action.get("value"))
+        unsigned_quantity = amount / price_hint if price_hint else Decimal("0")
+        quantity = unsigned_quantity if cash_value < 0 else -unsigned_quantity
+    price = abs(amount / quantity) if quantity else _decimal(action.get("_amount_per_one"))
     symbol = _none_text(instrument.get("symbol")) or symbol or isin
-    return _synthetic_trade_dict(action, action_dt, symbol, isin, quantity, price, proceeds, instrument, action_type)
+    return _synthetic_trade_dict(action, action_dt, symbol, isin, quantity, price, amount, instrument, action_type)
 
 
 def _synthetic_split_event(action: Mapping[str, Any]) -> dict[str, Any] | None:
@@ -928,7 +1178,7 @@ def _synthetic_trade_dict(
         "country": _country_from_isin(isin) or _none_text(instrument.get("country")),
         "source_report": f"corporate_action:{action.get('source_report')}",
         "_instrument_identity_key": _instrument_identity_key_from_values(isin=isin, symbol=symbol),
-        "_broker_realized_pl": str(abs(amount)) if action_type in {"conversion_compensation", "spinoff_compensation"} else "0",
+        "_broker_realized_pl": str(abs(amount)) if quantity < 0 and action_type.endswith("_compensation") else "0",
         "_synthetic_source": "corporate_action",
         "_corporate_action_type": action_type,
         "corporate_action_adjustment": action.get("description"),
@@ -961,7 +1211,7 @@ def _apply_identity_changes_to_trades(
         if action_dt is None or not old_isin or not new_isin:
             continue
         instrument = _lookup_instrument(instrument_lookup, symbol=new_symbol, isin=new_isin, year=action_dt.year) or {}
-        canonical_symbol = _none_text(instrument.get("symbol")) or new_symbol or new_isin
+        canonical_symbol = new_symbol or _none_text(instrument.get("symbol")) or new_isin
         for trade in result:
             trade_dt = _parse_datetime(trade.get("date_time"))
             if trade_dt is None or trade_dt >= action_dt:
@@ -979,7 +1229,91 @@ def _apply_identity_changes_to_trades(
                 trade["quantity"] = str(qty / ratio)
                 trade["price"] = str(price * ratio)
             trade["corporate_action_adjustment"] = description
+    _apply_split_isin_changes_to_trades(result, actions)
     return result
+
+
+def _apply_split_isin_changes_to_trades(
+    trades: Sequence[dict[str, Any]],
+    actions: Sequence[Mapping[str, Any]],
+) -> None:
+    """Keep FIFO lots continuous when a Freedom split also changes the ISIN.
+
+    The broker can report the pre-split purchases and the split rows under an
+    old ISIN, then report the eventual sale under a new one.  The zero-quantity
+    synthetic split adjusts a FIFO inventory only within one identity, so the
+    historical lots must be bridged to the post-split ISIN first.
+    """
+
+    split_actions = [
+        (
+            action,
+            _parse_datetime(action.get("date_time") or action.get("date")),
+            _normalize_isin(action.get("isin")),
+            _clean_symbol(action.get("symbol")),
+        )
+        for action in actions
+        if action.get("action_type") == "split"
+    ]
+    processed: set[tuple[datetime, str, str | None]] = set()
+    for action, action_dt, old_isin, symbol in split_actions:
+        if action_dt is None or not old_isin or not symbol:
+            continue
+        key = (action_dt, old_isin, symbol)
+        if key in processed:
+            continue
+        processed.add(key)
+
+        successor_isin = _split_successor_isin(trades, symbol, old_isin, action_dt)
+        if successor_isin is None or successor_isin == old_isin:
+            continue
+
+        for candidate in actions:
+            candidate_dt = _parse_datetime(candidate.get("date_time") or candidate.get("date"))
+            if (
+                candidate.get("action_type") == "split"
+                and candidate_dt == action_dt
+                and _normalize_isin(candidate.get("isin")) == old_isin
+                and _symbol_base(_clean_symbol(candidate.get("symbol"))) == _symbol_base(symbol)
+            ):
+                candidate["isin"] = successor_isin
+        for trade in trades:
+            trade_dt = _parse_datetime(trade.get("date_time"))
+            if (
+                trade_dt is None
+                or trade_dt >= action_dt
+                or _normalize_isin(trade.get("isin")) != old_isin
+                or _symbol_base(_clean_symbol(trade.get("symbol"))) != _symbol_base(symbol)
+            ):
+                continue
+            trade["isin"] = successor_isin
+            trade["country"] = _country_from_isin(successor_isin) or _none_text(trade.get("country"))
+            trade["_instrument_identity_key"] = _instrument_identity_key_from_values(
+                isin=successor_isin,
+                symbol=_none_text(trade.get("symbol")),
+            )
+            trade["corporate_action_adjustment"] = _none_text(action.get("description"))
+
+
+def _split_successor_isin(
+    trades: Sequence[Mapping[str, Any]],
+    symbol: str,
+    old_isin: str,
+    action_dt: datetime,
+) -> str | None:
+    candidates: list[tuple[datetime, str]] = []
+    for trade in trades:
+        trade_dt = _parse_datetime(trade.get("date_time"))
+        isin = _normalize_isin(trade.get("isin"))
+        if (
+            trade_dt is not None
+            and trade_dt > action_dt
+            and isin is not None
+            and isin != old_isin
+            and _symbol_base(_clean_symbol(trade.get("symbol"))) == _symbol_base(symbol)
+        ):
+            candidates.append((trade_dt, isin))
+    return min(candidates, key=lambda item: item[0])[1] if candidates else None
 
 
 def _apply_ticker_changes_to_records(
@@ -1002,7 +1336,7 @@ def _apply_ticker_changes_to_records(
 
 
 def _ticker_change_aliases(actions: Sequence[Mapping[str, Any]]) -> dict[tuple[str | None, str | None], str]:
-    aliases: dict[tuple[str | None, str | None], str] = {}
+    changes: dict[str | None, list[tuple[datetime, str, str]]] = defaultdict(list)
     for action in actions:
         if action.get("action_type") != "ticker_change":
             continue
@@ -1013,8 +1347,16 @@ def _ticker_change_aliases(actions: Sequence[Mapping[str, Any]]) -> dict[tuple[s
         old_symbol = _clean_symbol(match.group(1))
         new_symbol = _clean_symbol(match.group(2))
         isin = _normalize_isin(action.get("isin"))
-        if old_symbol and new_symbol:
-            aliases[(isin, old_symbol)] = new_symbol
+        action_dt = _parse_datetime(action.get("date_time") or action.get("date"))
+        if old_symbol and new_symbol and action_dt:
+            changes[isin].append((action_dt, old_symbol, new_symbol))
+    aliases: dict[tuple[str | None, str | None], str] = {}
+    for isin, instrument_changes in changes.items():
+        ordered = sorted(instrument_changes, key=lambda item: item[0])
+        final_symbol = ordered[-1][2]
+        for _, old_symbol, new_symbol in ordered:
+            aliases[(isin, old_symbol)] = final_symbol
+            aliases[(isin, new_symbol)] = final_symbol
     return aliases
 
 
@@ -1161,6 +1503,9 @@ def _starting_position_transfer_rows(
 
 def _cash_transfer_row(report: ParsedFreedomReport, idx: int, row: Mapping[str, Any]) -> dict[str, Any] | None:
     transfer_type = str(_cell(row, COL_TYPE) or "").strip()
+    description = _none_text(_cell(row, COL_COMMENT) or transfer_type)
+    if _corporate_action_type(transfer_type, "Money", description) is not None:
+        return None
     if _is_non_transfer_cash_type(transfer_type):
         return None
     amount = _decimal(_cell(row, COL_AMOUNT))
@@ -1180,7 +1525,7 @@ def _cash_transfer_row(report: ParsedFreedomReport, idx: int, row: Mapping[str, 
         "price": None,
         "enter_date": None,
         "amount": str(amount),
-        "broker_comment": _none_text(_cell(row, COL_COMMENT) or transfer_type),
+        "broker_comment": description,
         "counterparty": None,
         "source_report": str(report.path),
         "_transfer_id": f"{report.path.name}:cash:{idx}",
@@ -1197,6 +1542,11 @@ def _security_transfer_row(
     quantity = _decimal(_cell(row, COL_QTY))
     if quantity == 0:
         return None
+    transfer_type = str(_cell(row, COL_TYPE) or "").strip()
+    broker_comment = _none_text(_cell(row, COL_COMMENT) or transfer_type)
+    corporate_action_type = _corporate_action_type(transfer_type, None, broker_comment)
+    if corporate_action_type in {"split", "spinoff", "reorg_cash"} or _is_spinoff_description(broker_comment):
+        return None
     event_dt = _parse_datetime(_cell(row, COL_DATE))
     year = event_dt.year if event_dt else _year_for_report(report)
     raw_symbol = _clean_symbol(_cell(row, COL_TICKER))
@@ -1205,8 +1555,6 @@ def _security_transfer_row(
     symbol = _none_text(instrument.get("symbol")) or raw_symbol or raw_isin
     isin = _none_text(instrument.get("isin")) or raw_isin
     identity_key = _instrument_identity_key_from_values(isin=isin, symbol=symbol)
-    transfer_type = str(_cell(row, COL_TYPE) or "").strip()
-    broker_comment = _none_text(_cell(row, COL_COMMENT) or transfer_type)
     if _is_detected_internal_ticker_change_transfer(transfer_type, broker_comment) or _is_detected_internal_depository_change_transfer(transfer_type, broker_comment):
         return None
     transfer = {
@@ -1977,7 +2325,7 @@ def _conversion_ratio(description: str) -> Decimal:
 
 
 def _split_ratio(description: str) -> Decimal:
-    factor_match = re.search(r"Factor\s+(\d+(?:\.\d+)?)/(\d+(?:\.\d+)?)", description, re.IGNORECASE)
+    factor_match = re.search(r"Factor\s*:?\s*(\d+(?:\.\d+)?)/(\d+(?:\.\d+)?)", description, re.IGNORECASE)
     if factor_match:
         denominator = Decimal(factor_match.group(2))
         return Decimal(factor_match.group(1)) / denominator if denominator else Decimal("1")
@@ -1990,6 +2338,30 @@ def _compensation_symbol(description: str) -> str | None:
         return _clean_symbol(match.group(1))
     match = re.search(r"\b([A-Z0-9_]+\.US|[A-Z0-9_]+\.SPB)\b", description)
     return _clean_symbol(match.group(1)) if match else None
+
+
+def _corporate_action_symbol(description: str | None) -> str | None:
+    text = str(description or "")
+    match = re.search(r"\(([A-Z0-9_]+(?:\.[A-Z0-9_]+)+)\)", text, re.IGNORECASE)
+    if match:
+        return _clean_symbol(match.group(1))
+    match = re.search(r"\b([A-Z0-9_]+(?:\.[A-Z0-9_]+)+)\b", text, re.IGNORECASE)
+    return _clean_symbol(match.group(1)) if match else None
+
+
+def _cash_action_price(description: str | None) -> Decimal:
+    text = str(description or "")
+    patterns = (
+        r"Reorg\s+Cash\s*:\s*\d+(?:[.,]\d+)?\s+[A-Z0-9_.]+\s*->\s*\$\s*(\d+(?:[.,]\d+)?)",
+        r"цена\s+для\s+оценки\s+выбывающих\s+бумаг\s+(\d+(?:[.,]\d+)?)",
+        r"price\s+(?:for|per)\s+(?:one\s+)?(?:security|share)\s*:?\s*(\d+(?:[.,]\d+)?)",
+        r"цена\s+за\s+одну\s+бумагу\s*:\s*(\d+(?:[.,]\d+)?)",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            return Decimal(match.group(1).replace(",", "."))
+    return Decimal("0")
 
 
 def _compensation_quantity(action: Mapping[str, Any]) -> Decimal:
@@ -2030,6 +2402,21 @@ def _text_key(value: Any) -> str:
 
 def _text_in(value: Any, options: set[str]) -> bool:
     return _text_key(value) in {option.casefold() for option in options}
+
+
+def _is_spinoff_description(value: str | None) -> bool:
+    normalized = _text_key(value)
+    return "spin-off" in normalized or "spinoff" in normalized
+
+
+def _is_compensation_description(value: str | None) -> bool:
+    normalized = _text_key(value)
+    return "компенсация при проведении корпоративного действия" in normalized or "corporate action compensation" in normalized
+
+
+def _is_reorg_cash_description(value: str | None) -> bool:
+    normalized = _text_key(value)
+    return "reorg cash" in normalized
 
 
 def _is_security_asset(value: Any) -> bool:
