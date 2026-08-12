@@ -163,6 +163,64 @@ class Form270JsonTests(unittest.TestCase):
         self.assertEqual(app["A"]["_02"], 300)
         self.assertEqual(app["A"]["_A"], 550)
 
+    def test_application_01_caps_preferential_trade_correction_when_net_income_is_zero(self) -> None:
+        dataset = CanonicalDataset.empty("merged", "UZHANAR")
+        dataset.tables["Years_Results"] = [
+            {
+                "table": "Yearly Trades",
+                "year": 2025,
+                "flag": "preferential",
+                "country": "KZ",
+                "tax_exchange": "AIX",
+                "currency": "USD",
+                "pnl": "-476.15",
+                "pnl_kzt": "5772.18",
+            },
+            {
+                "table": "Yearly Trades",
+                "year": 2025,
+                "flag": "preferential",
+                "country": "KZ",
+                "tax_exchange": "KASE",
+                "currency": "USD",
+                "pnl": "-655.93",
+                "pnl_kzt": "-342128.42",
+            },
+        ]
+
+        form = _builder().build_account_draft(dataset, tax_year=2025)
+        app = form["fnoContent"]["application_01"]
+
+        self.assertIsNone(app["A"]["_01"])
+        self.assertIsNone(app["A"]["_A"])
+        self.assertIsNone(app["E"]["_E4"])
+        self.assertIsNone(app["_G"])
+
+    def test_application_01_caps_total_preferential_trade_corrections_at_reported_income(self) -> None:
+        dataset = CanonicalDataset.empty("merged", "UCAP")
+        dataset.tables["Years_Results"] = [
+            {
+                "table": "Yearly Trades",
+                "year": 2025,
+                "flag": "preferential",
+                "country": "KZ",
+                "tax_exchange": exchange,
+                "currency": "USD",
+                "pnl_kzt": pnl_kzt,
+            }
+            for exchange, pnl_kzt in (
+                ("KASE", "100"),
+                ("AIX", "100"),
+                ("KASE", "-150"),
+            )
+        ]
+
+        form = _builder().build_account_draft(dataset, tax_year=2025)
+        app = form["fnoContent"]["application_01"]
+
+        self.assertEqual(app["A"]["_A"], 50)
+        self.assertEqual(app["E"]["_E1"] + app["E"]["_E4"], app["A"]["_A"])
+
     def test_application_01_uses_coupon_only_profit_and_corrects_all_coupons(self) -> None:
         dataset = CanonicalDataset.empty("ib", "UCOUPONS")
         dataset.tables["Years_Results"] = [

@@ -306,6 +306,7 @@ def _parse_yyyymmdd(value: Any) -> date | None:
 def _build_instruments(reports: Sequence[ParsedFreedomReport], account_id: str) -> list[dict[str, Any]]:
     instruments: list[dict[str, Any]] = []
     seen: set[tuple[str | None, str | None, int | None]] = set()
+    coupon_bond_keys = _coupon_bond_keys(reports)
 
     def add(
         *,
@@ -328,7 +329,16 @@ def _build_instruments(reports: Sequence[ParsedFreedomReport], account_id: str) 
             return
         seen.add(key)
         country = _country_from_isin(isin_norm) or _country_from_symbol(symbol_norm)
-        canonical_type = _asset_type(asset_type, symbol_norm)
+        # A security sold in full may be absent from the report's final
+        # Securities section.  Its Trades rows then have no asset type, but a
+        # coupon event unambiguously identifies it as a bond.  This prevents
+        # accrued coupon income included in the broker Amount from being
+        # mistaken for a transaction multiplier.
+        canonical_type = (
+            "Bonds"
+            if _instrument_key_matches(symbol_norm, isin_norm, coupon_bond_keys)
+            else _asset_type(asset_type, symbol_norm)
+        )
         instruments.append(
             {
                 "symbol": symbol_norm,
@@ -426,6 +436,28 @@ def _build_instruments(reports: Sequence[ParsedFreedomReport], account_id: str) 
                             year=event_dt.year if event_dt else report_year,
                         )
     return _dedupe_instruments(instruments)
+
+
+def _coupon_bond_keys(reports: Sequence[ParsedFreedomReport]) -> set[tuple[str, str]]:
+    """Return Freedom instruments identified as bonds by coupon events."""
+
+    keys: set[tuple[str, str]] = set()
+    for report in reports:
+        for section in (SECTION_CORPACTIONS, SECTION_CASH_IN_OUT):
+            for row in report.rows.get(section, []):
+                if not _is_coupon_type(_cell(row, COL_TYPE)):
+                    continue
+                symbol = _clean_symbol(_cell(row, COL_TICKER))
+                isin = _normalize_isin(_cell(row, COL_ISIN))
+                if symbol:
+                    keys.add(("symbol", symbol))
+                if isin:
+                    keys.add(("isin", isin))
+    return keys
+
+
+def _instrument_key_matches(symbol: str | None, isin: str | None, keys: set[tuple[str, str]]) -> bool:
+    return (symbol is not None and ("symbol", symbol) in keys) or (isin is not None and ("isin", isin) in keys)
 
 
 def _dedupe_instruments(instruments: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:

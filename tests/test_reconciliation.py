@@ -70,6 +70,62 @@ class ReconciliationTests(unittest.TestCase):
         self.assertEqual(len(position_errors), 1)
         self.assertEqual(position_errors[0].difference, Decimal("74950"))
 
+    def test_split_compensation_is_included_in_fifo_broker_pl_reconciliation(self) -> None:
+        dataset = CanonicalDataset.empty("freedom", "split")
+        metric = ReconciliationMetric.PNL_AFTER_ALL_COMMISSIONS_BY_INSTRUMENT.value
+        key = f"{metric}|2025|USD|US31572Q8814"
+        dataset.raw_totals.totals_by_metric_currency[key] = Decimal("-120")
+        dataset.tables["Fifo"] = [
+            {
+                "exit_date": "2025-10-21 21:53:40",
+                "currency": "USD",
+                "isin": "US31572Q8814",
+                "pnl_after_all_commissions": "-100",
+                "source_trade_id": "ordinary-sale",
+            },
+            {
+                "exit_date": "2025-06-20 00:00:00",
+                "currency": "USD",
+                "isin": "US31572Q8814",
+                "pnl_after_all_commissions": "-20",
+                "source_trade_id": "CA:split-compensation",
+                "corporate_action_type": "split_compensation",
+            },
+        ]
+
+        items = ReconciliationEngine().reconcile_dataset(dataset)
+
+        pnl_item = next(
+            item
+            for item in items
+            if item.metric == ReconciliationMetric.PNL_AFTER_ALL_COMMISSIONS_BY_INSTRUMENT
+            and item.instrument_key == "US31572Q8814"
+        )
+        self.assertEqual(pnl_item.broker_value, Decimal("-120"))
+        self.assertEqual(pnl_item.canonical_value, Decimal("-120"))
+        self.assertEqual(pnl_item.severity, ReconciliationSeverity.INFO)
+
+    def test_other_cash_corporate_actions_remain_in_broker_pl_reconciliation(self) -> None:
+        dataset = CanonicalDataset.empty("freedom", "redemption")
+        metric = ReconciliationMetric.PNL_AFTER_ALL_COMMISSIONS_BY_INSTRUMENT.value
+        key = f"{metric}|2025|USD|US0000000001"
+        dataset.raw_totals.totals_by_metric_currency[key] = Decimal("10")
+        dataset.tables["Fifo"] = [
+            {
+                "exit_date": "2025-01-01 00:00:00",
+                "currency": "USD",
+                "isin": "US0000000001",
+                "pnl_after_all_commissions": "10",
+                "source_trade_id": "CA:redemption",
+                "corporate_action_type": "redemption",
+            }
+        ]
+
+        items = ReconciliationEngine().reconcile_dataset(dataset)
+
+        pnl_item = next(item for item in items if item.metric == ReconciliationMetric.PNL_AFTER_ALL_COMMISSIONS_BY_INSTRUMENT)
+        self.assertEqual(pnl_item.severity, ReconciliationSeverity.ERROR)
+
     def test_missing_country_and_fx_rate_are_unprocessed_reconciliation_errors(self) -> None:
         dataset = CanonicalDataset.empty("test", "account")
         dataset.tables["Trades"] = [

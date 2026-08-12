@@ -401,15 +401,26 @@ def _build_application_01(
     )
     trades_kz = trades_kz_preferential + trades_kz_non_preferential
     trades_foreign = trades_foreign_preferential + trades_foreign_non_preferential
-    preferential_trades = _sum_positive(rows, "pnl_kzt", table="Yearly Trades", flags=preferential_flags)
-    preferential_aix_trades = _sum_positive(
+    # The A.1 fields contain the net (then floored) preferential result for
+    # Kazakhstan and foreign securities separately.  The correction in E may
+    # only deduct income actually included in those fields.  In particular, a
+    # KASE loss cannot leave a positive AIX correction after the combined
+    # preferential trade result in A.1 has become zero.
+    reported_preferential_trade_income = trades_kz_preferential + trades_foreign_preferential
+    raw_preferential_trades = _sum_positive(rows, "pnl_kzt", table="Yearly Trades", flags=preferential_flags)
+    raw_preferential_aix_trades = _sum_positive(
         rows,
         "pnl_kzt",
         table="Yearly Trades",
         flags=preferential_flags,
         tax_exchange="AIX",
     )
-    preferential_kase_trades = preferential_trades - preferential_aix_trades
+    raw_preferential_kase_trades = raw_preferential_trades - raw_preferential_aix_trades
+    preferential_kase_trades, preferential_aix_trades = _cap_preferential_trade_corrections(
+        kase=raw_preferential_kase_trades,
+        aix=raw_preferential_aix_trades,
+        reported_income=reported_preferential_trade_income,
+    )
     dividends = _sum_positive(rows, "amount_kzt", table="Yearly Dividends")
     dividend_corrections = _sum_positive(rows, "amount_kzt", table="Yearly Dividends", flags=preferential_flags)
     preferential_kase_dividends = _sum_positive(
@@ -914,6 +925,32 @@ def _sum_then_floor(
             continue
         total += _decimal(row.get(field))
     return max(total, ZERO)
+
+
+def _cap_preferential_trade_corrections(
+    *,
+    kase: Decimal,
+    aix: Decimal,
+    reported_income: Decimal,
+) -> tuple[Decimal, Decimal]:
+    """Limit Yearly Trades corrections to preferential income reported in A.1.
+
+    Yearly results are grouped more broadly in A.1 than in E.1/E.4.  If an
+    adverse result offsets preferential income in A.1, the E corrections must
+    be reduced by the same amount; otherwise the declaration deducts income
+    that was never reported.  Preserve the relative KASE/AIX composition when
+    both corrections need to be reduced.
+    """
+
+    total_corrections = kase + aix
+    cap = max(reported_income, ZERO)
+    if total_corrections <= cap:
+        return kase, aix
+    if total_corrections <= ZERO or cap == ZERO:
+        return ZERO, ZERO
+
+    kase_correction = kase * cap / total_corrections
+    return kase_correction, cap - kase_correction
 
 
 def _foreign_tax_credit(rows: Sequence[Mapping[str, Any]]) -> Decimal:

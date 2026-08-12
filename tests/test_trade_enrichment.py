@@ -48,8 +48,11 @@ class TradeEnrichmentTests(unittest.TestCase):
 
         self.assertEqual([row["symbol"] for row in classified], ["SALE", "TOO-BIG", "EXACT", "FX-SPOT", "FOREX"])
         self.assertIsNone(by_symbol["SALE"]["source_of_expense"])
+        self.assertEqual(by_symbol["SALE"]["cumulative_source_of_expense"], "100")
         self.assertEqual(by_symbol["TOO-BIG"]["source_of_expense"], "11")
+        self.assertEqual(by_symbol["TOO-BIG"]["cumulative_source_of_expense"], "100")
         self.assertEqual(by_symbol["EXACT"]["source_of_expense"], "12")
+        self.assertEqual(by_symbol["EXACT"]["cumulative_source_of_expense"], "0")
         self.assertEqual(by_symbol["FX-SPOT"]["source_of_expense"], "11")
         self.assertIsNone(by_symbol["FOREX"]["source_of_expense"])
 
@@ -102,6 +105,13 @@ class TradeEnrichmentTests(unittest.TestCase):
             ExcelAuditWorkbookWriter().write(dataset, path)
             prepare_form270_05_trades_workbook(path, provider)
             rows = load_processed_workbook_tables(path)["Trades"]
+            from openpyxl import load_workbook
+
+            workbook = load_workbook(path, data_only=True)
+            worksheet = workbook["Trades"]
+            headers = [cell.value for cell in worksheet[1]]
+            source_index = headers.index("Source_Of_Expense")
+            cumulative_values = [worksheet.cell(row=index, column=source_index + 2).value for index in range(2, 5)]
 
         self.assertEqual([row["symbol"] for row in rows], ["SALE", "ZERO-SPINOFF", "BUY"])
         self.assertEqual(Decimal(str(rows[0]["kzt_rate"])), Decimal("400"))
@@ -109,6 +119,9 @@ class TradeEnrichmentTests(unittest.TestCase):
         self.assertEqual(Decimal(str(rows[1]["amount"])), Decimal("0"))
         self.assertIsNone(rows[1]["source_of_expense"])
         self.assertEqual(str(rows[2]["source_of_expense"]), "12")
+
+        self.assertEqual(headers[source_index + 1], "Cumulative_Source_Of_Expense")
+        self.assertEqual(cumulative_values, [40000, 40000, 0])
 
 
 def _trade(

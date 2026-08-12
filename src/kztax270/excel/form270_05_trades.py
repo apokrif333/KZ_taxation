@@ -35,7 +35,9 @@ def prepare_form270_05_trades_workbook(
         return path
 
     worksheet = workbook["Trades"]
-    columns = required_columns("Trades")
+    columns = list(required_columns("Trades"))
+    source_column = "source_of_expense"
+    columns.insert(columns.index(source_column) + 1, "cumulative_source_of_expense")
     header_aliases = {display_column_name(column): column for column in columns}
     header_aliases.update({column: column for column in columns})
     source_headers = [cell.value for cell in worksheet[1]]
@@ -61,7 +63,13 @@ def prepare_form270_05_trades_workbook(
     worksheet.append([display_column_name(column) for column in columns])
     for row in trades:
         worksheet.append(
-            [_excel_value(row.get(column), numeric=column in NUMERIC_WORKBOOK_COLUMNS) for column in columns]
+            [
+                _excel_value(
+                    row.get(column),
+                    numeric=column in NUMERIC_WORKBOOK_COLUMNS or column == "cumulative_source_of_expense",
+                )
+                for column in columns
+            ]
         )
     workbook.save(path)
     return path

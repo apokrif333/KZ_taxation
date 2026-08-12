@@ -55,6 +55,8 @@ def classify_form270_05_sources(
     The pool is global across the complete workbook history.  A sale increases
     it.  A purchase uses sale proceeds only when the pool covers the purchase
     completely; an uncovered purchase leaves the existing pool untouched.
+    ``cumulative_source_of_expense`` records the balance after each event so
+    the prepared Trades sheet can be reconciled with that decision.
     """
 
     ordered = [dict(row) for row in trades]
@@ -69,20 +71,18 @@ def classify_form270_05_sources(
     sale_pool = ZERO
     for row in ordered:
         row["source_of_expense"] = None
-        if not is_real_form270_05_trade(row):
-            continue
-        amount_kzt = abs(decimal_value(row.get("amount_kzt")))
-        quantity = decimal_value(row.get("quantity"))
-        if amount_kzt <= ZERO:
-            continue
-        if quantity < ZERO:
-            sale_pool += amount_kzt
-            continue
-        if sale_pool >= amount_kzt:
-            row["source_of_expense"] = SOURCE_ASSET_SALE_CODE
-            sale_pool -= amount_kzt
-        else:
-            row["source_of_expense"] = SOURCE_OWN_FUNDS_CODE
+        if is_real_form270_05_trade(row):
+            amount_kzt = abs(decimal_value(row.get("amount_kzt")))
+            quantity = decimal_value(row.get("quantity"))
+            if amount_kzt > ZERO:
+                if quantity < ZERO:
+                    sale_pool += amount_kzt
+                elif sale_pool >= amount_kzt:
+                    row["source_of_expense"] = SOURCE_ASSET_SALE_CODE
+                    sale_pool -= amount_kzt
+                else:
+                    row["source_of_expense"] = SOURCE_OWN_FUNDS_CODE
+        row["cumulative_source_of_expense"] = decimal_text(sale_pool)
     return ordered
 
 

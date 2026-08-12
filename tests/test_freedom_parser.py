@@ -1951,6 +1951,77 @@ class FreedomParserTests(unittest.TestCase):
         self.assertEqual(coupons[1]["symbol"], "FFSPC1.1228.AIX.KZ")
         self.assertEqual(coupons[1]["isin"], "KZX000001862")
 
+    def test_coupon_identifies_fully_sold_bond_and_excludes_accrued_coupon_from_multiplier(self) -> None:
+        import pandas as pd  # type: ignore
+
+        with tempfile.TemporaryDirectory() as tmp:
+            raw_root = Path(tmp) / "raw"
+            broker_root = raw_root / fe.BROKER_CODE
+            broker_root.mkdir(parents=True)
+            report_path = broker_root / "BOND10_2025-01-01 00_00_00_2025-12-31 23_59_59_all.xlsx"
+
+            with pd.ExcelWriter(report_path) as writer:
+                pd.DataFrame(
+                    [
+                        {
+                            fe.COL_TICKER: "BOND10.KZ",
+                            fe.COL_ISIN: "KZ2C00013258",
+                            fe.COL_MARKET: "KASE",
+                            fe.COL_OPERATION: "Buy",
+                            fe.COL_QTY: 19,
+                            fe.COL_PRICE: 98.95,
+                            fe.COL_AMOUNT: 19110.83,
+                            fe.COL_CURRENCY: "KZT",
+                            fe.COL_REALIZED_PL: 0,
+                            fe.COL_COMMISSION: 0,
+                            fe.COL_TRADE_DATE: "2025-06-10 11:29:55",
+                            fe.COL_ORDER_ID: "bond-buy",
+                        },
+                        {
+                            fe.COL_TICKER: "BOND10.KZ",
+                            fe.COL_ISIN: "KZ2C00013258",
+                            fe.COL_MARKET: "KASE",
+                            fe.COL_OPERATION: "Sell",
+                            fe.COL_QTY: 19,
+                            fe.COL_PRICE: 100,
+                            fe.COL_AMOUNT: 19099.75,
+                            fe.COL_CURRENCY: "KZT",
+                            fe.COL_REALIZED_PL: 199.5,
+                            fe.COL_COMMISSION: 0,
+                            fe.COL_TRADE_DATE: "2025-10-21 14:34:15",
+                            fe.COL_ORDER_ID: "bond-sell",
+                        },
+                    ]
+                ).to_excel(writer, sheet_name="Trades 20250101 - 20251231", index=False)
+                # The position is closed, therefore Securities does not
+                # contain the instrument and cannot supply its asset type.
+                pd.DataFrame(columns=[fe.COL_TICKER, fe.COL_ISIN, fe.COL_ASSET_TYPE]).to_excel(
+                    writer,
+                    sheet_name="Securities 20250101 - 20251231",
+                    index=False,
+                )
+                pd.DataFrame(
+                    [
+                        {
+                            fe.COL_TYPE: "Coupon",
+                            fe.COL_DATE: "2025-07-18",
+                            fe.COL_ASSET: "Money",
+                            fe.COL_AMOUNT: 332.5,
+                            fe.COL_TICKER: "BOND10.KZ",
+                            fe.COL_ISIN: "KZ2C00013258",
+                            fe.COL_CURRENCY: "KZT",
+                        }
+                    ]
+                ).to_excel(writer, sheet_name="Corpactions 20250101 - 20251231", index=False)
+
+            parser = FreedomParser(fx_provider=AnnualFxRateProvider({(2025, "KZT"): Decimal("1")}))
+            result = parser.parse_reports(parser.discover_reports(raw_root, "BOND10"), "BOND10")
+
+        trades = result.dataset.tables["Trades"]
+        self.assertEqual([row["asset_type"] for row in trades], ["Bonds", "Bonds"])
+        self.assertEqual([row["multiplier"] for row in trades], ["10", "10"])
+        self.assertEqual(Decimal(result.dataset.tables["Fifo"][0]["pnl"]), Decimal("199.5"))
+
 
     def test_coupon_revert_reduces_only_profit_but_negative_nkd_does_not(self) -> None:
         import pandas as pd  # type: ignore
