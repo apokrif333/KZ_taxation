@@ -5,8 +5,10 @@ import unittest
 from decimal import Decimal
 from pathlib import Path
 
+from openpyxl import Workbook
+
 from conftest_imports import SRC  # noqa: F401
-from kztax270.brokers.alatay import AlatayParser, parse_alatay_csv
+from kztax270.brokers.alatay import AlatayParser, parse_alatay_csv, parse_alatay_xlsx
 from kztax270.brokers.registry import default_registry
 from kztax270.canonical.validation import validate_dataset_for_tax_forms
 from kztax270.reconciliation.engine import ReconciliationEngine
@@ -43,6 +45,40 @@ REPORT_2024 = """Отчет движения ценных бумаг
 Дата расчетов сделки/операции,Эмитент,Вид ЦБ,ISIN,Номинал,Вид сделки/тип операции,Количество ЦБ,Цена за 1 ЦБ (% от номинала облигации),Валюта сделки,Сумма сделки/операции,Рынок заключения сделки,Код страны регистрации эмитента,Сумма комиссии
 01.03.2024,ЭМИТЕНТ А,АКЦИИ,KZ0000000001,1,Продажа,3,120,KZT,360,KASE_MOEX,,1
 02.03.2024,ЭМИТЕНТ Б,ОБЛИГАЦИИ,KZ2000000002,1 000,Покупка,5,1 050,KZT,5 250,KASE_MOEX,,0
+"""
+
+
+HISTORICAL_SECURITIES_REPORT = """Ценные бумаги на начало отчетного периода и их движение до начала отчетного периода
+,
+,ФИО/Наименование клиента:,ТЕСТОВЫЙ КЛИЕНТ
+,№ лицевого счета:,00123
+,Отчет составлен на:,01.01.2025
+,
+Ценные бумаги в портфеле клиента на начало отчетного периода:
+№,Эмитент,Вид ЦБ,ISIN,Номинал,Количество ЦБ
+1,ЭМИТЕНТ А,АКЦИИ,KZ0000000001,1,10
+,
+Сделки по ценным бумагам, указанным на начало отчетного периода, за время до начала отчетного периода:
+Дата расчетов сделки/операции,Эмитент,Вид ЦБ,ISIN,Номинал,Вид сделки/тип операции,Количество ЦБ,Цена за 1 ЦБ (% от номинала облигации),Валюта сделки,Сумма сделки/операции,Рынок заключения сделки,Сумма комиссии
+01.02.2023,ЭМИТЕНТ А,АКЦИИ,KZ0000000001,1,Покупка /Народное IPO,10,100,KZT,1 000,KASE_MOEX,2
+02.02.2023,ЭМИТЕНТ А,АКЦИИ,KZ0000000001,1,Перевод основной (получатель без смены прав собственности),10,1,KZT,10,ЦД ЦБ,0
+02.02.2023,ЭМИТЕНТ А,АКЦИИ,KZ0000000001,1,Перевод основной (поставщик без смены прав собственности),10,1,KZT,10,ЦД ЦБ,0
+"""
+
+
+CASH_REPORT = """ОТЧЕТ ДВИЖЕНИЯ ДЕНЕЖНЫХ СРЕДСТВ
+,
+,ФИО/Наименование клиента:,ТЕСТОВЫЙ КЛИЕНТ
+,№ лицевого счета:,123
+,Отчет составлен на:,01.01.2024-31.12.2024
+,
+Входящий остаток на начало периода:,100 KZT
+Исходящий остаток на конец периода:,141 KZT
+,
+Дата проведения операции/сделки,Содержание операции/сделки,Тип операции/вид сделки,Эмитент,ISIN,Входящий остаток,Приход,Расход,Исходящий остаток,Код валюты,Тип ЦБ,Код страны регистрации эмитента,Наименование рынка
+01.06.2024,Зачисление денежных средств,Зачисление вознаграждения (дивиденды),ЭМИТЕНТ А,KZ0000000001,100,10,0,110,KZT,АКЦИИ,KZ,KASE
+01.07.2024,Зачисление денежных средств,Зачисление вознаграждения (купон),ЭМИТЕНТ Б,KZ2000000002,110,1,0,111,KZT,ОБЛИГАЦИИ,KZ,KASE
+01.08.2024,Зачисление денежных средств по сделке,Погашение ЦБ KZ2000000002,ЭМИТЕНТ Б,KZ2000000002,111,30,0,141,KZT,ОБЛИГАЦИИ,KZ,KASE
 """
 
 
@@ -99,6 +135,62 @@ class AlatayParserTests(unittest.TestCase):
         instruments = {row["isin"]: row for row in result.dataset.tables["Instruments"]}
         self.assertEqual(instruments["KZ0000000001"]["listing_exchange"], "KASE")
         self.assertEqual(instruments["KZ2000000002"]["type"], "Bonds")
+
+    def test_historical_securities_and_cash_reports_are_combined(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            raw_root = Path(tmp)
+            broker_root = raw_root / "alatay"
+            broker_root.mkdir()
+            (broker_root / "00123 ОДЦБ.csv").write_text(HISTORICAL_SECURITIES_REPORT, encoding="utf-8")
+            (broker_root / "00123 ОДДС.csv").write_text(CASH_REPORT, encoding="utf-8")
+
+            parser = AlatayParser()
+            reports = parser.discover_reports(raw_root, "00123")
+            result = parser.parse_reports(reports, "00123")
+
+        dataset = result.dataset
+        validate_dataset_for_tax_forms(dataset)
+        self.assertEqual(dataset.warnings, [])
+        self.assertEqual(dataset.tables["Trades"][0]["commission"], "2")
+        self.assertEqual(len(dataset.tables["Transfers"]), 2)
+        self.assertEqual(dataset.tables["Unprocessed"], [])
+        self.assertEqual(dataset.tables["Dividends"][0]["gross_amount"], "10.00")
+        self.assertEqual(dataset.tables["Coupons"][0]["gross_amount"], "1.00")
+        self.assertEqual(dataset.tables["CashBalances"][0]["ending_cash"], "141.00")
+        self.assertEqual(dataset.tables["CorporateActions"][0]["proceeds"], "30.00")
+        self.assertEqual(
+            [row["year"] for row in dataset.tables["Years_Results"] if row["table"] == "Yearly Dividends"],
+            [2024],
+        )
+
+        reconciliation = ReconciliationEngine().reconcile_dataset(dataset)
+        self.assertEqual(
+            [row for row in reconciliation if row.severity == ReconciliationSeverity.ERROR],
+            [],
+        )
+
+    def test_xlsx_closing_positions_are_parsed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "00123 2025 ОДЦБ.xlsx"
+            workbook = Workbook()
+            sheet = workbook.active
+            for row in (
+                ("Отчет движения ценных бумаг",),
+                (None, "№ лицевого счета:", "00123"),
+                (None, "Отчет составлен на:", "01.01.2025-31.12.2025"),
+                ("Ценные бумаги в портфеле клиента на конец отчетного периода:",),
+                ("№", "Эмитент", "Вид ЦБ", "ISIN", "Номинал", "Количество ЦБ"),
+                ("1", "ЭМИТЕНТ А", "АКЦИИ", "KZ0000000001", "1", 10),
+            ):
+                sheet.append(row)
+            workbook.save(path)
+            workbook.close()
+
+            report = parse_alatay_xlsx(path)
+
+        self.assertEqual(report.period_end.isoformat(), "2025-12-31")
+        self.assertEqual(report.positions[0]["quantity"], "10")
+        self.assertEqual(report.positions[0]["_snapshot_kind"], "closing")
 
     def test_registry_exposes_alatay(self) -> None:
         self.assertIn("alatay", default_registry().broker_codes())

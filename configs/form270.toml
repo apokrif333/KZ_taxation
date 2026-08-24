@@ -17,31 +17,31 @@ form270_template = "data/templates/270 new template.json"
 
 #[[form270.jobs]]
 #id = "excel"
-#broker = "freedom"
-#account_id = "703847"
+#broker = "ib"
+#account_id = "U16158455"
 
 # [[form270.jobs]]
 # id = "joint_excel"
-# file_name = "exante_FXC3362.001_audit.xlsx"
+# file_name = "ib_U15272903_audit.xlsx"
 
 # [[form270.jobs]]
 # id = "merge_excel"
 # workbooks = [
-#     "freedom_bank_860215300582_audit.xlsx",
-#     'ib_U22575457_audit.xlsx',
-#     'freedom_703847_audit.xlsx'
+#     "freedom_759023_audit.xlsx",
+#     'ib_U14488970_audit.xlsx',
+#     'ib_U16158455_audit.xlsx'
 # ]
-# fio1 = "Rustam"
-# fio2 = "Ruziyev"
+# fio1 = "Samiga"
+# fio2 = "Alzhanova"
 # fio3 = ""
 
  [[form270.jobs]]
  id = "270_json"
- file_name = "merged_Ruziyev_Rustam.xlsx"
- form270_05 = true
+ file_name = "merged_Alzhanova_Samiga.xlsx"
+ form270_05 = false
  tax_year = 2025
- fio1 = "Rustam"
- fio2 = "Ruziyev"
+ fio1 = "Samiga"
+ fio2 = "Alzhanova"
  fio3 = ""
  iin = "1"
  phone = ""
