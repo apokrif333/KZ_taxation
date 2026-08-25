@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from kztax270.brokers.base import BrokerParser, BrokerReport
 from kztax270.brokers.registry import BrokerRegistry, default_registry
 from kztax270.calculations.tax_rules import TaxRuleEngine
 from kztax270.canonical.schema import CanonicalDataset
@@ -59,6 +61,62 @@ class AccountPipeline:
     ) -> AccountPipelineResult:
         adapter = self._registry_for_run().get(account.broker)
         reports = adapter.discover_reports(self.paths.raw_data, account.account_id)
+        return self._run_reports(
+            account,
+            adapter,
+            reports,
+            tax_year=tax_year,
+            taxpayer=taxpayer,
+            write_excel=write_excel,
+            write_json=write_json,
+        )
+
+    def run_reports(
+        self,
+        account: AccountConfig,
+        report_paths: Sequence[Path],
+        *,
+        tax_year: int | None = None,
+        taxpayer: dict[str, object] | None = None,
+        write_excel: bool = True,
+        write_json: bool = True,
+    ) -> AccountPipelineResult:
+        """Process explicitly supplied report files for one account.
+
+        This bypasses filename-based discovery while preserving the same parsing
+        and post-parse processing used by :meth:`run_account`.
+        """
+
+        adapter = self._registry_for_run().get(account.broker)
+        reports = [
+            BrokerReport(
+                broker=account.broker,
+                account_id=account.account_id,
+                path=Path(path),
+            )
+            for path in report_paths
+        ]
+        return self._run_reports(
+            account,
+            adapter,
+            reports,
+            tax_year=tax_year,
+            taxpayer=taxpayer,
+            write_excel=write_excel,
+            write_json=write_json,
+        )
+
+    def _run_reports(
+        self,
+        account: AccountConfig,
+        adapter: BrokerParser,
+        reports: Sequence[BrokerReport],
+        *,
+        tax_year: int | None,
+        taxpayer: dict[str, object] | None,
+        write_excel: bool,
+        write_json: bool,
+    ) -> AccountPipelineResult:
         parse_result = adapter.parse_reports(reports, account.account_id)
         dataset = parse_result.dataset
         fx_provider = getattr(adapter, "fx_provider", None)
