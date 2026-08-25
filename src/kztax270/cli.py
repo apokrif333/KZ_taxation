@@ -21,6 +21,7 @@ from kztax270.excel.form270_05_trades import prepare_form270_05_trades_workbook
 from kztax270.excel.joint_workbook import create_joint_audit_workbook
 from kztax270.excel.merge_workbooks import merge_audit_workbooks
 from kztax270.form270.json_builder import BrokerBankInfo, Form270JsonBuilder, Form270Owner
+from kztax270.front_pipeline import FrontPipeline
 from kztax270.reference.fx import AnnualFxRateProvider
 from kztax270.reference.nbk import ensure_nbk_rates_current, upsert_nbk_average_annual_rates_xlsx
 from kztax270.reference.repositories import ReferenceDataStore
@@ -216,9 +217,49 @@ def _run_form270_config(config: Form270RunConfig, *, only: list[str] | None = No
     selected = set(only or [])
     executed = 0
     forms_written = 0
+    incomplete = False
     jobs = config.jobs or tuple(_job_from_legacy_form(form) for form in config.forms)
     for job in jobs:
         if selected and not _job_filter_matches(job, selected):
+            continue
+
+        if job.mode == "front_pipeline":
+            if job.owner is None or job.client_id is None or job.tax_year is None:
+                raise AssertionError("front-pipeline config validation did not supply required fields")
+            taxpayer = _taxpayer_payload_from_config(config, job, job.owner, spouse_iin=None)
+            form270_05 = config.defaults.form270_05 if job.form270_05 is None else job.form270_05
+            result = FrontPipeline(config.paths).run(
+                client_id=job.client_id,
+                tax_year=job.tax_year,
+                taxpayer=taxpayer,
+                joint_accounts=job.joint_accounts,
+                allow_approximate_transfer_basis=job.allow_approximate_transfer_basis,
+                form270_05=form270_05,
+                bank_infos=configured_bank_infos,
+            )
+            for account in result.discovered_accounts:
+                print(f"account={account.broker}:{account.account_id} reports={len(account.report_paths)}")
+            for path in result.individual_workbook_paths:
+                print(f"workbook={path}")
+            for path in result.joint_workbook_paths:
+                print(f"joint_workbook={path}")
+            if result.merged_workbook_path:
+                print(f"merged_workbook={result.merged_workbook_path}")
+            for path in result.form270_paths:
+                print(f"form={path}")
+            if result.missing_transfer_basis:
+                print("Unresolved transfer basis:")
+                for item in result.missing_transfer_basis:
+                    transfer_date = item.transfer_date.isoformat() if item.transfer_date else ""
+                    print(
+                        f"{transfer_date} | {item.symbol or ''} | {item.isin or ''} | "
+                        f"{item.quantity} | {item.destination_broker}:{item.destination_account} | {item.reason}"
+                    )
+                if not result.completed:
+                    print(f"Add missing reports under {config.paths.raw_data / 'clients' / job.client_id}/ and run front-pipeline again.")
+            forms_written += len(result.form270_paths)
+            executed += 1
+            incomplete = incomplete or not result.completed
             continue
 
         if job.mode == "excel":
@@ -288,7 +329,7 @@ def _run_form270_config(config: Form270RunConfig, *, only: list[str] | None = No
         raise SystemExit(f"No form270 entries matched --only={', '.join(sorted(selected))}")
     print(f"jobs_executed={executed}")
     print(f"forms_written={forms_written}")
-    return 0
+    return 1 if incomplete else 0
 
 
 def _workbook_path_for_form(config: Form270RunConfig, form: Form270FillConfig) -> Path:
@@ -382,7 +423,7 @@ def _job_from_legacy_form(form: Form270FillConfig) -> Form270JobConfig:
 
 def _job_filter_matches(job: Form270JobConfig, selected: set[str]) -> bool:
     label = _job_label(job)
-    return bool({job.job_id, job.account_id, label} & selected)
+    return bool({job.job_id, job.account_id, job.client_id, label} & selected)
 
 
 def _job_label(job: Form270JobConfig) -> str:

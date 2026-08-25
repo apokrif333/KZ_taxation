@@ -143,7 +143,7 @@ def create_app(
     async def create_job(
         broker: Annotated[str, Form()],
         tax_year: Annotated[int, Form(ge=2000, le=2100)],
-        files: Annotated[list[UploadFile], File()],
+        files: list[UploadFile] = File(...),  # noqa: B008 - FastAPI parameter declaration
         account_id: Annotated[str | None, Form()] = None,
         joint_account: Annotated[bool, Form()] = False,
     ) -> JobResponse:
@@ -280,6 +280,7 @@ def create_app(
         store.delete(job_id)
         return DeleteJobResponse(job_id=job_id, status="deleted")
 
+    _install_binary_upload_openapi_schema(application)
     return application
 
 
@@ -422,6 +423,29 @@ def _job_or_404(store: JobStore, job_id: str) -> JobRecord:
     if record is None:
         raise ApiError(404, "job_not_found", "Задание не найдено или срок хранения истёк.")
     return record
+
+
+def _install_binary_upload_openapi_schema(application: FastAPI) -> None:
+    """Make Swagger UI render ``files`` as an actual multiple-file picker.
+
+    FastAPI/Pydantic's OpenAPI 3.1 output uses ``contentMediaType`` for an
+    UploadFile array. Swagger UI consistently recognizes ``format: binary``
+    for multipart file controls, so retain the media type and add that marker.
+    """
+
+    default_openapi = application.openapi
+
+    def custom_openapi() -> dict[str, Any]:
+        schema = default_openapi()
+        request_schema = schema["paths"]["/api/jobs"]["post"]["requestBody"]["content"]["multipart/form-data"]["schema"]
+        if "$ref" in request_schema:
+            component_name = request_schema["$ref"].rsplit("/", 1)[-1]
+            request_schema = schema["components"]["schemas"][component_name]
+        files_schema = request_schema["properties"]["files"]
+        files_schema["items"].setdefault("format", "binary")
+        return schema
+
+    application.openapi = custom_openapi  # type: ignore[method-assign]
 
 
 app = create_app()

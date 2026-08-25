@@ -100,6 +100,10 @@ class FifoOpenLot:
     commission_per_unit: Decimal
     trade_id: str | None
     opening_lot_status: str = "matched"
+    source_broker: str | None = None
+    source_account: str | None = None
+    source_file: str | None = None
+    source_row: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -1208,7 +1212,26 @@ def _canonical_transfer_rows(transfers: Sequence[Mapping[str, Any]]) -> list[dic
         "counterparty",
         "source_report",
     )
-    return [{column: transfer.get(column) for column in columns} for transfer in transfers]
+    private_provenance_columns = (
+        "_transfer_id",
+        "_transfer_cost_basis_status",
+        "_opening_lot_status",
+        "_fifo_source_broker",
+        "_fifo_source_account",
+        "_fifo_source_file",
+        "_fifo_source_row",
+    )
+    return [
+        {
+            **{column: transfer.get(column) for column in columns},
+            **{
+                column: transfer.get(column)
+                for column in private_provenance_columns
+                if column in transfer
+            },
+        }
+        for transfer in transfers
+    ]
 
 
 def _trade_id(report: ParsedIbReport, idx: int) -> str:
@@ -2332,6 +2355,10 @@ def _open_incoming_transfer_lot(
         commission_per_unit=Decimal("0"),
         trade_id=f"{base_trade_id}{trade_id_suffix}" if base_trade_id else None,
         opening_lot_status=opening_lot_status,
+        source_broker=source_lot.source_broker if source_lot is not None else None,
+        source_account=source_lot.source_account if source_lot is not None else None,
+        source_file=source_lot.source_file if source_lot is not None else None,
+        source_row=source_lot.source_row if source_lot is not None else None,
     )
     return side, lot
 
@@ -2378,6 +2405,11 @@ def _transfer_allocation_row(
     row["quantity"] = _decimal_text(quantity)
     row["price"] = _price_text(_transfer_fifo_price(lot, quantity))
     row["enter_date"] = lot.date_time.isoformat(sep=" ") if lot.date_time else None
+    row["_opening_lot_status"] = lot.opening_lot_status
+    row["_fifo_source_broker"] = lot.source_broker
+    row["_fifo_source_account"] = lot.source_account
+    row["_fifo_source_file"] = lot.source_file
+    row["_fifo_source_row"] = lot.source_row
     return row
 
 
@@ -3057,6 +3089,7 @@ def _close_fifo_lot(
         "exchange": _string_or_none(exit_trade.get("exchange")) or opening.exchange,
         "position_type": position_type,
         "_opening_lot_status": opening_lot_status,
+        "_source_opening_lot_status": opening.opening_lot_status,
         "enter_date": opening.date_time.isoformat(sep=" ") if opening.date_time else None,
         "enter_quantity": _decimal_text(quantity),
         "enter_price": _decimal_text(opening.calculation_price),
@@ -3081,6 +3114,10 @@ def _close_fifo_lot(
         "pnl_kzt": _amount_kzt(pnl, rate),
         "source_trade_id": _string_or_none(exit_trade.get("trade_id")),
         "entry_trade_id": opening.trade_id,
+        "_fifo_source_broker": opening.source_broker,
+        "_fifo_source_account": opening.source_account,
+        "_fifo_source_file": opening.source_file,
+        "_fifo_source_row": opening.source_row,
         "corporate_action_type": _string_or_none(exit_trade.get("_corporate_action_type")),
     }
 

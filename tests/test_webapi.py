@@ -139,6 +139,20 @@ class WebApiTests(unittest.TestCase):
         self.assertEqual(data["max_upload_bytes"], 1024)
         self.assertEqual(data["max_files"], 2)
 
+    def test_openapi_declares_files_as_multipart_binary_uploads(self) -> None:
+        openapi = self.client.get("/openapi.json").json()
+        request_schema = openapi["paths"]["/api/jobs"]["post"]["requestBody"]["content"]["multipart/form-data"][
+            "schema"
+        ]
+        if "$ref" in request_schema:
+            component_name = request_schema["$ref"].rsplit("/", 1)[-1]
+            request_schema = openapi["components"]["schemas"][component_name]
+
+        files_schema = request_schema["properties"]["files"]
+        self.assertEqual(files_schema["type"], "array")
+        self.assertEqual(files_schema["items"]["type"], "string")
+        self.assertEqual(files_schema["items"]["format"], "binary")
+
     def test_valid_multipart_upload_returns_summary_and_redacted_domain_data(self) -> None:
         response = self._post_job()
 

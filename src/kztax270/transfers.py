@@ -36,6 +36,7 @@ class TransferInFifoLot:
     source_broker: str | None = None
     source_file: str | None = None
     source_row: int | None = None
+    source_account: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -215,6 +216,21 @@ def _matching_quantity_scale(
             if abs(source_quantity * scale - requested_quantity) <= Decimal("0.0001"):
                 return scale
     return None
+
+
+def matching_transfer_quantity_scale(
+    group_rows: Sequence[Mapping[str, Any]],
+    request: TransferInRequest,
+) -> Decimal | None:
+    """Expose the project's canonical transfer quantity/debt scaling rule."""
+
+    return _matching_quantity_scale(group_rows, request)
+
+
+def same_transfer_instrument(row: Mapping[str, Any], request: TransferInRequest) -> bool:
+    """Expose the existing ISIN-first, symbol-fallback transfer identity rule."""
+
+    return _same_instrument(row, request)
 
 
 def _is_debt_asset(asset_type: str | None) -> bool:

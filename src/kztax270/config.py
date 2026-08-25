@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import tomllib
 from dataclasses import dataclass, field
 from decimal import Decimal
@@ -118,6 +119,9 @@ class Form270JobConfig:
     ogd_location: str | None = None
     bank: Form270BankConfig | None = None
     job_id: str | None = None
+    client_id: str | None = None
+    joint_accounts: tuple[str, ...] = ()
+    allow_approximate_transfer_basis: bool = False
 
 
 def load_project_config(path: Path) -> ProjectConfig:
@@ -235,7 +239,7 @@ def _load_form270_job(data: dict[str, Any]) -> Form270JobConfig:
         raise ValueError("Form270 job cannot contain both file_name and workbooks")
 
     requires_account = mode == "excel"
-    requires_owner = mode in {"merge_excel", "json"}
+    requires_owner = mode in {"merge_excel", "json", "front_pipeline"}
     requires_workbooks = mode == "merge_excel"
     if requires_account and (not broker or not account_id):
         raise ValueError(f"form270 job id={job_id} requires broker and account_id")
@@ -249,6 +253,19 @@ def _load_form270_job(data: dict[str, Any]) -> Form270JobConfig:
         raise ValueError(f"form270 job id={job_id} accepts one file_name, not workbooks")
     if mode == "merge_excel" and workbook is not None:
         raise ValueError("form270 job id=merge_excel accepts workbooks, not file_name")
+    if mode == "front_pipeline" and (workbook is not None or workbooks or broker or account_id):
+        raise ValueError(
+            "form270 job id=front-pipeline discovers client reports and does not accept "
+            "broker/account_id/file_name/workbooks"
+        )
+
+    client_id = None
+    joint_accounts: tuple[str, ...] = ()
+    if mode == "front_pipeline":
+        client_id = validate_client_id(data.get("client_id"))
+        if data.get("tax_year") is None:
+            raise ValueError("form270 job id=front-pipeline requires tax_year")
+        joint_accounts = _load_joint_accounts(data.get("joint_accounts"))
 
     owner = (
         _load_form270_owner(data, prefix="", require_iin=mode != "merge_excel")
@@ -272,6 +289,9 @@ def _load_form270_job(data: dict[str, Any]) -> Form270JobConfig:
         ogd_location=data.get("ogd_location"),
         bank=_load_form270_bank(data, prefix="bank_") if data.get("bank_code") else None,
         job_id=job_id,
+        client_id=client_id,
+        joint_accounts=joint_accounts,
+        allow_approximate_transfer_basis=bool(data.get("allow_approximate_transfer_basis", False)),
     )
 
 
@@ -281,13 +301,44 @@ def _job_mode_from_id(job_id: str) -> tuple[str, bool]:
         "merge_excel": ("merge_excel", False),
         "joint_excel": ("joint_excel", False),
         "270_json": ("json", False),
+        "front-pipeline": ("front_pipeline", False),
     }
     try:
         return modes[job_id]
     except KeyError as exc:
         raise ValueError(
-            "form270 job id must be one of: excel, merge_excel, joint_excel, 270_json"
+            "form270 job id must be one of: excel, merge_excel, joint_excel, 270_json, front-pipeline"
         ) from exc
+
+
+_SAFE_CLIENT_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
+
+
+def validate_client_id(value: Any) -> str:
+    """Validate a client directory identifier as one safe relative path component."""
+
+    client_id = str(value or "").strip()
+    if (
+        not client_id
+        or client_id in {".", ".."}
+        or not _SAFE_CLIENT_ID_RE.fullmatch(client_id)
+        or Path(client_id).is_absolute()
+    ):
+        raise ValueError("client_id must be one safe relative directory name")
+    return client_id
+
+
+def _load_joint_accounts(value: Any) -> tuple[str, ...]:
+    if value is None:
+        return ()
+    if not isinstance(value, list):
+        raise ValueError("joint_accounts must be a TOML list of account IDs")
+    accounts = tuple(str(item).strip() for item in value)
+    if any(not account for account in accounts):
+        raise ValueError("joint_accounts cannot contain empty account IDs")
+    if len(set(accounts)) != len(accounts):
+        raise ValueError("joint_accounts contains duplicate account IDs")
+    return accounts
 
 
 def _load_workbook_list(value: Any) -> tuple[Path, ...]:

@@ -54,3 +54,43 @@ form270_template = "data/templates/270 new template.json"
 # code = "IBKRUS33XXX"
 # name = "Interactive Brokers LLC"
 # country = "USA"
+
+# [[form270.jobs]]
+# id = "front-pipeline"
+#
+# client_id = "client_test_001"
+# tax_year = 2025
+#
+# fio1 = "Ivanov"
+# fio2 = "Ivan"
+# fio3 = "Ivanovich"
+# iin = "123456789012"
+#
+# phone = ""
+# email = ""
+# ogd_residence = ""
+# ogd_location = ""
+#
+# form270_05 = false
+#
+# joint_accounts = [
+#     "U15272903",
+#     "759023"
+# ]
+#
+# allow_approximate_transfer_basis = false
+#
+# data/raw/clients/client_test_001/
+#     ib/
+#         report1.csv
+#         report2.csv
+#     exante/
+#         report.csv
+#     tabys/
+#         report.pdf
+#     tsifra/
+#         report.xml
+#     freedom_759023/
+#         report.xlsx
+#     freedom_998877/
+#         report.xlsx
