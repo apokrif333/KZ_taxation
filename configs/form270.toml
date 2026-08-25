@@ -31,8 +31,8 @@ form270_template = "data/templates/270 new template.json"
 #     'ib_U14488970_audit.xlsx',
 #     'ib_U16158455_audit.xlsx'
 # ]
-# fio1 = "Samiga"
-# fio2 = "Alzhanova"
+# fio1 = "Ivan"
+# fio2 = "Ivanovich"
 # fio3 = ""
 
  [[form270.jobs]]
@@ -40,8 +40,8 @@ form270_template = "data/templates/270 new template.json"
  file_name = "merged_Alzhanova_Samiga.xlsx"
  form270_05 = false
  tax_year = 2025
- fio1 = "Samiga"
- fio2 = "Alzhanova"
+ fio1 = "Ivan"
+ fio2 = "Ivanovich"
  fio3 = ""
  iin = "1"
  phone = ""

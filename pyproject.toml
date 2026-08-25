@@ -27,9 +27,15 @@ legacy = [
   "pandasgui>=0.2",
 ]
 dev = [
+  "httpx>=0.27",
   "pytest>=8.0",
   "ruff>=0.6",
   "mypy>=1.10",
+]
+web = [
+  "fastapi>=0.115",
+  "python-multipart>=0.0.9",
+  "uvicorn[standard]>=0.30",
 ]
 
 [project.scripts]

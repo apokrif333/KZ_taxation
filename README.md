@@ -169,3 +169,40 @@ The new code follows these supplied business rules:
 1. FIFO acquisition cost includes opening trade commission via `Fifo.acquisition_cost_with_commission`; liquidation commission is not deducted from tax `Fifo.pnl`.
 2. Foreign-currency income uses annual average official NBK FX rate by income year from `reference/fx_rates/nbk_average_annual_rates.csv`.
 3. Instrument tax flags are explicit canonical fields: `offshore_flag`, `issuer_outside_kz_flag`, `preferential_tax_flag`.
+
+## Local Web API Development
+
+Install the API and development extras, then start Uvicorn:
+
+```powershell
+python -m pip install -e ".[dev,web]"
+python -m uvicorn kztax270.webapi.main:app --reload --port 8000
+```
+
+Health and interactive API documentation are available at:
+
+```text
+http://localhost:8000/api/health
+http://localhost:8000/docs
+```
+
+The API stores each upload in an isolated directory under the system temporary
+directory and removes successful-job inputs immediately. Completed downloads
+expire after 15 minutes by default. Jobs are process-local and become
+unavailable after a server restart.
+
+Configuration environment variables:
+
+- `QCM_MAX_UPLOAD_MB` — maximum size of each uploaded file (default `50`).
+- `QCM_MAX_FILES` — maximum files in one job (default `10`).
+- `QCM_JOB_TTL_SECONDS` — completed output lifetime (default `900`).
+- `QCM_CORS_ORIGINS` — comma-separated allowed origins (default `http://localhost:3000`).
+- `QCM_JOB_ROOT` — temporary job root (default `<system temp>/qcm-tax-270`).
+
+Freedom Broker XLSX uploads require `account_id`; the other exposed native
+parsers can extract it from their structured report metadata. With
+`joint_account=true`, the API follows the existing `joint_excel` workflow: it
+creates one 50% audit workbook and one Form 270 draft from that workbook. No
+other ownership shares are supported. Form 270 JSON is generated as the
+existing builder-supported draft, so taxpayer identity fields remain at
+template defaults when taxpayer data is not provided.
