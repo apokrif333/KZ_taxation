@@ -35,50 +35,38 @@ form270_template = "data/templates/270 new template.json"
 # fio2 = "Ivanovich"
 # fio3 = ""
 
- [[form270.jobs]]
- id = "270_json"
- file_name = "merged_Alzhanova_Samiga.xlsx"
- form270_05 = false
- tax_year = 2025
- fio1 = "Ivan"
- fio2 = "Ivanovich"
- fio3 = ""
- iin = "1"
- phone = ""
- email = ""
- ogd_residence = ""
- ogd_location = ""
-
-# Параметры банка/брокера для CashBalances можно задать один раз:
-# [form270.banks.ib]
-# code = "IBKRUS33XXX"
-# name = "Interactive Brokers LLC"
-# country = "USA"
-
 # [[form270.jobs]]
-# id = "front-pipeline"
-#
-# client_id = "client_test_001"
+# id = "270_json"
+# file_name = "merged_Alzhanova_Samiga.xlsx"
+# form270_05 = false
 # tax_year = 2025
-#
-# fio1 = "Ivanov"
-# fio2 = "Ivan"
-# fio3 = "Ivanovich"
-# iin = "123456789012"
-#
+# fio1 = "Ivan"
+# fio2 = "Ivanovich"
+# fio3 = ""
+# iin = "1"
 # phone = ""
 # email = ""
 # ogd_residence = ""
 # ogd_location = ""
-#
-# form270_05 = false
-#
-# joint_accounts = [
-#     "U15272903",
-#     "759023"
-# ]
-#
-# allow_approximate_transfer_basis = false
+
+ [[form270.jobs]]
+ id = "front-pipeline"
+
+ client_id = "AsanU"
+ tax_year = 2025
+
+ fio1 = "Ivanov"
+ fio2 = "Ivan"
+ fio3 = "Ivanovich"
+ iin = "1"
+
+ form270_05 = false
+
+ # Эти счета обрабатываются как источники Transfer/FIFO, но не входят в merged/Form 270.
+ acc_not_included_for_merged = ['EXX3093.001']
+ joint_accounts = ["FXC3362.001"]
+
+
 #
 # data/raw/clients/client_test_001/
 #     ib/
@@ -94,3 +82,12 @@ form270_template = "data/templates/270 new template.json"
 #         report.xlsx
 #     freedom_998877/
 #         report.xlsx
+#     freedom_bank/  # "freedom bank" is also accepted for existing folders
+#         report.pdf  # IIN is extracted from the PDF if it omits brokerage account
+
+
+# Параметры банка/брокера для CashBalances можно задать один раз:
+# [form270.banks.ib]
+# code = "IBKRUS33XXX"
+# name = "Interactive Brokers LLC"
+# country = "USA"

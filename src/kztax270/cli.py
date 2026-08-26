@@ -21,7 +21,7 @@ from kztax270.excel.form270_05_trades import prepare_form270_05_trades_workbook
 from kztax270.excel.joint_workbook import create_joint_audit_workbook
 from kztax270.excel.merge_workbooks import merge_audit_workbooks
 from kztax270.form270.json_builder import BrokerBankInfo, Form270JsonBuilder, Form270Owner
-from kztax270.front_pipeline import FrontPipeline
+from kztax270.front_pipeline import FrontPipeline, FrontPipelineResult
 from kztax270.reference.fx import AnnualFxRateProvider
 from kztax270.reference.nbk import ensure_nbk_rates_current, upsert_nbk_average_annual_rates_xlsx
 from kztax270.reference.repositories import ReferenceDataStore
@@ -228,35 +228,35 @@ def _run_form270_config(config: Form270RunConfig, *, only: list[str] | None = No
                 raise AssertionError("front-pipeline config validation did not supply required fields")
             taxpayer = _taxpayer_payload_from_config(config, job, job.owner, spouse_iin=None)
             form270_05 = config.defaults.form270_05 if job.form270_05 is None else job.form270_05
-            result = FrontPipeline(config.paths).run(
-                client_id=job.client_id,
-                tax_year=job.tax_year,
-                taxpayer=taxpayer,
-                joint_accounts=job.joint_accounts,
-                allow_approximate_transfer_basis=job.allow_approximate_transfer_basis,
-                form270_05=form270_05,
-                bank_infos=configured_bank_infos,
+            front_pipeline = FrontPipeline(config.paths)
+            run_kwargs = {
+                "client_id": job.client_id,
+                "tax_year": job.tax_year,
+                "taxpayer": taxpayer,
+                "joint_accounts": job.joint_accounts,
+                "acc_not_included_for_merged": job.acc_not_included_for_merged,
+                "form270_05": form270_05,
+                "bank_infos": configured_bank_infos,
+            }
+            result = front_pipeline.run(
+                **run_kwargs,
             )
-            for account in result.discovered_accounts:
-                print(f"account={account.broker}:{account.account_id} reports={len(account.report_paths)}")
-            for path in result.individual_workbook_paths:
-                print(f"workbook={path}")
-            for path in result.joint_workbook_paths:
-                print(f"joint_workbook={path}")
-            if result.merged_workbook_path:
-                print(f"merged_workbook={result.merged_workbook_path}")
-            for path in result.form270_paths:
-                print(f"form={path}")
-            if result.missing_transfer_basis:
-                print("Unresolved transfer basis:")
-                for item in result.missing_transfer_basis:
-                    transfer_date = item.transfer_date.isoformat() if item.transfer_date else ""
+            _print_front_pipeline_result(result, show_inputs=True, show_missing=True)
+            if (
+                result.missing_transfer_basis
+                and not result.completed
+            ):
+                if _confirm_approximate_transfer_basis():
+                    print("Продолжаю с приблизительной стоимостью приобретения.")
+                    run_kwargs["allow_approximate_transfer_basis"] = True
+                    result = front_pipeline.run(**run_kwargs)
+                    _print_front_pipeline_result(result, show_inputs=False, show_missing=False)
+                else:
+                    reports_path = config.paths.raw_data / "clients" / job.client_id
                     print(
-                        f"{transfer_date} | {item.symbol or ''} | {item.isin or ''} | "
-                        f"{item.quantity} | {item.destination_broker}:{item.destination_account} | {item.reason}"
+                        "Расчёт остановлен. Добавьте отчёты брокера-источника в "
+                        f"{reports_path} и запустите front-pipeline снова."
                     )
-                if not result.completed:
-                    print(f"Add missing reports under {config.paths.raw_data / 'clients' / job.client_id}/ and run front-pipeline again.")
             forms_written += len(result.form270_paths)
             executed += 1
             incomplete = incomplete or not result.completed
@@ -330,6 +330,51 @@ def _run_form270_config(config: Form270RunConfig, *, only: list[str] | None = No
     print(f"jobs_executed={executed}")
     print(f"forms_written={forms_written}")
     return 1 if incomplete else 0
+
+
+def _print_front_pipeline_result(
+    result: FrontPipelineResult,
+    *,
+    show_inputs: bool,
+    show_missing: bool,
+) -> None:
+    if show_inputs:
+        for account in result.discovered_accounts:
+            print(f"account={account.broker}:{account.account_id} reports={len(account.report_paths)}")
+        for path in result.individual_workbook_paths:
+            print(f"workbook={path}")
+    for path in result.joint_workbook_paths:
+        print(f"joint_workbook={path}")
+    if result.merged_workbook_path:
+        print(f"merged_workbook={result.merged_workbook_path}")
+    for path in result.form270_paths:
+        print(f"form={path}")
+    if show_missing and result.missing_transfer_basis:
+        print("Не найдены точные цены приобретения для Transfer IN:")
+        for item in result.missing_transfer_basis:
+            transfer_date = item.transfer_date.isoformat() if item.transfer_date else ""
+            print(
+                f"{transfer_date} | {item.symbol or ''} | {item.isin or ''} | "
+                f"{item.quantity} | {item.destination_broker}:{item.destination_account} | {item.reason}"
+            )
+
+
+def _confirm_approximate_transfer_basis() -> bool:
+    prompt = (
+        "Рассчитать примерные (неточные) цены существующим методом? "
+        "[Y — да / N — нет, я загружу отчёты брокера-источника]: "
+    )
+    while True:
+        try:
+            answer = input(prompt).strip().casefold()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return False
+        if answer in {"y", "yes", "д", "да"}:
+            return True
+        if answer in {"", "n", "no", "н", "нет"}:
+            return False
+        print("Введите Y или N.")
 
 
 def _workbook_path_for_form(config: Form270RunConfig, form: Form270FillConfig) -> Path:
@@ -447,6 +492,20 @@ def _taxpayer_payload_from_config(
     *,
     spouse_iin: str | None,
 ) -> dict[str, object]:
+    # The front-pipeline workflow does not collect contact or OGD fields;
+    # keep them explicitly empty instead of inheriting unrelated defaults.
+    if isinstance(form, Form270JobConfig) and form.mode == "front_pipeline":
+        return {
+            "fio1": owner.fio1,
+            "fio2": owner.fio2,
+            "fio3": owner.fio3,
+            "iin": owner.iin,
+            "phone": "",
+            "email": "",
+            "spouse_iin": spouse_iin,
+            "ogdCodeByResidence": "",
+            "ogdCodeByLocation": "",
+        }
     return {
         "fio1": owner.fio1,
         "fio2": owner.fio2,

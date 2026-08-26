@@ -34,6 +34,10 @@ RAW_FOLDER = "freedom bank"
 FREEDOM_BANK_SYMBOL = "FRHCSPC.ETN"
 FREEDOM_BANK_DESCRIPTION = "FRHC Fractional SPC Ltd."
 FREEDOM_BANK_EXCHANGE = "Freedom"
+IIN_PATTERN = re.compile(
+    r"(?:\u0418\u0418\u041d\s*/\s*\u0411\u0418\u041d|\u0418\u0418\u041d|\u0411\u0418\u041d)\s*(?::|\u2116|N)?\s*(\d{12})(?!\d)",
+    re.IGNORECASE,
+)
 
 
 @dataclass(slots=True)
@@ -44,6 +48,7 @@ class ParsedFreedomBankReport:
     period_end: date | None = None
     account_currency: str | None = None
     brokerage_account: str | None = None
+    iin: str | None = None
     security_type: str | None = None
     issuer: str | None = None
     isin: str | None = None
@@ -182,6 +187,10 @@ def _populate_report_metadata(report: ParsedFreedomBankReport, text: str) -> Non
         currency = re.search(r"Валюта счета:\s*([A-Z]{3})", text)
         if currency:
             report.account_currency = currency.group(1)
+    if report.iin is None:
+        iin = IIN_PATTERN.search(text)
+        if iin:
+            report.iin = iin.group(1)
     if report.brokerage_account is None:
         account = re.search(r"Номер брокерского счета Валюта\s+(\d+)\s+([A-Z]{3})", text)
         if account:
@@ -362,6 +371,7 @@ def _build_transfers(reports: Sequence[ParsedFreedomBankReport]) -> list[dict[st
             if operation not in {"gift_in", "gift_out"}:
                 continue
             raw_quantity = _decimal(row.get("quantity")) if operation == "gift_in" else -_decimal(row.get("quantity"))
+            price = _decimal(row.get("price_usd"))
             transfers.append(
                 {
                     "date": _date_part(row.get("date_time")),
@@ -372,7 +382,7 @@ def _build_transfers(reports: Sequence[ParsedFreedomBankReport]) -> list[dict[st
                     "isin": isin,
                     "currency": report.account_currency or "USD",
                     "quantity": str(abs(raw_quantity)),
-                    "price": str(_decimal(row.get("price_usd"))),
+                    "price": str(price),
                     "enter_date": None,
                     "amount": None,
                     "broker_comment": row.get("details") or operation,
@@ -383,7 +393,11 @@ def _build_transfers(reports: Sequence[ParsedFreedomBankReport]) -> list[dict[st
                     "_transfer_id": _trade_id(report, row),
                     "_instrument_identity_key": isin,
                     "_multiplier": "1",
-                    "_transfer_cost_basis_status": "matched" if raw_quantity > 0 and _decimal(row.get("price_usd")) else "pending_transfer_in_fifo_source",
+                    "_transfer_cost_basis_status": "matched" if raw_quantity > 0 and price else "pending_transfer_in_fifo_source",
+                    # Freedom Bank reports the acquisition price directly for
+                    # an incoming gift. It is already a usable FIFO basis and
+                    # must not request another broker's Transfer IN source.
+                    "_broker_reported_transfer_basis": bool(raw_quantity > 0 and price),
                 }
             )
     return transfers
@@ -475,6 +489,7 @@ def _summary_position_adjustment(report: ParsedFreedomBankReport, quantity: Deci
         "_instrument_identity_key": isin,
         "_multiplier": "1",
         "_transfer_cost_basis_status": "matched" if direction == "in" and price else "summary_position_reconciliation",
+        "_synthetic_reconciliation_adjustment": True,
     }
 
 

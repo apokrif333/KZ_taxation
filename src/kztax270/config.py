@@ -121,7 +121,7 @@ class Form270JobConfig:
     job_id: str | None = None
     client_id: str | None = None
     joint_accounts: tuple[str, ...] = ()
-    allow_approximate_transfer_basis: bool = False
+    acc_not_included_for_merged: tuple[str, ...] = ()
 
 
 def load_project_config(path: Path) -> ProjectConfig:
@@ -261,11 +261,21 @@ def _load_form270_job(data: dict[str, Any]) -> Form270JobConfig:
 
     client_id = None
     joint_accounts: tuple[str, ...] = ()
+    acc_not_included_for_merged: tuple[str, ...] = ()
     if mode == "front_pipeline":
         client_id = validate_client_id(data.get("client_id"))
         if data.get("tax_year") is None:
             raise ValueError("form270 job id=front-pipeline requires tax_year")
+        if "allow_approximate_transfer_basis" in data:
+            raise ValueError(
+                "allow_approximate_transfer_basis is no longer supported; "
+                "answer the interactive prompt when exact transfer basis is missing"
+            )
         joint_accounts = _load_joint_accounts(data.get("joint_accounts"))
+        acc_not_included_for_merged = _load_account_id_list(
+            data.get("acc_not_included_for_merged"),
+            field_name="acc_not_included_for_merged",
+        )
 
     owner = (
         _load_form270_owner(data, prefix="", require_iin=mode != "merge_excel")
@@ -291,7 +301,7 @@ def _load_form270_job(data: dict[str, Any]) -> Form270JobConfig:
         job_id=job_id,
         client_id=client_id,
         joint_accounts=joint_accounts,
-        allow_approximate_transfer_basis=bool(data.get("allow_approximate_transfer_basis", False)),
+        acc_not_included_for_merged=acc_not_included_for_merged,
     )
 
 
@@ -329,15 +339,19 @@ def validate_client_id(value: Any) -> str:
 
 
 def _load_joint_accounts(value: Any) -> tuple[str, ...]:
+    return _load_account_id_list(value, field_name="joint_accounts")
+
+
+def _load_account_id_list(value: Any, *, field_name: str) -> tuple[str, ...]:
     if value is None:
         return ()
     if not isinstance(value, list):
-        raise ValueError("joint_accounts must be a TOML list of account IDs")
+        raise ValueError(f"{field_name} must be a TOML list of account IDs")
     accounts = tuple(str(item).strip() for item in value)
     if any(not account for account in accounts):
-        raise ValueError("joint_accounts cannot contain empty account IDs")
+        raise ValueError(f"{field_name} cannot contain empty account IDs")
     if len(set(accounts)) != len(accounts):
-        raise ValueError("joint_accounts contains duplicate account IDs")
+        raise ValueError(f"{field_name} contains duplicate account IDs")
     return accounts
 
 

@@ -3,12 +3,14 @@ from __future__ import annotations
 import json
 import tempfile
 import unittest
+from dataclasses import replace
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
 from unittest.mock import ANY, MagicMock, patch
 
 from conftest_imports import SRC  # noqa: F401
+from kztax270.brokers.account_detection import detect_report_account_id
 from kztax270.brokers.ib import _canonical_transfer_rows
 from kztax270.canonical.schema import CanonicalDataset
 from kztax270.cli import _run_form270_config
@@ -102,7 +104,7 @@ class FrontPipelineConfigTests(unittest.TestCase):
             )
             return load_form270_run_config(path)
 
-    def test_front_pipeline_config_parses_and_joint_defaults_empty(self) -> None:
+    def test_front_pipeline_config_parses_and_account_list_defaults_empty(self) -> None:
         config = self._load(
             '[[form270.jobs]]\nid="front-pipeline"\nclient_id="client_1"\ntax_year=2025\n'
             'fio1="Ivanov"\nfio2="Ivan"\nfio3=""\niin="123456789012"\n'
@@ -111,7 +113,7 @@ class FrontPipelineConfigTests(unittest.TestCase):
         self.assertEqual(job.mode, "front_pipeline")
         self.assertEqual(job.client_id, "client_1")
         self.assertEqual(job.joint_accounts, ())
-        self.assertFalse(job.allow_approximate_transfer_basis)
+        self.assertEqual(job.acc_not_included_for_merged, ())
 
     def test_missing_or_unsafe_client_id_is_rejected(self) -> None:
         base = (
@@ -129,6 +131,28 @@ class FrontPipelineConfigTests(unittest.TestCase):
                 '[[form270.jobs]]\nid="front-pipeline"\nclient_id="client"\ntax_year=2025\n'
                 'fio1="Ivanov"\nfio2="Ivan"\niin="123456789012"\n'
                 'joint_accounts=["U1", "U1"]\n'
+            )
+
+    def test_excluded_merge_accounts_parse_and_duplicates_are_rejected(self) -> None:
+        config = self._load(
+            '[[form270.jobs]]\nid="front-pipeline"\nclient_id="client"\ntax_year=2025\n'
+            'fio1="Ivanov"\nfio2="Ivan"\niin="123456789012"\n'
+            'acc_not_included_for_merged=["U9871844"]\n'
+        )
+        self.assertEqual(config.jobs[0].acc_not_included_for_merged, ("U9871844",))
+        with self.assertRaisesRegex(ValueError, "duplicate"):
+            self._load(
+                '[[form270.jobs]]\nid="front-pipeline"\nclient_id="client"\ntax_year=2025\n'
+                'fio1="Ivanov"\nfio2="Ivan"\niin="123456789012"\n'
+                'acc_not_included_for_merged=["U1", "U1"]\n'
+            )
+
+    def test_approximate_transfer_basis_is_chosen_interactively_not_in_toml(self) -> None:
+        with self.assertRaisesRegex(ValueError, "no longer supported"):
+            self._load(
+                '[[form270.jobs]]\nid="front-pipeline"\nclient_id="client"\ntax_year=2025\n'
+                'fio1="Ivanov"\nfio2="Ivan"\niin="123456789012"\n'
+                'allow_approximate_transfer_basis=false\n'
             )
 
 
@@ -156,10 +180,11 @@ class FrontPipelineDiscoveryTests(unittest.TestCase):
         self._file("ExAnTe", "e.csv")
         self._file("tabys", "t.pdf")
         self._file("TSIFRA", "c.xml")
+        self._file("freedom bank", "fb.pdf")
         self._file("freedom_759023", "f.xlsx")
         self._file("freedom_998877", "g.xlsx")
 
-        detected = {"a": "U1", "z": "U1", "b": "U2", "e": "E1", "t": "T1", "c": "C1"}
+        detected = {"a": "U1", "z": "U1", "b": "U2", "e": "E1", "t": "T1", "c": "C1", "fb": "FB1"}
         with patch(
             "kztax270.front_pipeline.detect_report_account_id",
             side_effect=lambda _broker, path: detected[path.stem],
@@ -168,7 +193,16 @@ class FrontPipelineDiscoveryTests(unittest.TestCase):
 
         self.assertEqual(
             [(item.broker, item.account_id) for item in accounts],
-            [("exante", "E1"), ("freedom", "759023"), ("freedom", "998877"), ("ib", "U1"), ("ib", "U2"), ("tabys", "T1"), ("tsifra", "C1")],
+            [
+                ("exante", "E1"),
+                ("freedom", "759023"),
+                ("freedom", "998877"),
+                ("freedom_bank", "FB1"),
+                ("ib", "U1"),
+                ("ib", "U2"),
+                ("tabys", "T1"),
+                ("tsifra", "C1"),
+            ],
         )
         ib_u1 = next(item for item in accounts if item.broker == "ib" and item.account_id == "U1")
         self.assertEqual([path.name for path in ib_u1.report_paths], ["a.csv", "z.csv"])
@@ -177,6 +211,30 @@ class FrontPipelineDiscoveryTests(unittest.TestCase):
         (self.client_root / "freedom_").mkdir()
         with self.assertRaisesRegex(ValueError, "freedom_<account_id>"):
             FrontPipeline(self.paths).discover_accounts("client_1")
+
+    def test_freedom_bank_uses_iin_extracted_from_pdf_when_it_omits_account(self) -> None:
+        from types import SimpleNamespace
+
+        report = self.client_root / "freedom bank" / "report.pdf"
+        report.parent.mkdir(parents=True)
+        report.write_bytes(b"fixture")
+        with patch(
+            "kztax270.brokers.freedom_bank.parse_freedom_bank_pdf",
+            return_value=SimpleNamespace(brokerage_account=None, iin="610716400096"),
+        ):
+            self.assertEqual(detect_report_account_id("freedom_bank", report), "610716400096")
+
+    def test_freedom_bank_without_report_identity_is_rejected(self) -> None:
+        from types import SimpleNamespace
+
+        report = self.client_root / "freedom_bank" / "any-name.pdf"
+        report.parent.mkdir(parents=True)
+        report.write_bytes(b"fixture")
+        with patch(
+            "kztax270.brokers.freedom_bank.parse_freedom_bank_pdf",
+            return_value=SimpleNamespace(brokerage_account=None, iin=None),
+        ):
+            self.assertIsNone(detect_report_account_id("freedom_bank", report))
 
     def test_same_account_id_under_two_brokers_is_ambiguous(self) -> None:
         self._file("ib", "a.csv")
@@ -199,6 +257,41 @@ class FrontPipelineDiscoveryTests(unittest.TestCase):
 
 
 class GlobalTransferLedgerTests(unittest.TestCase):
+    def test_synthetic_reconciliation_transfer_is_not_missing_basis(self) -> None:
+        account = _account("freedom_bank", "610716400096")
+        synthetic = _transfer(
+            "in",
+            "2025-01-01",
+            "39",
+            symbol="FRHCSPC.ETN",
+            isin="KZX000002001",
+        )
+        synthetic["_synthetic_reconciliation_adjustment"] = True
+
+        resolution = GlobalTransferLedger().resolve(
+            [(account, _dataset("freedom_bank", "610716400096", [synthetic]))]
+        )
+
+        self.assertEqual(resolution.missing, ())
+
+    def test_freedom_bank_gift_with_reported_price_is_not_missing_basis(self) -> None:
+        account = _account("freedom_bank", "610716400096")
+        gift = _transfer(
+            "in",
+            "2025-08-27",
+            "35444",
+            symbol="FRHCSPC.ETN",
+            isin="KZX000002001",
+            price="0.01",
+        )
+        gift["_broker_reported_transfer_basis"] = True
+
+        resolution = GlobalTransferLedger().resolve(
+            [(account, _dataset("freedom_bank", "610716400096", [gift]))]
+        )
+
+        self.assertEqual(resolution.missing, ())
+
     def test_in_memory_transfer_rows_retain_fifo_provenance_but_not_unrelated_fields(self) -> None:
         rows = _canonical_transfer_rows(
             [
@@ -207,12 +300,14 @@ class GlobalTransferLedgerTests(unittest.TestCase):
                     "_transfer_id": "report:transfer:1",
                     "_opening_lot_status": "pending_transfer_out_fifo_cost_basis",
                     "_fifo_source_account": "A",
+                    "_broker_reported_transfer_basis": True,
                     "_unrelated_internal": "discard",
                 }
             ]
         )
         self.assertEqual(rows[0]["_transfer_id"], "report:transfer:1")
         self.assertEqual(rows[0]["_fifo_source_account"], "A")
+        self.assertTrue(rows[0]["_broker_reported_transfer_basis"])
         self.assertNotIn("_unrelated_internal", rows[0])
 
     def test_exact_cross_broker_transfer_propagates_price_and_original_date(self) -> None:
@@ -427,10 +522,12 @@ class FrontPipelineOrchestrationTests(unittest.TestCase):
 
     def test_joint_is_applied_after_full_quantity_resolution_and_only_joint_file_is_merged(self) -> None:
         actions: list[str] = []
-        source = _account("ib", "JOINT")
+        source = _account("ib", "U15272903 (Custom Consolidated)")
         destination = _account("exante", "E1")
         datasets = {
-            ("ib", "JOINT"): _dataset("ib", "JOINT", [_transfer("out", "2024-01-01", "1000", price="7")]),
+            ("ib", "U15272903 (Custom Consolidated)"): _dataset(
+                "ib", "U15272903 (Custom Consolidated)", [_transfer("out", "2024-01-01", "1000", price="7")]
+            ),
             ("exante", "E1"): _dataset("exante", "E1", [_transfer("in", "2024-01-02", "1000")]),
         }
         pipeline = FrontPipeline(self.paths, account_runner=self._runner(datasets, actions))
@@ -439,7 +536,7 @@ class FrontPipelineOrchestrationTests(unittest.TestCase):
 
         def joint(source_path: Path) -> Path:
             actions.append("joint")
-            path = source_path.with_name("ib_JOINT_joint_audit.xlsx")
+            path = source_path.with_name("ib_U15272903 (Custom Consolidated)_joint_audit.xlsx")
             path.write_bytes(b"joint")
             return path
 
@@ -463,20 +560,105 @@ class FrontPipelineOrchestrationTests(unittest.TestCase):
                 client_id="client",
                 tax_year=2025,
                 taxpayer={"iin": "1"},
-                joint_accounts=("JOINT",),
+                joint_accounts=("U15272903",),
             )
 
         self.assertTrue(result.completed)
-        self.assertEqual(actions[:4], ["run:JOINT:False", "run:E1:False", "run:JOINT:True", "run:E1:True"])
+        self.assertEqual(
+            actions[:4],
+            [
+                "run:U15272903 (Custom Consolidated):False",
+                "run:E1:False",
+                "run:U15272903 (Custom Consolidated):True",
+                "run:E1:True",
+            ],
+        )
         self.assertEqual(actions[4:], ["joint", "merge"])
-        create_joint.assert_called_once_with(self.paths.processed_data / "ib_JOINT_audit.xlsx")
+        create_joint.assert_called_once_with(
+            self.paths.processed_data / "ib_U15272903 (Custom Consolidated)_audit.xlsx"
+        )
         merge_inputs = merge_workbooks.call_args.args[0]
-        self.assertEqual([path.name for path in merge_inputs], ["ib_JOINT_joint_audit.xlsx", "exante_E1_audit.xlsx"])
-        self.assertNotIn(self.paths.processed_data / "ib_JOINT_audit.xlsx", result.final_merge_input_paths)
+        self.assertEqual(
+            [path.name for path in merge_inputs],
+            ["ib_U15272903 (Custom Consolidated)_joint_audit.xlsx", "exante_E1_audit.xlsx"],
+        )
+        self.assertNotIn(
+            self.paths.processed_data / "ib_U15272903 (Custom Consolidated)_audit.xlsx",
+            result.final_merge_input_paths,
+        )
         self.assertEqual(result.merged_workbook_path.name, "merged_client.xlsx")
         self.assertEqual(result.form270_paths[0].name, "270_2025_client_filled.json")
         builder.build_processed_workbook_draft.assert_called_once()
         self.assertEqual(builder.build_processed_workbook_draft.call_args.args[0], result.merged_workbook_path)
+
+    def test_excluded_account_is_used_for_transfer_basis_but_not_merged(self) -> None:
+        actions: list[str] = []
+        source = _account("ib", "U9871844 (Custom Consolidated)")
+        destination = _account("exante", "MOTHER")
+        datasets = {
+            ("ib", "U9871844 (Custom Consolidated)"): _dataset(
+                "ib", "U9871844 (Custom Consolidated)", [_transfer("out", "2024-01-01", "10", price="7")]
+            ),
+            ("exante", "MOTHER"): _dataset("exante", "MOTHER", [_transfer("in", "2024-01-02", "10")]),
+        }
+        pipeline = FrontPipeline(self.paths, account_runner=self._runner(datasets, actions))
+        builder = MagicMock()
+        builder.build_processed_workbook_draft.return_value = {}
+        builder.save.side_effect = lambda _draft, output: output.write_text("{}", encoding="utf-8") or output
+
+        def merge(inputs, output):
+            output.write_bytes(b"merged")
+            return output
+
+        with (
+            patch.object(pipeline, "discover_accounts", return_value=(source, destination)),
+            patch("kztax270.front_pipeline.merge_audit_workbooks", side_effect=merge) as merge_workbooks,
+            patch("kztax270.front_pipeline.Form270JsonBuilder", return_value=builder),
+        ):
+            result = pipeline.run(
+                client_id="client",
+                tax_year=2025,
+                taxpayer={"iin": "1"},
+                acc_not_included_for_merged=("U9871844",),
+            )
+
+        self.assertTrue(result.completed)
+        self.assertEqual(
+            actions,
+            [
+                "run:U9871844 (Custom Consolidated):False",
+                "run:MOTHER:False",
+                "run:U9871844 (Custom Consolidated):True",
+                "run:MOTHER:True",
+            ],
+        )
+        self.assertEqual(
+            [path.name for path in result.individual_workbook_paths],
+            ["ib_U9871844 (Custom Consolidated)_audit.xlsx", "exante_MOTHER_audit.xlsx"],
+        )
+        self.assertEqual([path.name for path in result.final_merge_input_paths], ["exante_MOTHER_audit.xlsx"])
+        merge_workbooks.assert_not_called()
+        self.assertEqual(result.merged_workbook_path.read_bytes(), b"audit")
+        self.assertEqual(builder.build_processed_workbook_draft.call_args.args[0], result.merged_workbook_path)
+
+    def test_unknown_or_all_excluded_merge_accounts_are_rejected(self) -> None:
+        account = _account("ib", "U1")
+        pipeline = FrontPipeline(self.paths, account_runner=MagicMock())
+        with patch.object(pipeline, "discover_accounts", return_value=(account,)):
+            with self.assertRaisesRegex(ValueError, "Unknown acc_not_included_for_merged"):
+                pipeline.run(
+                    client_id="client",
+                    tax_year=2025,
+                    taxpayer={"iin": "1"},
+                    acc_not_included_for_merged=("U2",),
+                )
+            with self.assertRaisesRegex(ValueError, "cannot exclude every"):
+                pipeline.run(
+                    client_id="client",
+                    tax_year=2025,
+                    taxpayer={"iin": "1"},
+                    acc_not_included_for_merged=("U1",),
+                )
 
     def test_one_account_still_gets_merged_copy_and_approximate_mode_completes(self) -> None:
         account = _account("ib", "U1")
@@ -571,12 +753,73 @@ class FrontPipelineOrchestrationTests(unittest.TestCase):
         )
         domain = MagicMock()
         domain.run.return_value = result
-        with patch("kztax270.cli.FrontPipeline", return_value=domain):
+        with (
+            patch("kztax270.cli.FrontPipeline", return_value=domain),
+            patch("builtins.input", return_value="N"),
+        ):
             exit_code = _run_form270_config(config)
 
         self.assertEqual(exit_code, 1)
         domain.run.assert_called_once()
         self.assertEqual(domain.run.call_args.kwargs["client_id"], "client")
+
+    def test_cli_repeats_front_pipeline_in_approximate_mode_after_yes(self) -> None:
+        account = _account("ib", "U1")
+        missing = MissingTransferBasis(
+            transfer_date=date(2024, 1, 2),
+            symbol="XYZ",
+            isin="US0000000001",
+            quantity=Decimal("10"),
+            currency="USD",
+            destination_broker="ib",
+            destination_account="U1",
+            reason="missing_source",
+        )
+        strict_result = FrontPipelineResult(
+            client_id="client",
+            tax_year=2025,
+            discovered_accounts=(account,),
+            individual_workbook_paths=(self.paths.processed_data / "ib_U1_audit.xlsx",),
+            joint_workbook_paths=(),
+            final_merge_input_paths=(),
+            merged_workbook_path=None,
+            form270_paths=(),
+            missing_transfer_basis=(missing,),
+            used_approximate_transfer_basis=False,
+            completed=False,
+        )
+        approximate_result = replace(
+            strict_result,
+            merged_workbook_path=self.paths.processed_data / "merged_client.xlsx",
+            form270_paths=(self.paths.output_data / "270_2025_client_filled.json",),
+            used_approximate_transfer_basis=True,
+            completed=True,
+        )
+        job = Form270JobConfig(
+            mode="front_pipeline",
+            owner=Form270OwnerConfig("Ivanov", "Ivan", "", "123456789012"),
+            tax_year=2025,
+            job_id="front-pipeline",
+            client_id="client",
+        )
+        config = Form270RunConfig(
+            paths=self.paths,
+            defaults=Form270DefaultsConfig(),
+            banks={},
+            jobs=(job,),
+        )
+        domain = MagicMock()
+        domain.run.side_effect = (strict_result, approximate_result)
+        with (
+            patch("kztax270.cli.FrontPipeline", return_value=domain),
+            patch("builtins.input", return_value="Y"),
+        ):
+            exit_code = _run_form270_config(config)
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(domain.run.call_count, 2)
+        self.assertNotIn("allow_approximate_transfer_basis", domain.run.call_args_list[0].kwargs)
+        self.assertTrue(domain.run.call_args_list[1].kwargs["allow_approximate_transfer_basis"])
 
     def test_form270_05_preparation_is_reused_on_the_merged_workbook(self) -> None:
         account = _account("freedom", "759023")

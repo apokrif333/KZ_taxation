@@ -6,7 +6,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from conftest_imports import SRC  # noqa: F401
-from kztax270.brokers.exante import ExanteParser
+from kztax270.brokers.exante import ExanteParser, parse_exante_csv_report
 from kztax270.reconciliation.engine import ReconciliationEngine
 from kztax270.reconciliation.models import ReconciliationSeverity
 from kztax270.reference.fx import AnnualFxRateProvider
@@ -113,6 +113,23 @@ HXR_TRANSFER_KSPI_OPTION_EXANTE_CSV = '''"Costs and Charges Report: 2022-01-01 -
 
 
 class ExanteParserTests(unittest.TestCase):
+    def test_utf8_bom_comma_delimited_export_detects_account_id(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "Custom_EXX3093.001.csv"
+            path.write_text(MINIMAL_EXANTE_CSV.replace("\t", ","), encoding="utf-8-sig")
+            parsed = parse_exante_csv_report(path)
+
+        self.assertEqual(parsed.account_id, "EX1")
+        self.assertEqual(len(parsed.rows["Trades"]), 2)
+
+    def test_snapshot_account_date_header_does_not_replace_transaction_account_id(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "Custom_EX2.csv"
+            path.write_text(TRANSACTIONS_FIRST_WITH_MARGIN_TAIL_EXANTE_CSV, encoding="utf-16")
+            parsed = parse_exante_csv_report(path)
+
+        self.assertEqual(parsed.account_id, "EX2")
+
     def test_exante_trades_dividends_and_transfer_out_use_canonical_schema(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             raw_root = Path(tmp) / "raw"

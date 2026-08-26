@@ -10,6 +10,7 @@ from kztax270.brokers.freedom_bank import (
     FREEDOM_BANK_SYMBOL,
     ParsedFreedomBankReport,
     _parse_trade_table_row,
+    _populate_report_metadata,
     build_canonical_dataset,
 )
 from kztax270.brokers.registry import default_registry
@@ -19,6 +20,13 @@ from kztax270.reference.fx import AnnualFxRateProvider
 
 
 class FreedomBankParserTests(unittest.TestCase):
+    def test_report_metadata_extracts_iin_from_pdf_text(self) -> None:
+        report = ParsedFreedomBankReport(path=Path("report.pdf"))
+
+        _populate_report_metadata(report, "\u0418\u0418\u041d: 610716400096\n\u0412\u0430\u043b\u044e\u0442\u0430 \u0441\u0447\u0435\u0442\u0430: USD")
+
+        self.assertEqual(report.iin, "610716400096")
+
     def test_trade_row_parser_maps_freedom_bank_operations(self) -> None:
         row = _parse_trade_table_row(
             [
@@ -137,6 +145,7 @@ class FreedomBankParserTests(unittest.TestCase):
             if row["broker_comment"] == "Freedom Bank summary position reconciliation adjustment"
         ]
         self.assertEqual({row["direction"] for row in adjustment_rows}, {"in", "out"})
+        self.assertTrue(all(row["_synthetic_reconciliation_adjustment"] for row in adjustment_rows))
         self.assertTrue(any(row["symbol"] == FREEDOM_BANK_SYMBOL and row["year"] == 2024 for row in dataset.tables["Positions"]))
         self.assertFalse(any(row["year"] == 2025 for row in dataset.tables["Positions"]))
 

@@ -1220,6 +1220,8 @@ def _canonical_transfer_rows(transfers: Sequence[Mapping[str, Any]]) -> list[dic
         "_fifo_source_account",
         "_fifo_source_file",
         "_fifo_source_row",
+        "_synthetic_reconciliation_adjustment",
+        "_broker_reported_transfer_basis",
     )
     return [
         {

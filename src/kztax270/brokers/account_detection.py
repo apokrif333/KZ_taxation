@@ -50,7 +50,8 @@ def _tabys_account(path: Path) -> str | None:
 def _freedom_bank_account(path: Path) -> str | None:
     from kztax270.brokers.freedom_bank import parse_freedom_bank_pdf
 
-    return parse_freedom_bank_pdf(path).brokerage_account
+    parsed = parse_freedom_bank_pdf(path)
+    return parsed.brokerage_account or parsed.iin
 
 
 def _alatay_account(path: Path) -> str | None:

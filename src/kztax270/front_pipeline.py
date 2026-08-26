@@ -29,7 +29,16 @@ from kztax270.transfers import (
     same_transfer_instrument,
 )
 
-FRONT_BROKERS = frozenset({"ib", "exante", "tabys", "tsifra"})
+# ``freedom bank`` is accepted as a compatibility alias for the existing
+# client folder; ``freedom_bank`` is the canonical spelling for new folders.
+FRONT_BROKER_FOLDERS = {
+    "ib": "ib",
+    "exante": "exante",
+    "tabys": "tabys",
+    "tsifra": "tsifra",
+    "freedom_bank": "freedom_bank",
+    "freedom bank": "freedom_bank",
+}
 TRANSFER_TOLERANCE = Decimal("0.0001")
 
 
@@ -310,15 +319,17 @@ class FrontPipeline:
             if not folder.is_dir():
                 raise ValueError(f"Unsupported item in client report directory: {folder.name}")
             folder_name = folder.name.casefold()
+            broker = FRONT_BROKER_FOLDERS.get(folder_name)
+            if broker is not None:
+                self._collect_detected_accounts(grouped, broker, folder)
+                continue
             if folder_name.startswith("freedom_"):
                 account_id = folder.name[len("freedom_") :].strip()
                 if not account_id:
                     raise ValueError("Freedom directory must be named freedom_<account_id>")
                 self._collect_explicit_account(grouped, "freedom", account_id, folder)
                 continue
-            if folder_name not in FRONT_BROKERS:
-                raise ValueError(f"Unsupported broker folder: {folder.name}")
-            self._collect_detected_accounts(grouped, folder_name, folder)
+            raise ValueError(f"Unsupported broker folder: {folder.name}")
 
         accounts = tuple(
             DiscoveredAccount(broker, account_id, tuple(sorted(paths, key=_path_sort_key)))
@@ -336,6 +347,7 @@ class FrontPipeline:
         tax_year: int,
         taxpayer: Mapping[str, Any],
         joint_accounts: Sequence[str] = (),
+        acc_not_included_for_merged: Sequence[str] = (),
         allow_approximate_transfer_basis: bool = False,
         form270_05: bool = False,
         bank_infos: Mapping[str, BrokerBankInfo] | None = None,
@@ -345,10 +357,17 @@ class FrontPipeline:
         joint_ids = tuple(joint_accounts)
         if len(set(joint_ids)) != len(joint_ids):
             raise ValueError("joint_accounts contains duplicate account IDs")
-        discovered_by_id = {account.account_id: account for account in accounts}
-        unknown = sorted(set(joint_ids) - set(discovered_by_id))
-        if unknown:
-            raise ValueError(f"Unknown joint account IDs: {', '.join(unknown)}")
+        excluded_ids = tuple(acc_not_included_for_merged)
+        if len(set(excluded_ids)) != len(excluded_ids):
+            raise ValueError("acc_not_included_for_merged contains duplicate account IDs")
+        joint_ids = _resolve_configured_account_ids(accounts, joint_ids, field_name="joint_accounts")
+        excluded_ids = _resolve_configured_account_ids(
+            accounts,
+            excluded_ids,
+            field_name="acc_not_included_for_merged",
+        )
+        if len(excluded_ids) == len(accounts):
+            raise ValueError("acc_not_included_for_merged cannot exclude every discovered account")
 
         provisional = {
             (account.broker, account.account_id): self._account_runner(account, None)
@@ -400,9 +419,11 @@ class FrontPipeline:
             if account.account_id in joint_ids:
                 joint_path = create_joint_audit_workbook(ordinary_path)
                 joint_paths.append(joint_path)
-                merge_inputs.append(joint_path)
+                final_audit_path = joint_path
             else:
-                merge_inputs.append(ordinary_path)
+                final_audit_path = ordinary_path
+            if account.account_id not in excluded_ids:
+                merge_inputs.append(final_audit_path)
 
         merged_path.parent.mkdir(parents=True, exist_ok=True)
         if len(merge_inputs) == 1:
@@ -502,7 +523,11 @@ def _transfer_events(
     grouped: dict[tuple[Any, ...], list[Mapping[str, Any]]] = defaultdict(list)
     ordinals: dict[tuple[Any, ...], int] = {}
     for ordinal, row in enumerate(rows):
+        if row.get("_synthetic_reconciliation_adjustment"):
+            continue
         direction = str(row.get("direction") or "").strip().lower()
+        if direction == "in" and row.get("_broker_reported_transfer_basis"):
+            continue
         if str(row.get("transfer_type") or "").strip().lower() != "security" or direction not in {"in", "out"}:
             continue
         key = (
@@ -715,6 +740,50 @@ def _request_key(request: TransferInRequest) -> tuple[Any, ...]:
 
 def _path_sort_key(path: Path) -> tuple[str, str]:
     return (path.name.casefold(), str(path).casefold())
+
+
+def _resolve_configured_account_ids(
+    accounts: Sequence[DiscoveredAccount],
+    requested_ids: Sequence[str],
+    *,
+    field_name: str,
+) -> tuple[str, ...]:
+    """Map user-facing account numbers to the exact discovered account IDs.
+
+    IB's CSV sometimes renders the account as ``U123 (Custom Consolidated)``.
+    That suffix describes the report type, not the brokerage account number, so
+    client configuration may always use the plain ``U123`` value.
+    """
+
+    aliases: dict[str, set[str]] = defaultdict(set)
+    for account in accounts:
+        aliases[account.account_id].add(account.account_id)
+        if account.broker == "ib":
+            aliases[_ib_account_number(account.account_id)].add(account.account_id)
+
+    resolved: list[str] = []
+    unknown: list[str] = []
+    ambiguous: list[str] = []
+    for requested_id in requested_ids:
+        matches = aliases.get(requested_id, set())
+        if not matches:
+            unknown.append(requested_id)
+        elif len(matches) > 1:
+            ambiguous.append(requested_id)
+        else:
+            resolved.append(next(iter(matches)))
+
+    if unknown:
+        raise ValueError(f"Unknown {field_name} account IDs: {', '.join(sorted(unknown))}")
+    if ambiguous:
+        raise ValueError(f"Ambiguous {field_name} account IDs: {', '.join(sorted(ambiguous))}")
+    if len(set(resolved)) != len(resolved):
+        raise ValueError(f"{field_name} contains duplicate account IDs")
+    return tuple(resolved)
+
+
+def _ib_account_number(account_id: str) -> str:
+    return account_id.removesuffix(" (Custom Consolidated)").strip()
 
 
 def _parse_date(value: Any) -> date | None:

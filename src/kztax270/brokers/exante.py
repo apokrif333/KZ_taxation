@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import io
 import re
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
@@ -160,8 +161,7 @@ class ExanteParser:
 
 def parse_exante_csv_report(path: Path) -> ParsedExanteReport:
     parsed = ParsedExanteReport(path=path)
-    with path.open("r", newline="", encoding="utf-16") as handle:
-        rows = [[value.strip() for value in row] for row in csv.reader(handle, delimiter="\t")]
+    rows = _read_exante_rows(path)
 
     for row in rows[:50]:
         if not row:
@@ -171,8 +171,13 @@ def parse_exante_csv_report(path: Path) -> ParsedExanteReport:
             if period_match:
                 parsed.period_start = date.fromisoformat(period_match.group("start"))
                 parsed.period_end = date.fromisoformat(period_match.group("end"))
-        elif row[0] == "Account" and len(row) > 1:
-            parsed.account_id = row[1]
+        elif row[0] == "Account" and len(row) > 1 and parsed.account_id is None:
+            account_id = row[1]
+            # Exante's snapshot table has the column header ``Account | Date``.
+            # It is not report metadata; use transactional ``Account ID`` as a
+            # fallback when the dedicated metadata row is absent.
+            if account_id.casefold() not in {"account id", "date"}:
+                parsed.account_id = account_id
 
     _parse_snapshot_sections(parsed, rows, path)
 
@@ -205,6 +210,32 @@ def parse_exante_csv_report(path: Path) -> ParsedExanteReport:
     if parsed.account_id is None:
         parsed.account_id = _first_account_id(parsed)
     return parsed
+
+
+def _read_exante_rows(path: Path) -> list[list[str]]:
+    """Read both legacy UTF-16 TSV and current UTF-8 CSV Exante exports."""
+
+    raw = path.read_bytes()
+    if raw.startswith((b"\xff\xfe", b"\xfe\xff")):
+        encoding = "utf-16"
+    elif raw.startswith(b"\xef\xbb\xbf"):
+        encoding = "utf-8-sig"
+    elif b"\x00" in raw[:4096]:
+        encoding = "utf-16-le" if raw[1:2] == b"\x00" else "utf-16-be"
+    else:
+        encoding = "utf-8"
+
+    try:
+        text = raw.decode(encoding)
+    except UnicodeDecodeError as exc:
+        raise ValueError(f"Unsupported text encoding in Exante report: {path.name}") from exc
+
+    try:
+        dialect = csv.Sniffer().sniff(text[:8192], delimiters="\t,;")
+        delimiter = dialect.delimiter
+    except csv.Error:
+        delimiter = "\t"
+    return [[value.strip() for value in row] for row in csv.reader(io.StringIO(text), delimiter=delimiter)]
 
 
 def _parse_snapshot_sections(parsed: ParsedExanteReport, rows: Sequence[Sequence[str]], path: Path) -> None:
