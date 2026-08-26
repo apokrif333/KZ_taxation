@@ -12,7 +12,11 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
-from kztax270.brokers.account_detection import BROKER_REPORT_SPECS, detect_report_account_id
+from kztax270.brokers.account_detection import (
+    BROKER_REPORT_SPECS,
+    DetectedReportMetadata,
+    detect_report_metadata,
+)
 from kztax270.canonical.schema import CanonicalDataset
 from kztax270.config import AccountConfig, ProjectPaths, validate_client_id
 from kztax270.excel.form270_05_trades import prepare_form270_05_trades_workbook
@@ -47,6 +51,24 @@ class DiscoveredAccount:
     broker: str
     account_id: str
     report_paths: tuple[Path, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class InvalidReportPeriod:
+    broker: str
+    account_id: str
+    report_name: str
+    period_end: date | None
+
+
+class InvalidReportPeriodError(ValueError):
+    """One or more client reports are not complete calendar-year reports."""
+
+    def __init__(self, reports: Sequence[InvalidReportPeriod]) -> None:
+        self.reports = tuple(reports)
+        super().__init__(
+            "Отчёт сформирован некорректно: брокерские отчёты должны заканчиваться 31 декабря."
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -304,8 +326,10 @@ class FrontPipeline:
     def __init__(self, paths: ProjectPaths, *, account_runner: AccountRunner | None = None) -> None:
         self.paths = paths
         self._account_runner = account_runner or self._run_account
+        self._report_metadata: dict[tuple[str, Path], DetectedReportMetadata] = {}
 
     def discover_accounts(self, client_id: str) -> tuple[DiscoveredAccount, ...]:
+        self._report_metadata.clear()
         client_id = validate_client_id(client_id)
         clients_root = (self.paths.raw_data / "clients").resolve()
         client_root = (clients_root / client_id).resolve()
@@ -338,6 +362,7 @@ class FrontPipeline:
         if not accounts:
             raise ValueError(f"No supported reports found for client {client_id}")
         self._validate_unique_account_ids(accounts)
+        self._validate_report_periods(accounts)
         return accounts
 
     def run(
@@ -468,7 +493,10 @@ class FrontPipeline:
         folder: Path,
     ) -> None:
         for report in self._reports_in_folder(broker, folder):
-            account_id = detect_report_account_id(broker, report)
+            metadata = detect_report_metadata(broker, report)
+            self._report_metadata[(broker, report)] = metadata
+            account_id = metadata.account_id
+            account_id = account_id.strip() if account_id and account_id.strip() else None
             if not account_id:
                 raise ValueError(f"Cannot detect account ID in {broker} report {report.name}")
             grouped[(broker, account_id)].append(report)
@@ -480,7 +508,10 @@ class FrontPipeline:
         account_id: str,
         folder: Path,
     ) -> None:
-        grouped[(broker, account_id)].extend(self._reports_in_folder(broker, folder))
+        reports = self._reports_in_folder(broker, folder)
+        for report in reports:
+            self._report_metadata[(broker, report)] = detect_report_metadata(broker, report)
+        grouped[(broker, account_id)].extend(reports)
 
     @staticmethod
     def _reports_in_folder(broker: str, folder: Path) -> tuple[Path, ...]:
@@ -502,6 +533,26 @@ class FrontPipeline:
         ambiguous = sorted(account_id for account_id, brokers in brokers_by_id.items() if len(brokers) > 1)
         if ambiguous:
             raise ValueError(f"Account IDs are ambiguous across brokers: {', '.join(ambiguous)}")
+
+    def _validate_report_periods(self, accounts: Sequence[DiscoveredAccount]) -> None:
+        invalid: list[InvalidReportPeriod] = []
+        for account in accounts:
+            for report_path in account.report_paths:
+                metadata = self._report_metadata.get((account.broker, report_path))
+                if metadata is None:
+                    metadata = detect_report_metadata(account.broker, report_path)
+                period_end = metadata.period_end
+                if period_end is None or (period_end.month, period_end.day) != (12, 31):
+                    invalid.append(
+                        InvalidReportPeriod(
+                            broker=account.broker,
+                            account_id=account.account_id,
+                            report_name=report_path.name,
+                            period_end=period_end,
+                        )
+                    )
+        if invalid:
+            raise InvalidReportPeriodError(invalid)
 
     def _run_account(
         self,
