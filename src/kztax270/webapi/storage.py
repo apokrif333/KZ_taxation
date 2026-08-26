@@ -1,4 +1,4 @@
-"""Ephemeral, job-isolated filesystem storage for sensitive uploads and outputs."""
+"""Process-local job state and isolated temporary storage for the web API."""
 
 from __future__ import annotations
 
@@ -8,9 +8,10 @@ import tempfile
 import threading
 import time
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Literal
 
 from kztax270.config import ProjectPaths
 
@@ -46,6 +47,8 @@ class WebApiSettings:
     job_root: Path
     max_upload_bytes: int
     max_files: int
+    max_job_files: int
+    pending_job_ttl_seconds: int
     job_ttl_seconds: int
     cors_origins: tuple[str, ...]
     project_paths: ProjectPaths = field(default_factory=ProjectPaths)
@@ -68,6 +71,8 @@ class WebApiSettings:
             job_root=root.resolve(),
             max_upload_bytes=int(max_upload_mb * 1024 * 1024),
             max_files=_positive_int("QCM_MAX_FILES", 10),
+            max_job_files=_positive_int("QCM_MAX_JOB_FILES", 50),
+            pending_job_ttl_seconds=_positive_int("QCM_PENDING_JOB_TTL_SECONDS", 3600),
             job_ttl_seconds=_positive_int("QCM_JOB_TTL_SECONDS", 900),
             cors_origins=origins,
             project_paths=ProjectPaths(
@@ -84,10 +89,15 @@ class WebApiSettings:
 @dataclass(frozen=True, slots=True)
 class JobWorkspace:
     job_id: str
+    internal_client_id: str
     root: Path
     input_dir: Path
     processed_dir: Path
     output_dir: Path
+
+    @property
+    def client_root(self) -> Path:
+        return self.input_dir / "clients" / self.internal_client_id
 
     def project_paths(self, permanent_paths: ProjectPaths) -> ProjectPaths:
         return ProjectPaths(
@@ -101,112 +111,202 @@ class JobWorkspace:
 
 
 @dataclass(frozen=True, slots=True)
+class ArtifactRecord:
+    artifact_id: str
+    kind: Literal["account_audit", "joint_audit", "merged_audit", "form270"]
+    path: Path
+    filename: str
+    media_type: str
+    broker: str | None = None
+    account_id: str | None = None
+
+
+@dataclass(slots=True)
 class JobRecord:
-    job_id: str
-    root: Path
-    audit_path: Path
-    form270_path: Path
-    form270_media_type: str
+    workspace: JobWorkspace
+    status: str
     expires_at: float
+    uploads: dict[str, Path] = field(default_factory=dict)
+    artifacts: dict[str, ArtifactRecord] = field(default_factory=dict)
+
+    @property
+    def job_id(self) -> str:
+        return self.workspace.job_id
+
+
+class DuplicateReportError(ValueError):
+    pass
+
+
+class JobFileLimitError(ValueError):
+    pass
+
+
+class InvalidJobStateError(ValueError):
+    pass
 
 
 class JobStore:
-    """In-memory job index backed by isolated temporary directories."""
+    """Concurrency-safe-enough process-local state for one-instance MVP jobs."""
 
     def __init__(
         self,
         root: Path,
-        ttl_seconds: int,
+        pending_ttl_seconds: int,
+        completed_ttl_seconds: int,
         *,
         clock: Callable[[], float] = time.time,
     ) -> None:
         self.root = root.resolve()
-        self.ttl_seconds = ttl_seconds
+        self.pending_ttl_seconds = pending_ttl_seconds
+        self.completed_ttl_seconds = completed_ttl_seconds
         self._clock = clock
         self._lock = threading.RLock()
-        self._active: dict[str, JobWorkspace] = {}
-        self._completed: dict[str, JobRecord] = {}
+        self._jobs: dict[str, JobRecord] = {}
+        self._expired_ids: set[str] = set()
         self.root.mkdir(parents=True, exist_ok=True)
 
-    def create_workspace(self) -> JobWorkspace:
+    def create(self) -> JobRecord:
         self.cleanup_expired()
         with self._lock:
-            job_id = str(uuid.uuid4())
+            job_uuid = uuid.uuid4()
+            job_id = str(job_uuid)
             root = self.root / job_id
             workspace = JobWorkspace(
                 job_id=job_id,
+                internal_client_id=f"job_{job_uuid.hex}",
                 root=root,
                 input_dir=root / "input",
                 processed_dir=root / "processed",
                 output_dir=root / "output",
             )
-            workspace.input_dir.mkdir(parents=True)
+            workspace.client_root.mkdir(parents=True)
             workspace.processed_dir.mkdir()
             workspace.output_dir.mkdir()
-            self._active[job_id] = workspace
-            return workspace
-
-    def complete(
-        self,
-        workspace: JobWorkspace,
-        *,
-        audit_path: Path,
-        form270_path: Path,
-        form270_media_type: str,
-    ) -> JobRecord:
-        with self._lock:
-            self._require_managed_path(workspace, audit_path)
-            self._require_managed_path(workspace, form270_path)
-            self._remove_inputs(workspace)
             record = JobRecord(
-                job_id=workspace.job_id,
-                root=workspace.root,
-                audit_path=audit_path,
-                form270_path=form270_path,
-                form270_media_type=form270_media_type,
-                expires_at=self._clock() + self.ttl_seconds,
+                workspace=workspace,
+                status="collecting",
+                expires_at=self._clock() + self.pending_ttl_seconds,
             )
-            self._active.pop(workspace.job_id, None)
-            self._completed[workspace.job_id] = record
+            self._jobs[job_id] = record
+            self._expired_ids.discard(job_id)
             return record
-
-    def discard(self, workspace: JobWorkspace) -> None:
-        with self._lock:
-            self._active.pop(workspace.job_id, None)
-            self._completed.pop(workspace.job_id, None)
-            self._remove_job_root(workspace.root)
 
     def get(self, job_id: str) -> JobRecord | None:
         self.cleanup_expired()
         with self._lock:
-            record = self._completed.get(job_id)
-            if record is None:
+            record = self._jobs.get(job_id)
+            if record is None or not record.workspace.root.exists():
+                self._jobs.pop(job_id, None)
                 return None
-            if not record.root.exists():
-                self._completed.pop(job_id, None)
-                return None
+            return record
+
+    def was_expired(self, job_id: str) -> bool:
+        with self._lock:
+            return job_id in self._expired_ids
+
+    def add_uploads(
+        self,
+        job_id: str,
+        uploads: Sequence[tuple[str, Path]],
+        *,
+        max_job_files: int,
+    ) -> JobRecord:
+        with self._lock:
+            record = self._require(job_id)
+            if record.status == "completed":
+                raise InvalidJobStateError("completed")
+            if record.status == "processing":
+                raise InvalidJobStateError("processing")
+            digests = [digest for digest, _path in uploads]
+            if len(set(digests)) != len(digests) or any(digest in record.uploads for digest in digests):
+                raise DuplicateReportError
+            if len(record.uploads) + len(uploads) > max_job_files:
+                raise JobFileLimitError
+            record.uploads.update(uploads)
+            record.status = "collecting"
+            self._refresh_pending(record)
+            return record
+
+    def mark_discovered(self, job_id: str) -> JobRecord:
+        with self._lock:
+            record = self._require(job_id)
+            if record.status == "completed":
+                raise InvalidJobStateError("completed")
+            if record.status == "processing":
+                raise InvalidJobStateError("processing")
+            record.status = "awaiting_options"
+            self._refresh_pending(record)
+            return record
+
+    def prepare_processing(self, job_id: str) -> tuple[JobRecord, str]:
+        with self._lock:
+            record = self._require(job_id)
+            if record.status == "completed":
+                raise InvalidJobStateError("completed")
+            if record.status == "processing":
+                raise InvalidJobStateError("processing")
+            if record.status not in {"awaiting_options", "needs_additional_reports"}:
+                raise InvalidJobStateError(record.status)
+            previous_status = record.status
+            self._clear_directory(record.workspace.processed_dir)
+            self._clear_directory(record.workspace.output_dir)
+            record.artifacts.clear()
+            record.status = "processing"
+            self._refresh_pending(record)
+            return record, previous_status
+
+    def processing_failed(self, job_id: str, previous_status: str) -> None:
+        with self._lock:
+            record = self._jobs.get(job_id)
+            if record is None or record.status != "processing":
+                return
+            record.status = previous_status
+            self._refresh_pending(record)
+
+    def needs_additional_reports(self, job_id: str) -> JobRecord:
+        with self._lock:
+            record = self._require(job_id)
+            if record.status != "processing":
+                raise InvalidJobStateError(record.status)
+            record.status = "needs_additional_reports"
+            self._refresh_pending(record)
+            return record
+
+    def complete(self, job_id: str, artifacts: Sequence[ArtifactRecord]) -> JobRecord:
+        with self._lock:
+            record = self._require(job_id)
+            if record.status != "processing":
+                raise InvalidJobStateError(record.status)
+            for artifact in artifacts:
+                self._require_managed_file(record.workspace, artifact.path)
+            self._remove_inputs(record.workspace)
+            record.uploads.clear()
+            record.artifacts = {artifact.artifact_id: artifact for artifact in artifacts}
+            record.status = "completed"
+            record.expires_at = self._clock() + self.completed_ttl_seconds
             return record
 
     def delete(self, job_id: str) -> None:
         with self._lock:
-            workspace = self._active.pop(job_id, None)
-            record = self._completed.pop(job_id, None)
-            root = workspace.root if workspace is not None else record.root if record is not None else None
-            if root is not None:
-                self._remove_job_root(root)
+            record = self._jobs.pop(job_id, None)
+            self._expired_ids.discard(job_id)
+            if record is not None:
+                self._remove_job_root(record.workspace.root)
 
     def cleanup_expired(self) -> int:
         now = self._clock()
         removed = 0
         with self._lock:
-            expired = [job_id for job_id, record in self._completed.items() if record.expires_at <= now]
+            expired = [job_id for job_id, record in self._jobs.items() if record.expires_at <= now]
             for job_id in expired:
-                record = self._completed.pop(job_id)
-                self._remove_job_root(record.root)
+                record = self._jobs.pop(job_id)
+                self._expired_ids.add(job_id)
+                self._remove_job_root(record.workspace.root)
                 removed += 1
 
-            known = set(self._active) | set(self._completed)
-            cutoff = now - self.ttl_seconds
+            known = set(self._jobs)
+            cutoff = now - self.pending_ttl_seconds
             for child in self.root.iterdir():
                 if not child.is_dir() or child.name in known or not _is_uuid(child.name):
                     continue
@@ -215,13 +315,36 @@ class JobStore:
                 except FileNotFoundError:
                     continue
                 if is_stale:
+                    self._expired_ids.add(child.name)
                     self._remove_job_root(child)
                     removed += 1
         return removed
 
-    def _remove_inputs(self, workspace: JobWorkspace) -> None:
+    def _require(self, job_id: str) -> JobRecord:
+        record = self._jobs.get(job_id)
+        if record is None or not record.workspace.root.exists():
+            raise KeyError(job_id)
+        return record
+
+    def _refresh_pending(self, record: JobRecord) -> None:
+        record.expires_at = self._clock() + self.pending_ttl_seconds
+
+    @staticmethod
+    def _clear_directory(path: Path) -> None:
+        if path.exists():
+            for child in path.iterdir():
+                if child.is_dir():
+                    shutil.rmtree(child)
+                else:
+                    child.unlink()
+        else:
+            path.mkdir(parents=True)
+
+    @staticmethod
+    def _remove_inputs(workspace: JobWorkspace) -> None:
         input_path = workspace.input_dir.resolve()
-        if input_path != workspace.root.resolve() and input_path.is_relative_to(workspace.root.resolve()):
+        root = workspace.root.resolve()
+        if input_path != root and input_path.is_relative_to(root):
             shutil.rmtree(input_path, ignore_errors=True)
 
     def _remove_job_root(self, path: Path) -> None:
@@ -231,7 +354,7 @@ class JobStore:
         shutil.rmtree(resolved, ignore_errors=True)
 
     @staticmethod
-    def _require_managed_path(workspace: JobWorkspace, path: Path) -> None:
+    def _require_managed_file(workspace: JobWorkspace, path: Path) -> None:
         resolved = path.resolve()
         if not resolved.is_relative_to(workspace.root.resolve()) or not resolved.is_file():
             raise ValueError("Pipeline output is missing or outside the job directory")

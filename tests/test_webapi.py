@@ -1,78 +1,149 @@
 from __future__ import annotations
 
+import asyncio
+import hashlib
 import tempfile
 import unittest
+import zipfile
+from datetime import date
+from decimal import Decimal
 from pathlib import Path
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
 from conftest_imports import SRC  # noqa: F401
-from kztax270.canonical.schema import CanonicalDataset
-from kztax270.config import AccountConfig, ProjectPaths
-from kztax270.pipeline import AccountPipelineResult
-from kztax270.webapi.main import create_app
+from kztax270.config import ProjectPaths
+from kztax270.excel.joint_workbook import joint_workbook_path
+from kztax270.front_pipeline import (
+    DiscoveredAccount,
+    FrontPipelineResult,
+    InvalidReportPeriod,
+    InvalidReportPeriodError,
+    MissingTransferBasis,
+)
+from kztax270.webapi.main import UPLOAD_CHUNK_SIZE, _save_upload, create_app
 from kztax270.webapi.storage import JobStore, WebApiSettings
 
 
-class _FakePipelineFactory:
+class _FakeFrontPipelineFactory:
     def __init__(self) -> None:
-        self.calls: list[tuple[ProjectPaths, AccountConfig, list[Path], int | None, bool]] = []
+        self.instances: list[_FakeFrontPipeline] = []
+        self.discover_calls: list[tuple[ProjectPaths, str]] = []
+        self.run_calls: list[dict[str, object]] = []
+        self.discover_error: Exception | None = None
+        self.behaviors: list[str] = []
 
-    def __call__(self, paths: ProjectPaths) -> _FakePipeline:
-        return _FakePipeline(paths, self)
+    def __call__(self, paths: ProjectPaths) -> _FakeFrontPipeline:
+        instance = _FakeFrontPipeline(paths, self)
+        self.instances.append(instance)
+        return instance
 
 
-class _FakePipeline:
-    def __init__(self, paths: ProjectPaths, factory: _FakePipelineFactory) -> None:
+class _FakeFrontPipeline:
+    def __init__(self, paths: ProjectPaths, factory: _FakeFrontPipelineFactory) -> None:
         self.paths = paths
         self.factory = factory
 
-    def run_reports(
-        self,
-        account: AccountConfig,
-        report_paths: list[Path],
-        *,
-        tax_year: int | None = None,
-        taxpayer: dict[str, object] | None = None,
-        write_excel: bool = True,
-        write_json: bool = True,
-    ) -> AccountPipelineResult:
-        del taxpayer, write_excel
-        self.factory.calls.append((self.paths, account, list(report_paths), tax_year, write_json))
-        dataset = CanonicalDataset.empty(account.broker, account.account_id)
-        dataset.tables["Trades"] = [{"trade_id": "1"}, {"trade_id": "2"}]
-        dataset.tables["Instruments"] = [{"symbol": "TEST"}]
-        dataset.warnings = [f"Warning for {report_paths[0]}"]
-        dataset.tables["Reconciliation"] = [
-            {
-                "metric": "ending_cash",
-                "severity": "error",
-                "broker_value": "10.00",
-                "canonical_value": "9.00",
-                "difference": "-1.00",
-                "tolerance": "0.01",
-                "currency": "USD",
-                "instrument_key": None,
-                "year": tax_year,
-                "source": str(report_paths[0]),
-                "details": "Test reconciliation",
-            }
-        ]
-        self.paths.processed_data.mkdir(parents=True, exist_ok=True)
-        self.paths.output_data.mkdir(parents=True, exist_ok=True)
-        workbook_path = self.paths.processed_data / f"{account.broker}_{account.account_id}_audit.xlsx"
-        form_paths: dict[str, Path] = {}
-        workbook_path.write_bytes(b"audit-workbook")
-        if write_json:
-            form_path = self.paths.output_data / f"270_{tax_year}_{account.broker}_{account.account_id}.json"
-            form_path.write_text('{"fnoYear": 2025}', encoding="utf-8")
-            form_paths[account.account_id] = form_path
-        return AccountPipelineResult(
-            dataset=dataset,
-            workbook_path=workbook_path,
-            form_paths=form_paths,
-            reconciliation_error_count=1,
+    def discover_accounts(self, client_id: str) -> tuple[DiscoveredAccount, ...]:
+        self.factory.discover_calls.append((self.paths, client_id))
+        if self.factory.discover_error is not None:
+            raise self.factory.discover_error
+        client_root = self.paths.raw_data / "clients" / client_id
+        grouped: dict[tuple[str, str], list[Path]] = {}
+        for folder in sorted(client_root.iterdir(), key=lambda path: path.name.casefold()):
+            reports = sorted(folder.iterdir(), key=lambda path: path.name.casefold())
+            if folder.name.startswith("freedom_"):
+                grouped[("freedom", folder.name.removeprefix("freedom_"))] = reports
+                continue
+            broker = folder.name
+            if broker == "ib":
+                for report in reports:
+                    account_id = "U2" if report.name.casefold().startswith("u2") else "U1"
+                    grouped.setdefault((broker, account_id), []).append(report)
+            else:
+                account_id = {
+                    "exante": "EX1",
+                    "tabys": "T1",
+                    "tsifra": "C1",
+                    "freedom_bank": "FB1",
+                }[broker]
+                grouped[(broker, account_id)] = reports
+        return tuple(
+            DiscoveredAccount(broker, account_id, tuple(paths))
+            for (broker, account_id), paths in sorted(grouped.items())
+        )
+
+    def run(self, **kwargs: object) -> FrontPipelineResult:
+        self.factory.run_calls.append(dict(kwargs))
+        client_id = str(kwargs["client_id"])
+        tax_year = int(kwargs["tax_year"])
+        accounts = self.discover_accounts(client_id)
+        behavior = self.factory.behaviors.pop(0) if self.factory.behaviors else "completed"
+        individual_paths: list[Path] = []
+        for account in accounts:
+            path = self.paths.processed_data / f"{account.broker}_{account.account_id}_audit.xlsx"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(f"audit:{account.broker}:{account.account_id}".encode())
+            individual_paths.append(path)
+
+        missing = (
+            MissingTransferBasis(
+                transfer_date=date(2024, 8, 19),
+                symbol="MVEU",
+                isin="IE00B86MWN23",
+                quantity=Decimal("507"),
+                currency="EUR",
+                destination_broker="ib",
+                destination_account="U1",
+                reason="missing_source",
+            ),
+        )
+        if behavior == "missing":
+            return FrontPipelineResult(
+                client_id=client_id,
+                tax_year=tax_year,
+                discovered_accounts=accounts,
+                individual_workbook_paths=tuple(individual_paths),
+                joint_workbook_paths=(),
+                final_merge_input_paths=(),
+                merged_workbook_path=None,
+                form270_paths=(),
+                missing_transfer_basis=missing,
+                used_approximate_transfer_basis=False,
+                completed=False,
+            )
+
+        joint_ids = set(kwargs.get("joint_accounts", []))
+        excluded_ids = set(kwargs.get("acc_not_included_for_merged", []))
+        joint_paths: list[Path] = []
+        merge_inputs: list[Path] = []
+        for account, ordinary in zip(accounts, individual_paths, strict=True):
+            final = ordinary
+            if account.account_id in joint_ids:
+                final = joint_workbook_path(ordinary)
+                final.write_bytes(f"joint:{account.broker}:{account.account_id}".encode())
+                joint_paths.append(final)
+            if account.account_id not in excluded_ids:
+                merge_inputs.append(final)
+        merged = self.paths.processed_data / f"merged_{client_id}.xlsx"
+        merged.write_bytes(b"merged")
+        form = self.paths.output_data / f"270_{tax_year}_{client_id}_filled.json"
+        form.parent.mkdir(parents=True, exist_ok=True)
+        form.write_text('{"fnoYear": 2025}', encoding="utf-8")
+        approximate = bool(kwargs.get("allow_approximate_transfer_basis"))
+        return FrontPipelineResult(
+            client_id=client_id,
+            tax_year=tax_year,
+            discovered_accounts=accounts,
+            individual_workbook_paths=tuple(individual_paths),
+            joint_workbook_paths=tuple(joint_paths),
+            final_merge_input_paths=tuple(merge_inputs),
+            merged_workbook_path=merged,
+            form270_paths=(form,),
+            missing_transfer_basis=missing if approximate else (),
+            used_approximate_transfer_basis=approximate,
+            completed=True,
         )
 
 
@@ -80,11 +151,13 @@ class WebApiTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()
         self.root = Path(self.temp_dir.name)
-        self.factory = _FakePipelineFactory()
+        self.factory = _FakeFrontPipelineFactory()
         self.settings = WebApiSettings(
             job_root=self.root / "jobs",
-            max_upload_bytes=1024,
-            max_files=2,
+            max_upload_bytes=32,
+            max_files=3,
+            max_job_files=6,
+            pending_job_ttl_seconds=3600,
             job_ttl_seconds=900,
             cors_origins=("http://localhost:3000",),
             project_paths=ProjectPaths(
@@ -93,243 +166,388 @@ class WebApiTests(unittest.TestCase):
                 form270_template=self.root / "reference" / "270-template.json",
             ),
         )
-        self.client_context = TestClient(create_app(self.settings, pipeline_factory=self.factory))
+        self.client_context = TestClient(
+            create_app(self.settings, front_pipeline_factory=self.factory)
+        )
         self.client = self.client_context.__enter__()
 
     def tearDown(self) -> None:
         self.client_context.__exit__(None, None, None)
         self.temp_dir.cleanup()
 
-    def _post_job(
+    def _create(self) -> dict[str, object]:
+        response = self.client.post("/api/jobs")
+        self.assertEqual(response.status_code, 200)
+        return response.json()
+
+    def _upload(
         self,
+        job_id: str,
         *,
         broker: str = "ib",
-        account_id: str | None = "U1234567",
+        account_id: str | None = None,
         uploads: list[tuple[str, bytes]] | None = None,
-        joint_account: bool = False,
     ):
-        data = {
-            "broker": broker,
-            "tax_year": "2025",
-            "joint_account": str(joint_account).lower(),
-        }
+        data = {"broker": broker}
         if account_id is not None:
             data["account_id"] = account_id
-        upload_values = uploads or [("report.csv", b"report-data")]
-        files = [("files", (name, content, "application/octet-stream")) for name, content in upload_values]
-        return self.client.post("/api/jobs", data=data, files=files)
+        values = uploads or [("u1-report.csv", b"report")]
+        files = [("files", (name, content, "application/octet-stream")) for name, content in values]
+        return self.client.post(f"/api/jobs/{job_id}/reports", data=data, files=files)
 
-    def test_health_is_cheap_and_returns_service_status(self) -> None:
+    def _discover(self, job_id: str):
+        return self.client.post(f"/api/jobs/{job_id}/discover")
+
+    def _process(self, job_id: str, **overrides: object):
+        payload: dict[str, object] = {
+            "tax_year": 2025,
+            "taxpayer": {
+                "fio1": "Ivanov",
+                "fio2": "Ivan",
+                "fio3": "Ivanovich",
+                "iin": "123456789012",
+            },
+            "joint_accounts": [],
+            "acc_not_included_for_merged": [],
+            "form270_05": False,
+            "allow_approximate_transfer_basis": False,
+        }
+        payload.update(overrides)
+        return self.client.post(f"/api/jobs/{job_id}/process", json=payload)
+
+    def _ready_job(self) -> str:
+        job_id = str(self._create()["job_id"])
+        self.assertEqual(self._upload(job_id).status_code, 200)
+        self.assertEqual(self._discover(job_id).status_code, 200)
+        return job_id
+
+    def test_health_is_cheap(self) -> None:
         response = self.client.get("/api/health")
-
-        self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {"status": "ok", "service": "qcm-tax-270"})
-        self.assertEqual(self.factory.calls, [])
+        self.assertEqual(self.factory.instances, [])
 
-    def test_config_describes_native_parser_formats_and_limits(self) -> None:
+    def test_config_only_exposes_front_pipeline_brokers_and_limits(self) -> None:
         response = self.client.get("/api/config")
-
         self.assertEqual(response.status_code, 200)
         data = response.json()
         brokers = {item["code"]: item for item in data["brokers"]}
-        self.assertEqual(brokers["ib"]["upload_extensions"], [".csv"])
+        self.assertEqual(set(brokers), {"ib", "exante", "tabys", "tsifra", "freedom", "freedom_bank"})
+        self.assertEqual(brokers["ib"]["account_id_mode"], "auto")
+        self.assertEqual(brokers["freedom"]["account_id_mode"], "manual")
         self.assertEqual(brokers["freedom"]["upload_extensions"], [".xlsx"])
-        self.assertFalse(brokers["freedom"]["account_id_optional"])
-        self.assertNotIn("ib_legacy", brokers)
-        self.assertEqual(data["max_upload_bytes"], 1024)
-        self.assertEqual(data["max_files"], 2)
+        self.assertEqual(data["max_job_files"], 6)
+        self.assertEqual(data["pending_job_ttl_seconds"], 3600)
 
-    def test_openapi_declares_files_as_multipart_binary_uploads(self) -> None:
+    def test_create_job_is_empty_and_collecting(self) -> None:
+        created = self._create()
+        self.assertEqual(created["status"], "collecting")
+        root = self.settings.job_root / str(created["job_id"])
+        self.assertEqual(list((root / "input" / "clients").iterdir())[0].name[:4], "job_")
+        self.assertEqual(self.factory.instances, [])
+
+    def test_openapi_declares_report_files_as_multipart_binary(self) -> None:
         openapi = self.client.get("/openapi.json").json()
-        request_schema = openapi["paths"]["/api/jobs"]["post"]["requestBody"]["content"]["multipart/form-data"][
-            "schema"
-        ]
+        request_schema = openapi["paths"]["/api/jobs/{job_id}/reports"]["post"]["requestBody"]["content"][
+            "multipart/form-data"
+        ]["schema"]
         if "$ref" in request_schema:
-            component_name = request_schema["$ref"].rsplit("/", 1)[-1]
-            request_schema = openapi["components"]["schemas"][component_name]
+            request_schema = openapi["components"]["schemas"][request_schema["$ref"].rsplit("/", 1)[-1]]
+        files = request_schema["properties"]["files"]
+        self.assertEqual(files["type"], "array")
+        self.assertEqual(files["items"]["type"], "string")
+        self.assertEqual(files["items"]["format"], "binary")
 
-        files_schema = request_schema["properties"]["files"]
-        self.assertEqual(files_schema["type"], "array")
-        self.assertEqual(files_schema["items"]["type"], "string")
-        self.assertEqual(files_schema["items"]["format"], "binary")
-
-    def test_valid_multipart_upload_returns_summary_and_redacted_domain_data(self) -> None:
-        response = self._post_job()
-
-        self.assertEqual(response.status_code, 200)
-        data = response.json()
-        self.assertEqual(data["status"], "completed")
+    def test_repeated_batches_and_auto_ib_account_without_account_id(self) -> None:
+        job_id = str(self._create()["job_id"])
+        first = self._upload(job_id, uploads=[("u1-first.csv", b"one")])
+        second = self._upload(job_id, uploads=[("u2-second.csv", b"two")])
+        self.assertEqual(first.json()["total_files"], 1)
+        self.assertEqual(second.json()["total_files"], 2)
+        discovered = self._discover(job_id).json()
         self.assertEqual(
-            data["summary"],
-            {
-                "operations": 2,
-                "instruments": 1,
-                "warnings": 1,
-                "reconciliation_errors": 1,
-            },
+            [(item["broker"], item["account_id"], item["report_count"]) for item in discovered["accounts"]],
+            [("ib", "U1", 1), ("ib", "U2", 1)],
         )
-        self.assertIn("[uploaded report]", data["warnings"][0])
-        self.assertEqual(data["reconciliation"][0]["source"], "[uploaded report]")
+
+    def test_freedom_requires_account_id_and_auto_brokers_reject_it(self) -> None:
+        job_id = str(self._create()["job_id"])
+        missing = self._upload(job_id, broker="freedom", uploads=[("report.xlsx", b"one")])
+        forbidden = self._upload(job_id, broker="ib", account_id="U1")
+        self.assertEqual(missing.status_code, 422)
+        self.assertEqual(missing.json()["detail"]["code"], "account_id_required")
+        self.assertEqual(forbidden.status_code, 422)
+        self.assertEqual(forbidden.json()["detail"]["code"], "account_id_not_allowed")
+
+    def test_invalid_manual_account_id_is_rejected(self) -> None:
+        job_id = str(self._create()["job_id"])
+        response = self._upload(job_id, broker="freedom", account_id="../bad", uploads=[("r.xlsx", b"x")])
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.json()["detail"]["code"], "invalid_account_id")
+
+    def test_multiple_freedom_accounts_use_separate_front_pipeline_folders(self) -> None:
+        job_id = str(self._create()["job_id"])
+        self.assertEqual(
+            self._upload(job_id, broker="freedom", account_id="759023", uploads=[("a.xlsx", b"a")]).status_code,
+            200,
+        )
+        self.assertEqual(
+            self._upload(job_id, broker="freedom", account_id="998877", uploads=[("b.xlsx", b"b")]).status_code,
+            200,
+        )
+        record = self.client.app.state.job_store.get(job_id)
+        self.assertIsNotNone(record)
+        folders = {path.parent.name for path in record.uploads.values()}
+        self.assertEqual(folders, {"freedom_759023", "freedom_998877"})
+        accounts = self._discover(job_id).json()["accounts"]
+        self.assertEqual({item["account_id"] for item in accounts}, {"759023", "998877"})
+
+    def test_upload_limits_and_extension_validation(self) -> None:
+        cases = [
+            ([('wrong.xlsx', b'x')], 415, "unsupported_file_type"),
+            ([('large.csv', b'x' * 33)], 413, "file_too_large"),
+            ([('1.csv', b'1'), ('2.csv', b'2'), ('3.csv', b'3'), ('4.csv', b'4')], 413, "too_many_files"),
+        ]
+        for uploads, status, code in cases:
+            with self.subTest(code=code):
+                job_id = str(self._create()["job_id"])
+                response = self._upload(job_id, uploads=uploads)
+                self.assertEqual(response.status_code, status)
+                self.assertEqual(response.json()["detail"]["code"], code)
+
+    def test_total_job_file_limit(self) -> None:
+        job_id = str(self._create()["job_id"])
+        for batch in range(2):
+            uploads = [(f"{batch}-{index}.csv", f"{batch}-{index}".encode()) for index in range(3)]
+            self.assertEqual(self._upload(job_id, uploads=uploads).status_code, 200)
+        response = self._upload(job_id, uploads=[("extra.csv", b"extra")])
+        self.assertEqual(response.status_code, 413)
+        self.assertEqual(response.json()["detail"]["code"], "too_many_job_files")
+
+    def test_safe_filenames_traversal_and_duplicate_names(self) -> None:
+        job_id = str(self._create()["job_id"])
+        response = self._upload(
+            job_id,
+            uploads=[("../../report.csv", b"one"), ("report.csv", b"two")],
+        )
+        self.assertEqual(response.status_code, 200)
+        record = self.client.app.state.job_store.get(job_id)
+        names = sorted(path.name for path in record.uploads.values())
+        self.assertEqual(names, ["report.csv", "report__2.csv"])
+        self.assertFalse((self.root / "report.csv").exists())
+
+    def test_duplicate_binary_upload_is_rejected_without_removing_original(self) -> None:
+        job_id = str(self._create()["job_id"])
+        self.assertEqual(self._upload(job_id, uploads=[("first.csv", b"same")]).status_code, 200)
+        response = self._upload(job_id, uploads=[("renamed.csv", b"same")])
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()["detail"]["code"], "duplicate_report")
+        record = self.client.app.state.job_store.get(job_id)
+        self.assertEqual(len(record.uploads), 1)
+        self.assertTrue(next(iter(record.uploads.values())).exists())
+
+    def test_upload_copy_is_chunked_and_hashes_while_streaming(self) -> None:
+        class Upload:
+            def __init__(self) -> None:
+                self.chunks = [b"abc", b"def", b""]
+                self.read_sizes: list[int] = []
+
+            async def read(self, size: int) -> bytes:
+                self.read_sizes.append(size)
+                return self.chunks.pop(0)
+
+        upload = Upload()
+        destination = self.root / "streamed.csv"
+        digest = asyncio.run(_save_upload(upload, destination, 20))  # type: ignore[arg-type]
+        self.assertEqual(digest, hashlib.sha256(b"abcdef").hexdigest())
+        self.assertEqual(upload.read_sizes, [UPLOAD_CHUNK_SIZE] * 3)
+
+    def test_discover_returns_accounts_without_paths_and_does_not_process(self) -> None:
+        job_id = str(self._create()["job_id"])
+        self._upload(job_id, uploads=[("u1-a.csv", b"a"), ("u1-b.csv", b"b")])
+        self._upload(job_id, broker="exante", uploads=[("ex.csv", b"ex")])
+        response = self._discover(job_id)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], "awaiting_options")
+        self.assertEqual(sum(item["report_count"] for item in response.json()["accounts"]), 3)
+        self.assertNotIn(str(self.root), response.text)
+        self.assertEqual(self.factory.run_calls, [])
+
+    def test_invalid_report_period_is_structured(self) -> None:
+        job_id = str(self._create()["job_id"])
+        self._upload(job_id)
+        self.factory.discover_error = InvalidReportPeriodError(
+            (InvalidReportPeriod("ib", "U1", "partial.csv", date(2025, 7, 9)),)
+        )
+        response = self._discover(job_id)
+        self.assertEqual(response.status_code, 422)
+        detail = response.json()["detail"]
+        self.assertEqual(detail["code"], "invalid_report_period")
+        self.assertEqual(detail["reports"][0]["period_end"], "2025-07-09")
         self.assertNotIn(str(self.root), response.text)
 
-    def test_multiple_uploads_are_passed_to_run_reports(self) -> None:
-        response = self._post_job(uploads=[("first.csv", b"one"), ("second.csv", b"two")])
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(self.factory.calls[0][2]), 2)
-
-    def test_unsupported_broker_has_structured_error(self) -> None:
-        response = self._post_job(broker="unknown")
-
-        self.assertEqual(response.status_code, 422)
-        self.assertEqual(response.json()["detail"]["code"], "unsupported_broker")
-
-    def test_unsupported_extension_is_rejected(self) -> None:
-        response = self._post_job(uploads=[("report.xlsx", b"not-a-csv")])
-
-        self.assertEqual(response.status_code, 415)
-        self.assertEqual(response.json()["detail"]["code"], "unsupported_file_type")
-        self.assertEqual(list(self.settings.job_root.iterdir()), [])
-
-    def test_file_size_limit_is_enforced_while_copying(self) -> None:
-        response = self._post_job(uploads=[("report.csv", b"x" * 1025)])
-
-        self.assertEqual(response.status_code, 413)
-        self.assertEqual(response.json()["detail"]["code"], "file_too_large")
-        self.assertEqual(list(self.settings.job_root.iterdir()), [])
-
-    def test_file_count_limit_is_enforced(self) -> None:
-        response = self._post_job(uploads=[("one.csv", b"1"), ("two.csv", b"2"), ("three.csv", b"3")])
-
-        self.assertEqual(response.status_code, 413)
-        self.assertEqual(response.json()["detail"]["code"], "too_many_files")
-        self.assertEqual(self.factory.calls, [])
-
-    def test_path_traversal_filename_is_never_used_as_a_path(self) -> None:
-        response = self._post_job(uploads=[("../../escape.csv", b"safe")])
-
-        self.assertEqual(response.status_code, 200)
-        saved_path = self.factory.calls[0][2][0]
-        self.assertEqual(saved_path.parent.name, "input")
-        self.assertNotIn("escape", saved_path.name)
-        self.assertFalse((self.root / "escape.csv").exists())
-
-    def test_account_id_is_extracted_with_existing_ib_parser(self) -> None:
-        report = b"Account Information,Header,Field Name,Field Value\nAccount Information,Data,Account,U7654321\n"
-        response = self._post_job(account_id=None, uploads=[("report.csv", report)])
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["account_id"], "U7654321")
-        self.assertEqual(self.factory.calls[0][1].account_id, "U7654321")
-
-    def test_freedom_requires_account_id(self) -> None:
-        response = self._post_job(
-            broker="freedom",
-            account_id=None,
-            uploads=[("report.xlsx", b"placeholder")],
+    def test_process_passes_options_directly_to_front_pipeline(self) -> None:
+        job_id = self._ready_job()
+        response = self._process(
+            job_id,
+            joint_accounts=["U1"],
+            acc_not_included_for_merged=["EX1"],
+            form270_05=True,
+            allow_approximate_transfer_basis=True,
         )
-
-        self.assertEqual(response.status_code, 422)
-        self.assertEqual(response.json()["detail"]["code"], "account_id_required")
-
-    def test_joint_account_creates_a_fixed_half_share_audit_and_draft(self) -> None:
-        def create_joint_workbook(source: Path) -> Path:
-            output = source.with_name("ib_U1234567_joint_audit.xlsx")
-            output.write_bytes(b"joint-audit-workbook")
-            return output
-
-        class _JointFormBuilder:
-            def __init__(self, _template_path: Path) -> None:
-                pass
-
-            def build_processed_workbook_draft(self, _workbook_path: Path, **_kwargs: object) -> dict[str, int]:
-                return {"fnoYear": 2025}
-
-            def save(self, form: dict[str, int], output_path: Path) -> Path:
-                output_path.parent.mkdir(parents=True, exist_ok=True)
-                output_path.write_text('{"fnoYear": 2025}', encoding="utf-8")
-                return output_path
-
-        with (
-            patch("kztax270.webapi.main.create_joint_audit_workbook", side_effect=create_joint_workbook),
-            patch("kztax270.webapi.main.Form270JsonBuilder", _JointFormBuilder),
-        ):
-            response = self._post_job(joint_account=True)
-
         self.assertEqual(response.status_code, 200)
-        self.assertFalse(self.factory.calls[0][4])
-        created = response.json()
-        self.assertEqual(self.client.get(created["downloads"]["audit"]).content, b"joint-audit-workbook")
-        self.assertEqual(self.client.get(created["downloads"]["form270"]).json(), {"fnoYear": 2025})
+        call = self.factory.run_calls[-1]
+        self.assertEqual(call["tax_year"], 2025)
+        self.assertEqual(call["taxpayer"]["iin"], "123456789012")
+        self.assertEqual(call["joint_accounts"], ["U1"])
+        self.assertEqual(call["acc_not_included_for_merged"], ["EX1"])
+        self.assertTrue(call["form270_05"])
+        self.assertTrue(call["allow_approximate_transfer_basis"])
 
-    def test_audit_download_returns_generated_workbook(self) -> None:
-        created = self._post_job().json()
-        response = self.client.get(created["downloads"]["audit"])
+    def test_processing_runs_through_threadpool(self) -> None:
+        job_id = self._ready_job()
+        calls: list[str] = []
 
+        async def immediate(function, *args, **kwargs):
+            calls.append(function.__name__)
+            return function(*args, **kwargs)
+
+        with patch("kztax270.webapi.main.run_in_threadpool", side_effect=immediate):
+            response = self._process(job_id)
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.content, b"audit-workbook")
-        self.assertTrue(response.headers["content-type"].startswith("application/vnd.openxmlformats"))
+        self.assertEqual(calls, ["run"])
 
-    def test_form270_download_returns_generated_json(self) -> None:
-        created = self._post_job().json()
-        response = self.client.get(created["downloads"]["form270"])
+    def test_missing_basis_keeps_raw_and_accepts_more_reports_then_completes(self) -> None:
+        job_id = self._ready_job()
+        self.factory.behaviors = ["missing", "completed"]
+        first = self._process(job_id)
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(first.json()["status"], "needs_additional_reports")
+        self.assertEqual(first.json()["missing_transfer_basis"][0]["quantity"], "507")
+        record = self.client.app.state.job_store.get(job_id)
+        self.assertTrue(record.workspace.input_dir.exists())
 
+        self.assertEqual(self._upload(job_id, uploads=[("u2-source.csv", b"source")]).status_code, 200)
+        self.assertEqual(self._discover(job_id).status_code, 200)
+        stale = record.workspace.output_dir / "stale.json"
+        stale.write_text("stale", encoding="utf-8")
+        second = self._process(job_id)
+        self.assertEqual(second.json()["status"], "completed")
+        self.assertFalse(stale.exists())
+        self.assertFalse(record.workspace.input_dir.exists())
+
+    def test_approximate_retry_completes_without_more_uploads(self) -> None:
+        job_id = self._ready_job()
+        self.factory.behaviors = ["missing", "completed"]
+        self.assertEqual(self._process(job_id).json()["status"], "needs_additional_reports")
+        completed = self._process(job_id, allow_approximate_transfer_basis=True)
+        self.assertEqual(completed.json()["status"], "completed")
+        self.assertTrue(completed.json()["used_approximate_transfer_basis"])
+
+    def test_completed_artifacts_cover_all_outputs_and_excluded_audit(self) -> None:
+        job_id = str(self._create()["job_id"])
+        self._upload(job_id, uploads=[("u1.csv", b"ib")])
+        self._upload(job_id, broker="exante", uploads=[("ex.csv", b"ex")])
+        self._discover(job_id)
+        response = self._process(
+            job_id,
+            joint_accounts=["U1"],
+            acc_not_included_for_merged=["EX1"],
+        )
+        artifacts = response.json()["artifacts"]
+        kinds = [item["kind"] for item in artifacts]
+        self.assertEqual(kinds.count("account_audit"), 2)
+        self.assertIn("joint_audit", kinds)
+        self.assertIn("merged_audit", kinds)
+        self.assertIn("form270", kinds)
+        excluded = next(item for item in artifacts if item.get("account_id") == "EX1")
+        download = self.client.get(excluded["download_url"])
+        self.assertEqual(download.content, b"audit:exante:EX1")
+        self.assertNotIn(str(self.root), response.text)
+
+    def test_artifact_download_whitelist_and_all_zip(self) -> None:
+        job_id = self._ready_job()
+        completed = self._process(job_id).json()
+        artifact = completed["artifacts"][0]
+        self.assertEqual(self.client.get(artifact["download_url"]).status_code, 200)
+        arbitrary = self.client.get(f"/api/jobs/{job_id}/artifacts/../../input/secret")
+        self.assertIn(arbitrary.status_code, {404, 405})
+        response = self.client.get(f"/api/jobs/{job_id}/all")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), {"fnoYear": 2025})
+        archive = self.root / "download.zip"
+        archive.write_bytes(response.content)
+        with zipfile.ZipFile(archive) as handle:
+            names = set(handle.namelist())
+        self.assertEqual(names, {item["filename"] for item in completed["artifacts"]})
 
-    def test_unknown_job_download_returns_structured_404(self) -> None:
-        response = self.client.get("/api/jobs/00000000-0000-0000-0000-000000000000/audit")
+    def test_completed_job_is_frozen_and_raw_inputs_are_removed(self) -> None:
+        job_id = self._ready_job()
+        completed = self._process(job_id)
+        self.assertEqual(completed.status_code, 200)
+        record = self.client.app.state.job_store.get(job_id)
+        self.assertFalse(record.workspace.input_dir.exists())
+        upload = self._upload(job_id)
+        process = self._process(job_id)
+        self.assertEqual(upload.json()["detail"]["code"], "job_completed")
+        self.assertEqual(process.json()["detail"]["code"], "job_completed")
 
+    def test_delete_removes_pending_and_completed_jobs_idempotently(self) -> None:
+        pending = str(self._create()["job_id"])
+        completed = self._ready_job()
+        self._process(completed)
+        for job_id in (pending, completed):
+            root = self.settings.job_root / job_id
+            self.assertEqual(self.client.delete(f"/api/jobs/{job_id}").status_code, 200)
+            self.assertEqual(self.client.delete(f"/api/jobs/{job_id}").status_code, 200)
+            self.assertFalse(root.exists())
+
+    def test_unknown_job_is_structured(self) -> None:
+        response = self.client.post("/api/jobs/00000000-0000-0000-0000-000000000000/discover")
         self.assertEqual(response.status_code, 404)
         self.assertEqual(response.json()["detail"]["code"], "job_not_found")
 
-    def test_delete_removes_job_and_is_idempotent(self) -> None:
-        created = self._post_job().json()
-        job_root = self.settings.job_root / created["job_id"]
-
-        first = self.client.delete(f"/api/jobs/{created['job_id']}")
-        second = self.client.delete(f"/api/jobs/{created['job_id']}")
-
-        self.assertEqual(first.status_code, 200)
-        self.assertEqual(second.status_code, 200)
-        self.assertFalse(job_root.exists())
-        self.assertEqual(self.client.get(created["downloads"]["audit"]).status_code, 404)
-
-    def test_expired_job_is_cleaned_opportunistically(self) -> None:
+    def test_pending_and_completed_ttls_use_different_expirations(self) -> None:
         now = [1000.0]
-        store = JobStore(self.root / "expiring-jobs", 10, clock=lambda: now[0])
+        store = JobStore(self.root / "expiring", 10, 5, clock=lambda: now[0])
         settings = WebApiSettings(
             job_root=store.root,
-            max_upload_bytes=1024,
-            max_files=2,
-            job_ttl_seconds=10,
+            max_upload_bytes=32,
+            max_files=3,
+            max_job_files=6,
+            pending_job_ttl_seconds=10,
+            job_ttl_seconds=5,
             cors_origins=("http://localhost:3000",),
             project_paths=self.settings.project_paths,
         )
-        factory = _FakePipelineFactory()
-        with TestClient(create_app(settings, pipeline_factory=factory, job_store=store)) as client:
-            response = client.post(
-                "/api/jobs",
-                data={"broker": "ib", "tax_year": "2025", "account_id": "U1"},
-                files=[("files", ("report.csv", b"data", "text/csv"))],
-            )
-            job_id = response.json()["job_id"]
-            job_root = store.root / job_id
+        factory = _FakeFrontPipelineFactory()
+        with TestClient(create_app(settings, front_pipeline_factory=factory, job_store=store)) as client:
+            pending = client.post("/api/jobs").json()["job_id"]
+            pending_root = store.root / pending
             now[0] += 11
+            expired = client.post(f"/api/jobs/{pending}/discover")
+            self.assertEqual(expired.status_code, 410)
+            self.assertEqual(expired.json()["detail"]["code"], "job_expired")
+            self.assertFalse(pending_root.exists())
 
-            expired = client.get(f"/api/jobs/{job_id}/audit")
-
-        self.assertEqual(expired.status_code, 404)
-        self.assertFalse(job_root.exists())
-
-    def test_uploaded_input_files_are_removed_after_success(self) -> None:
-        response = self._post_job()
-
-        self.assertEqual(response.status_code, 200)
-        job_root = self.settings.job_root / response.json()["job_id"]
-        self.assertFalse((job_root / "input").exists())
-        self.assertTrue((job_root / "processed").is_dir())
-        self.assertTrue((job_root / "output").is_dir())
+            now[0] = 2000.0
+            completed = client.post("/api/jobs").json()["job_id"]
+            client.post(
+                f"/api/jobs/{completed}/reports",
+                data={"broker": "ib"},
+                files=[("files", ("u1.csv", b"data", "text/csv"))],
+            )
+            client.post(f"/api/jobs/{completed}/discover")
+            result = client.post(
+                f"/api/jobs/{completed}/process",
+                json={
+                    "tax_year": 2025,
+                    "taxpayer": {"fio1": "A", "fio2": "B", "fio3": "", "iin": "1"},
+                },
+            ).json()
+            completed_root = store.root / completed
+            now[0] += 6
+            expired = client.get(result["artifacts"][0]["download_url"])
+            self.assertEqual(expired.status_code, 410)
+            self.assertFalse(completed_root.exists())
 
 
 if __name__ == "__main__":

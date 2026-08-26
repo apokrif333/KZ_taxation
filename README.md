@@ -186,23 +186,25 @@ http://localhost:8000/api/health
 http://localhost:8000/docs
 ```
 
-The API stores each upload in an isolated directory under the system temporary
-directory and removes successful-job inputs immediately. Completed downloads
-expire after 15 minutes by default. Jobs are process-local and become
+The API uses a multi-stage `FrontPipeline` job: create an empty job, add one or
+more broker report batches, discover accounts, then process the complete client.
+Uploads stay in an isolated system-temporary workspace while additional reports
+may still be needed. Successful jobs remove raw reports immediately; completed
+downloads expire after 15 minutes by default. Jobs are process-local and become
 unavailable after a server restart.
 
 Configuration environment variables:
 
 - `QCM_MAX_UPLOAD_MB` — maximum size of each uploaded file (default `50`).
-- `QCM_MAX_FILES` — maximum files in one job (default `10`).
+- `QCM_MAX_FILES` — maximum files in one upload batch (default `10`).
+- `QCM_MAX_JOB_FILES` — maximum accumulated files in one job (default `50`).
+- `QCM_PENDING_JOB_TTL_SECONDS` — collecting/pending job lifetime (default `3600`).
 - `QCM_JOB_TTL_SECONDS` — completed output lifetime (default `900`).
 - `QCM_CORS_ORIGINS` — comma-separated allowed origins (default `http://localhost:3000`).
 - `QCM_JOB_ROOT` — temporary job root (default `<system temp>/qcm-tax-270`).
 
-Freedom Broker XLSX uploads require `account_id`; the other exposed native
-parsers can extract it from their structured report metadata. With
-`joint_account=true`, the API follows the existing `joint_excel` workflow: it
-creates one 50% audit workbook and one Form 270 draft from that workbook. No
-other ownership shares are supported. Form 270 JSON is generated as the
-existing builder-supported draft, so taxpayer identity fields remain at
-template defaults when taxpayer data is not provided.
+Freedom Broker XLSX batches require `account_id` and are stored separately as
+`freedom_<account_id>`. IB, Exante, Tabys, Tsifra and Freedom Bank use structured
+automatic account discovery and may contain several accounts per broker batch.
+Joint and merge-excluded account selections are passed directly to the existing
+domain-level `FrontPipeline`.

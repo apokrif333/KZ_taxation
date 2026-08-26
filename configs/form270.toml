@@ -67,7 +67,6 @@ form270_template = "data/templates/270 new template.json"
  joint_accounts = ["FXC3362.001"]
 
 
-#
 # data/raw/clients/client_test_001/
 #     ib/
 #         report1.csv
@@ -84,7 +83,6 @@ form270_template = "data/templates/270 new template.json"
 #         report.xlsx
 #     freedom_bank/  # "freedom bank" is also accepted for existing folders
 #         report.pdf  # IIN is extracted from the PDF if it omits brokerage account
-
 
 # Параметры банка/брокера для CashBalances можно задать один раз:
 # [form270.banks.ib]
