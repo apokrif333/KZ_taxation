@@ -1,0 +1,49 @@
+# Version control and local IDE state
+.git/
+.github/
+.idea/
+.vscode/
+
+# Python environments, caches, and build artifacts
+.venv/
+venv/
+env/
+**/__pycache__/
+**/*.py[cod]
+**/*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+build/
+dist/
+
+# JavaScript frontend and dependencies are deployed separately
+frontend/
+**/node_modules/
+**/.next/
+
+# Local settings and logs
+.env
+.env.*
+**/.env
+**/.env.*
+*.log
+
+# Sensitive broker inputs and generated client artifacts
+data/raw/
+data/processed/
+data/output/
+data/postProcessed/
+postProcessed/
+
+# Local temporary job/work directories
+qcm-tax-270/
+**/qcm-tax-270/
+tmp/
+.tmp/
+
+# Development-only material is not needed by the backend image
+tests/
+docs/
+configs/
+legacy/

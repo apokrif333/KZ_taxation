@@ -209,6 +209,61 @@ automatic account discovery and may contain several accounts per broker batch.
 Joint and merge-excluded account selections are passed directly to the existing
 domain-level `FrontPipeline`.
 
+## Railway backend deployment
+
+Railway runs only the FastAPI backend. The root [`Dockerfile`](Dockerfile) uses
+Python 3.13 slim, installs `.[web]` without development or legacy extras, and
+starts the service with exactly one Uvicorn worker:
+
+```sh
+python -m uvicorn kztax270.webapi.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1
+```
+
+The image working directory is `/app`, so the existing relative `ProjectPaths`
+resolve to the shipped runtime files under `data/` and `reference/`. These
+directories are writable by the non-root application user because NBK and
+KASE/AIX freshness checks may update their workbooks during processing. The
+image includes the versioned reference workbooks, cached tables, Form 270
+templates, and CSV reference data. It explicitly excludes `data/raw/`,
+`data/processed/`, `data/output/`, the frontend, virtual environments, caches,
+local environment files, and temporary jobs.
+
+Configure these Railway service variables:
+
+```text
+QCM_JOB_ROOT=/tmp/qcm-tax-270
+QCM_MAX_UPLOAD_MB=50
+QCM_MAX_FILES=10
+QCM_MAX_JOB_FILES=50
+QCM_PENDING_JOB_TTL_SECONDS=3600
+QCM_JOB_TTL_SECONDS=900
+QCM_CORS_ORIGINS=<frontend-origin>
+```
+
+Railway supplies `PORT`; do not add it manually. For the initial backend-only
+test, Swagger and direct requests use the Railway domain itself, so the future
+Vercel origin is not required yet. Set `QCM_CORS_ORIGINS` to the exact Vercel
+production origin when the frontend is deployed.
+
+Manual Railway setup:
+
+1. Create a Railway project.
+2. Add a service from this GitHub repository and select the `web-app` branch.
+3. Let Railway build from the root `Dockerfile`.
+4. Keep the service at exactly **one replica** and disable horizontal scaling.
+5. Add the environment variables listed above.
+6. Set the healthcheck path to `/api/health`.
+7. Generate a public Railway domain.
+8. Verify `/api/health`, `/api/config`, and `/docs` on that domain.
+9. Perform a complete real-report Swagger flow before connecting Vercel.
+
+The job store and its files are intentionally process-local for this MVP.
+Pending reports live on Railway's ephemeral filesystem for up to one hour;
+successful processing deletes raw uploads immediately, and completed artifacts
+expire after 15 minutes. A restart or redeploy invalidates jobs. Do not create a
+Railway Volume, and **do not scale this service above one replica** while
+`JobStore` remains process-local.
+
 ### Local Next.js frontend
 
 The browser talks directly to FastAPI. Copy the public local setting and start
