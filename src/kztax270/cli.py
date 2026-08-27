@@ -21,7 +21,7 @@ from kztax270.excel.form270_05_trades import prepare_form270_05_trades_workbook
 from kztax270.excel.joint_workbook import create_joint_audit_workbook
 from kztax270.excel.merge_workbooks import merge_audit_workbooks
 from kztax270.form270.json_builder import BrokerBankInfo, Form270JsonBuilder, Form270Owner
-from kztax270.front_pipeline import FrontPipeline, FrontPipelineResult, InvalidReportPeriodError
+from kztax270.front_pipeline import FrontPipeline, FrontPipelineResult
 from kztax270.reference.fx import AnnualFxRateProvider
 from kztax270.reference.nbk import ensure_nbk_rates_current, upsert_nbk_average_annual_rates_xlsx
 from kztax270.reference.repositories import ReferenceDataStore
@@ -238,20 +238,9 @@ def _run_form270_config(config: Form270RunConfig, *, only: list[str] | None = No
                 "form270_05": form270_05,
                 "bank_infos": configured_bank_infos,
             }
-            try:
-                result = front_pipeline.run(
-                    **run_kwargs,
-                )
-            except InvalidReportPeriodError as exc:
-                print(f"WARNING: {exc}")
-                for report in exc.reports:
-                    period_end = report.period_end.isoformat() if report.period_end else "не удалось определить"
-                    print(
-                        f"{report.broker}:{report.account_id} | {report.report_name} | "
-                        f"дата окончания: {period_end}"
-                    )
-                print("Расчёт остановлен. Сформируйте полные годовые отчёты по 31 декабря включительно.")
-                return 1
+            result = front_pipeline.run(
+                **run_kwargs,
+            )
             _print_front_pipeline_result(result, show_inputs=True, show_missing=True)
             if (
                 result.missing_transfer_basis

@@ -26,7 +26,6 @@ from kztax270.front_pipeline import (
     FRONT_BROKER_FOLDERS,
     FrontPipeline,
     FrontPipelineResult,
-    InvalidReportPeriodError,
 )
 
 from .schemas import (
@@ -277,8 +276,6 @@ def create_app(
                 pipeline.discover_accounts,
                 record.workspace.internal_client_id,
             )
-        except InvalidReportPeriodError as exc:
-            raise _invalid_period_api_error(exc) from exc
         except ValueError as exc:
             LOGGER.info("Discovery validation failed job_id=%s error_class=%s", job_id, type(exc).__name__)
             raise ApiError(422, "validation_error", "Загруженные отчёты не прошли проверку.") from exc
@@ -322,9 +319,6 @@ def create_app(
                 form270_05=request.form270_05,
                 allow_approximate_transfer_basis=request.allow_approximate_transfer_basis,
             )
-        except InvalidReportPeriodError as exc:
-            store.processing_failed(job_id, previous_status)
-            raise _invalid_period_api_error(exc) from exc
         except ValueError as exc:
             store.processing_failed(job_id, previous_status)
             LOGGER.info("Processing validation failed job_id=%s error_class=%s", job_id, type(exc).__name__)
@@ -432,19 +426,6 @@ def _available_destination(directory: Path, filename: str) -> Path:
 def _validate_account_id(account_id: str) -> None:
     if not ACCOUNT_ID_RE.fullmatch(account_id):
         raise ApiError(422, "invalid_account_id", "Некорректный формат account_id.")
-
-
-def _invalid_period_api_error(exc: InvalidReportPeriodError) -> ApiError:
-    reports = [
-        {
-            "broker": report.broker,
-            "account_id": report.account_id,
-            "report_name": report.report_name,
-            "period_end": report.period_end.isoformat() if report.period_end else None,
-        }
-        for report in exc.reports
-    ]
-    return ApiError(422, "invalid_report_period", str(exc), extra={"reports": reports})
 
 
 def _missing_basis_response(result: FrontPipelineResult) -> list[MissingTransferBasisResponse]:

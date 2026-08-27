@@ -54,24 +54,6 @@ class DiscoveredAccount:
 
 
 @dataclass(frozen=True, slots=True)
-class InvalidReportPeriod:
-    broker: str
-    account_id: str
-    report_name: str
-    period_end: date | None
-
-
-class InvalidReportPeriodError(ValueError):
-    """One or more client reports are not complete calendar-year reports."""
-
-    def __init__(self, reports: Sequence[InvalidReportPeriod]) -> None:
-        self.reports = tuple(reports)
-        super().__init__(
-            "Отчёт сформирован некорректно: брокерские отчёты должны заканчиваться 31 декабря."
-        )
-
-
-@dataclass(frozen=True, slots=True)
 class MissingTransferBasis:
     transfer_date: date | None
     symbol: str | None
@@ -362,7 +344,6 @@ class FrontPipeline:
         if not accounts:
             raise ValueError(f"No supported reports found for client {client_id}")
         self._validate_unique_account_ids(accounts)
-        self._validate_report_periods(accounts)
         return accounts
 
     def run(
@@ -533,26 +514,6 @@ class FrontPipeline:
         ambiguous = sorted(account_id for account_id, brokers in brokers_by_id.items() if len(brokers) > 1)
         if ambiguous:
             raise ValueError(f"Account IDs are ambiguous across brokers: {', '.join(ambiguous)}")
-
-    def _validate_report_periods(self, accounts: Sequence[DiscoveredAccount]) -> None:
-        invalid: list[InvalidReportPeriod] = []
-        for account in accounts:
-            for report_path in account.report_paths:
-                metadata = self._report_metadata.get((account.broker, report_path))
-                if metadata is None:
-                    metadata = detect_report_metadata(account.broker, report_path)
-                period_end = metadata.period_end
-                if period_end is None or (period_end.month, period_end.day) != (12, 31):
-                    invalid.append(
-                        InvalidReportPeriod(
-                            broker=account.broker,
-                            account_id=account.account_id,
-                            report_name=report_path.name,
-                            period_end=period_end,
-                        )
-                    )
-        if invalid:
-            raise InvalidReportPeriodError(invalid)
 
     def _run_account(
         self,

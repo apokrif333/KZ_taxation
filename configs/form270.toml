@@ -15,10 +15,10 @@ form270_template = "data/templates/270 new template.json"
 # Задания выполняются сверху вниз. Поэтому можно сначала создать Excel,
 # а следующим заданием сразу сформировать JSON из него.
 
-#[[form270.jobs]]
-#id = "excel"
-#broker = "ib"
-#account_id = "U16158455"
+[[form270.jobs]]
+id = "excel"
+broker = "exante"
+account_id = "VMS2132.001"
 
 # [[form270.jobs]]
 # id = "joint_excel"
@@ -49,22 +49,22 @@ form270_template = "data/templates/270 new template.json"
 # ogd_residence = ""
 # ogd_location = ""
 
- [[form270.jobs]]
- id = "front-pipeline"
-
- client_id = "AsanU"
- tax_year = 2025
-
- fio1 = "Ivanov"
- fio2 = "Ivan"
- fio3 = "Ivanovich"
- iin = "1"
-
- form270_05 = false
+# [[form270.jobs]]
+# id = "front-pipeline"
+#
+# client_id = "AsanU"
+# tax_year = 2025
+#
+# fio1 = "Ivanov"
+# fio2 = "Ivan"
+# fio3 = "Ivanovich"
+# iin = "1"
+#
+# form270_05 = false
 
  # Эти счета обрабатываются как источники Transfer/FIFO, но не входят в merged/Form 270.
- acc_not_included_for_merged = ['EXX3093.001']
- joint_accounts = ["FXC3362.001"]
+# acc_not_included_for_merged = ['EXX3093.001']
+# joint_accounts = ["FXC3362.001"]
 
 
 # data/raw/clients/client_test_001/

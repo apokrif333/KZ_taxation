@@ -2,13 +2,15 @@
 
 import { Menu } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 
 interface SiteHeaderProps {
   onPrivacy: () => void
   onStart: () => void
+  privacyActive: boolean
 }
 
-export function SiteHeader({ onPrivacy, onStart }: SiteHeaderProps) {
+export function SiteHeader({ onPrivacy, onStart, privacyActive }: SiteHeaderProps) {
   return (
     <header className="border-b bg-card">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
@@ -24,9 +26,9 @@ export function SiteHeader({ onPrivacy, onStart }: SiteHeaderProps) {
           </span>
         </button>
         <nav className="hidden items-center gap-6 text-sm md:flex" aria-label="Основная навигация">
-          <button className="border-b-2 border-primary py-5 font-semibold text-primary" onClick={onStart}>Расчёт</button>
+          <button className={cn('border-b-2 py-5', privacyActive ? 'border-transparent text-muted-foreground hover:text-foreground' : 'border-primary font-semibold text-primary')} onClick={onStart} aria-current={privacyActive ? undefined : 'page'}>Расчёт</button>
           <a className="text-muted-foreground hover:text-foreground" href="#how-it-works">Как это работает</a>
-          <button className="text-muted-foreground hover:text-foreground" onClick={onPrivacy}>Конфиденциальность</button>
+          <button className={cn('border-b-2 py-5', privacyActive ? 'border-primary font-semibold text-primary' : 'border-transparent text-muted-foreground hover:text-foreground')} onClick={onPrivacy} aria-current={privacyActive ? 'page' : undefined}>Конфиденциальность</button>
         </nav>
         <Button variant="ghost" size="icon" className="md:hidden" aria-label="Открыть меню"><Menu /></Button>
       </div>

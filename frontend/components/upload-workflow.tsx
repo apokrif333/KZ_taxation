@@ -1,90 +1,146 @@
 'use client'
 
-import { useRef, useState } from 'react'
-import { CheckCircle2, FileSpreadsheet, Info, LockKeyhole, Trash2, UploadCloud } from 'lucide-react'
+import { useRef, useState, type DragEvent } from 'react'
+import { CheckCircle2, FileSpreadsheet, Info, LockKeyhole, Plus, Trash2, UploadCloud } from 'lucide-react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Checkbox } from '@/components/ui/checkbox'
-import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel } from '@/components/ui/field'
-import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
 import { cn } from '@/lib/utils'
-import type { Broker, UploadedReport } from '@/lib/types'
-
-const brokers: Broker[] = ['Interactive Brokers', 'Freedom Broker', 'Exante', 'Tsifra Broker', 'Tabys']
-const years = ['2025', '2024', '2023']
+import type { ApiConfig, BrokerConfig, InvalidReportPeriod, ManualAccountGroup, SelectedReport } from '@/lib/types'
 
 interface UploadWorkflowProps {
-  onProcess: (data: { broker: Broker; files: UploadedReport[]; taxYear: string; jointAccount: boolean }) => void
+  config: ApiConfig
+  taxYear: string
+  autoFiles: Record<string, SelectedReport[]>
+  manualGroups: ManualAccountGroup[]
+  hasJob: boolean
+  busy: boolean
+  error: string | null
+  invalidReports: InvalidReportPeriod[]
+  onAddAutoFiles: (broker: BrokerConfig, files: File[]) => void
+  onRemoveAutoFile: (brokerCode: string, reportId: string) => void
+  onAddManualGroup: (brokerCode: string) => void
+  onRemoveManualGroup: (groupId: string) => void
+  onManualAccountChange: (groupId: string, value: string) => void
+  onAddManualFiles: (groupId: string, broker: BrokerConfig, files: File[]) => void
+  onRemoveManualFile: (groupId: string, reportId: string) => void
+  onContinue: () => void
+  onAbandon: () => void
 }
 
-export function UploadWorkflow({ onProcess }: UploadWorkflowProps) {
-  const inputRef = useRef<HTMLInputElement>(null)
-  const [broker, setBroker] = useState<Broker>('Interactive Brokers')
-  const [files, setFiles] = useState<UploadedReport[]>([])
-  const [taxYear, setTaxYear] = useState('2025')
-  const [jointAccount, setJointAccount] = useState(false)
-  const [dragging, setDragging] = useState(false)
-
-  const addFiles = (list: FileList | null) => {
-    if (!list) return
-    const incoming = Array.from(list).map((file) => {
-      const valid = /\.(csv|xlsx|xls|pdf|html?)$/i.test(file.name)
-      return { id: crypto.randomUUID(), name: file.name, size: file.size, status: valid ? 'valid' as const : 'invalid' as const, error: valid ? undefined : 'Неподдерживаемый формат файла' }
-    })
-    setFiles((current) => [...current, ...incoming])
-  }
-
-  const removeFile = (id: string) => setFiles((current) => current.filter((file) => file.id !== id))
-  const canSubmit = files.some((file) => file.status === 'valid')
+export function UploadWorkflow({
+  config, taxYear, autoFiles, manualGroups, hasJob, busy, error, invalidReports,
+  onAddAutoFiles, onRemoveAutoFile, onAddManualGroup, onRemoveManualGroup,
+  onManualAccountChange, onAddManualFiles, onRemoveManualFile, onContinue, onAbandon,
+}: UploadWorkflowProps) {
+  const autoBrokers = config.brokers.filter((broker) => broker.account_id_mode === 'auto')
+  const manualBrokers = config.brokers.filter((broker) => broker.account_id_mode === 'manual')
+  const allReports = [...Object.values(autoFiles).flat(), ...manualGroups.flatMap((group) => group.files)]
+  const hasAcceptedOrValidReport = allReports.some((report) => report.uploaded || report.status === 'valid')
+  const hasInvalidReport = allReports.some((report) => report.status === 'invalid')
+  const missingManualAccount = manualGroups.some(
+    (group) => group.files.some((report) => report.uploaded || report.status === 'valid') && !group.accountId.trim(),
+  )
+  const canSubmit = hasAcceptedOrValidReport && !hasInvalidReport && !missingManualAccount && !busy
 
   return (
     <section aria-labelledby="calculation-title" className="grid gap-6 lg:grid-cols-[1fr_19rem]">
       <Card className="border-border/80 shadow-sm">
         <CardHeader className="border-b">
-          <div className="flex items-center gap-3"><span className="flex size-7 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">1</span><div><CardTitle id="calculation-title">Выберите брокера</CardTitle><CardDescription>Укажите источник загружаемого отчёта.</CardDescription></div></div>
+          <div className="flex items-center gap-3">
+            <span className="flex size-7 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">1</span>
+            <div><CardTitle id="calculation-title">Брокерские отчёты</CardTitle><CardDescription>Добавьте отчёты только тех брокеров, которые участвуют в расчёте.</CardDescription></div>
+          </div>
         </CardHeader>
-        <CardContent className="flex flex-col gap-7">
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5" role="radiogroup" aria-label="Брокер">
-            {brokers.map((item) => (
-              <button key={item} role="radio" aria-checked={broker === item} onClick={() => setBroker(item)} className={cn('min-h-16 rounded-md border px-3 py-2 text-left text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring', broker === item ? 'border-primary bg-accent/60 text-primary shadow-sm ring-1 ring-primary/15' : 'bg-background text-muted-foreground hover:border-primary/40 hover:bg-muted')}>
-                {item}
-              </button>
-            ))}
-          </div>
+        <CardContent className="flex flex-col gap-5">
+          {hasJob && <Alert className="border-primary/25 bg-accent/35"><Info /><AlertDescription>Ранее принятые файлы уже находятся в этом расчёте. Добавьте только новые отчёты — повторно они не отправятся.</AlertDescription></Alert>}
 
-          <div className="flex items-center gap-3"><span className="flex size-7 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">2</span><div><h2 className="font-semibold">Загрузите брокерский отчёт</h2><p className="text-sm text-muted-foreground">Можно добавить несколько файлов.</p></div></div>
-          <div onDragOver={(event) => { event.preventDefault(); setDragging(true) }} onDragLeave={() => setDragging(false)} onDrop={(event) => { event.preventDefault(); setDragging(false); addFiles(event.dataTransfer.files) }} className={cn('flex min-h-52 flex-col items-center justify-center gap-4 rounded-lg border border-dashed p-6 text-center transition-colors', dragging ? 'border-primary bg-accent/50 ring-2 ring-primary/10' : 'border-input bg-muted/40 hover:border-primary/50 hover:bg-accent/20')}>
-            <span className="flex size-12 items-center justify-center rounded-full bg-background text-primary shadow-sm"><UploadCloud aria-hidden="true" /></span>
-            <div><p className="font-semibold">Перетащите файлы сюда</p><p className="mt-1 text-sm text-muted-foreground">или выберите их на компьютере</p></div>
-            <input ref={inputRef} className="sr-only" type="file" multiple accept=".csv,.xlsx,.xls,.pdf,.html,.htm" onChange={(event) => addFiles(event.target.files)} aria-label="Выбрать брокерские отчёты" />
-            <Button variant="outline" onClick={() => inputRef.current?.click()}>Выбрать файлы</Button>
-            <p className="text-xs text-muted-foreground">CSV, XLSX, XLS, PDF или HTML</p>
-          </div>
+          {autoBrokers.map((broker) => <BrokerReportCard key={broker.code} broker={broker} reports={autoFiles[broker.code] || []} onFiles={(files) => onAddAutoFiles(broker, files)} onRemove={(reportId) => onRemoveAutoFile(broker.code, reportId)} />)}
 
-          {files.length > 0 && <div className="flex flex-col gap-2" aria-live="polite">{files.map((file) => <div key={file.id} className="flex items-center gap-3 rounded-md border bg-background p-3"><FileSpreadsheet className="text-muted-foreground" aria-hidden="true" /><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{file.name}</p><p className="text-xs text-muted-foreground">{formatBytes(file.size)}</p></div><span className={cn('flex items-center gap-1 text-xs font-medium', file.status === 'valid' ? 'text-primary' : 'text-destructive')}>{file.status === 'valid' ? <><CheckCircle2 aria-hidden="true" />Проверен</> : file.error}</span><Button variant="ghost" size="icon-sm" onClick={() => removeFile(file.id)} aria-label={`Удалить ${file.name}`}><Trash2 /></Button></div>)}</div>}
+          {manualBrokers.map((broker) => {
+            const groups = manualGroups.filter((group) => group.broker === broker.code)
+            return <div key={broker.code} className="rounded-lg border bg-muted/20 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-semibold">{broker.display_name}</h2><p className="text-sm text-muted-foreground">Для каждого счёта укажите номер и добавьте его отчёты отдельно.</p></div><Button variant="outline" onClick={() => onAddManualGroup(broker.code)}><Plus data-icon="inline-start" />Добавить счёт</Button></div>
+              <div className="mt-4 flex flex-col gap-4">
+                {groups.length === 0 && <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">Счета не добавлены.</p>}
+                {groups.map((group, index) => {
+                  const locked = group.files.some((report) => report.uploaded)
+                  return <div key={group.id} className="rounded-md border bg-card p-4">
+                    <div className="flex flex-wrap items-end gap-3">
+                      <label className="min-w-52 flex-1 text-sm font-medium">Номер счёта {groups.length > 1 ? index + 1 : ''}<input className="mt-2 h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60" value={group.accountId} disabled={locked} onChange={(event) => onManualAccountChange(group.id, event.target.value)} placeholder="Например, 759023" /></label>
+                      <FilePicker className="min-w-64 flex-1" broker={broker} onFiles={(files) => onAddManualFiles(group.id, broker, files)} />
+                      <Button variant="ghost" size="icon" disabled={locked} onClick={() => onRemoveManualGroup(group.id)} aria-label="Удалить счёт" title={locked ? 'Принятый backend счёт можно удалить только вместе со всем расчётом' : 'Удалить счёт'}><Trash2 /></Button>
+                    </div>
+                    {!group.accountId.trim() && group.files.length > 0 && <p className="mt-2 text-xs text-destructive">Укажите номер счёта Freedom.</p>}
+                    <ReportList reports={group.files} onRemove={(reportId) => onRemoveManualFile(group.id, reportId)} />
+                  </div>
+                })}
+              </div>
+            </div>
+          })}
 
-          <Alert className="border-secondary-foreground/20 bg-secondary/45 text-secondary-foreground"><LockKeyhole /><AlertDescription><span className="font-semibold">Файлы используются только для выполнения расчёта</span> и не сохраняются после завершения обработки. При необходимости вы можете предварительно обезличить брокерский отчёт.</AlertDescription></Alert>
+          <Alert className="border-secondary-foreground/20 bg-secondary/45 text-secondary-foreground"><LockKeyhole /><AlertDescription><span className="font-semibold">Исходные отчёты удаляются сразу после успешного расчёта.</span> Незавершённое задание хранится временно до {Math.round(config.pending_job_ttl_seconds / 60)} минут.</AlertDescription></Alert>
         </CardContent>
       </Card>
 
-      <aside>
-        <Card className="sticky top-6 border-border bg-card shadow-md shadow-primary/5">
-          <CardHeader><div className="flex items-center gap-3"><span className="flex size-7 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">3</span><CardTitle>Параметры</CardTitle></div></CardHeader>
-          <CardContent>
-            <FieldGroup>
-              <Field><FieldLabel htmlFor="tax-year">Налоговый год</FieldLabel><Select value={taxYear} onValueChange={(value) => setTaxYear(value ?? '2025')} items={years.map((year) => ({ label: year, value: year }))}><SelectTrigger id="tax-year" className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup>{years.map((year) => <SelectItem key={year} value={year}>{year}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
-              <Field orientation="horizontal"><Checkbox id="joint-account" checked={jointAccount} onCheckedChange={(value) => setJointAccount(Boolean(value))} /><FieldContent><FieldLabel htmlFor="joint-account">Совместный брокерский счёт</FieldLabel><FieldDescription>Суммы, относящиеся к налогоплательщику, могут потребовать пропорционального распределения.</FieldDescription></FieldContent></Field>
-            </FieldGroup>
-          </CardContent>
-          <CardContent className="border-t pt-5"><Button className="w-full shadow-sm shadow-primary/20" size="lg" disabled={!canSubmit} onClick={() => onProcess({ broker, files, taxYear, jointAccount })}>Обработать отчёт</Button>{!canSubmit && <p className="mt-3 flex items-start gap-2 text-xs text-muted-foreground"><Info aria-hidden="true" />Добавьте хотя бы один поддерживаемый файл.</p>}</CardContent>
-        </Card>
-      </aside>
+      <aside><Card className="sticky top-6 border-border bg-card shadow-md shadow-primary/5">
+        <CardHeader><div className="flex items-center gap-3"><span className="flex size-7 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">2</span><CardTitle>Параметры</CardTitle></div></CardHeader>
+        <CardContent><FieldGroup><Field><FieldLabel htmlFor="tax-year">Налоговый год</FieldLabel><div id="tax-year" className="flex h-9 w-full items-center rounded-md border border-input bg-muted px-3 text-sm font-medium" aria-readonly="true">{taxYear}</div><p className="text-xs text-muted-foreground">Сейчас расчёт поддерживает только налоговый период 2025 года.</p></Field></FieldGroup><div className="mt-5 rounded-md bg-muted p-3 text-xs text-muted-foreground">До {config.max_files} файлов в одной загрузке, {config.max_job_files} файлов на расчёт, до {config.max_upload_mb} МБ на файл.</div></CardContent>
+        <CardContent className="border-t pt-5"><Button className="w-full shadow-sm shadow-primary/20" size="lg" disabled={!canSubmit} onClick={onContinue}>{busy ? 'Загружаем…' : 'Продолжить'}</Button>{!canSubmit && !busy && <p className="mt-3 flex items-start gap-2 text-xs text-muted-foreground"><Info aria-hidden="true" />Добавьте поддерживаемые файлы и заполните номера ручных счетов.</p>}{hasJob && <Button className="mt-2 w-full" variant="ghost" onClick={onAbandon} disabled={busy}>Отменить этот расчёт</Button>}</CardContent>
+      </Card></aside>
+
+      {(error || invalidReports.length > 0) && <Alert variant="destructive" className="lg:col-span-2"><Info /><AlertDescription>{error && <p className="font-medium">{error}</p>}{invalidReports.length > 0 && <ul className="mt-2 list-disc space-y-1 pl-5">{invalidReports.map((report, index) => <li key={`${report.broker}:${report.report_name}:${index}`}>{report.broker}{report.account_id ? ` · ${report.account_id}` : ''} · {report.report_name} · окончание периода: {report.period_end || 'не определено'}</li>)}</ul>}</AlertDescription></Alert>}
     </section>
   )
+}
+
+function BrokerReportCard({ broker, reports, onFiles, onRemove }: { broker: BrokerConfig; reports: SelectedReport[]; onFiles: (files: File[]) => void; onRemove: (reportId: string) => void }) {
+  return <div className="rounded-lg border bg-card p-4"><div><h2 className="font-semibold">{broker.display_name}</h2><p className="text-sm text-muted-foreground">{reports.length ? `${reports.length} ${pluralFiles(reports.length)}` : 'Файлы не добавлены'}</p></div><FilePicker className="mt-3 w-full" broker={broker} onFiles={onFiles} /><ReportList reports={reports} onRemove={onRemove} /></div>
+}
+
+function FilePicker({ broker, onFiles, className }: { broker: BrokerConfig; onFiles: (files: File[]) => void; className?: string }) {
+  const inputRef = useRef<HTMLInputElement>(null)
+  const [dragActive, setDragActive] = useState(false)
+  const accept = broker.upload_extensions.map((extension) => extension.startsWith('.') ? extension : `.${extension}`).join(',')
+
+  const handleDrop = (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    setDragActive(false)
+    const files = Array.from(event.dataTransfer.files)
+    if (files.length > 0) onFiles(files)
+  }
+
+  return <div
+    className={cn(
+      'flex flex-wrap items-center justify-center gap-3 rounded-md border border-dashed p-3 transition-colors',
+      dragActive ? 'border-primary bg-primary/10' : 'border-input bg-muted/20',
+      className,
+    )}
+    onDragEnter={(event) => { event.preventDefault(); setDragActive(true) }}
+    onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'copy' }}
+    onDragLeave={(event) => { event.preventDefault(); setDragActive(false) }}
+    onDrop={handleDrop}
+  >
+    <input ref={inputRef} className="sr-only" type="file" multiple accept={accept} onChange={(event) => { onFiles(Array.from(event.target.files || [])); event.target.value = '' }} aria-label={`Выбрать отчёты ${broker.display_name}`} />
+    <UploadCloud className="size-5 text-primary" aria-hidden="true" />
+    <span className="text-center text-sm text-muted-foreground">Перетащите файлы сюда</span>
+    <Button type="button" variant="outline" size="sm" onClick={() => inputRef.current?.click()}>Добавить файлы</Button>
+  </div>
+}
+
+function ReportList({ reports, onRemove }: { reports: SelectedReport[]; onRemove: (reportId: string) => void }) {
+  if (reports.length === 0) return null
+  return <div className="mt-3 flex flex-col gap-2" aria-live="polite">{reports.map((report) => <div key={report.id} className="flex items-center gap-3 rounded-md border bg-background p-3"><FileSpreadsheet className="size-5 shrink-0 text-muted-foreground" aria-hidden="true" /><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{report.file.name}</p><p className="text-xs text-muted-foreground">{formatBytes(report.file.size)}</p></div><span className={cn('flex items-center gap-1 text-xs font-medium', report.status === 'invalid' ? 'text-destructive' : 'text-primary')}>{report.uploaded ? <><CheckCircle2 aria-hidden="true" />Загружен</> : report.status === 'valid' ? 'Готов' : report.error}</span><Button variant="ghost" size="icon-sm" disabled={report.uploaded} onClick={() => onRemove(report.id)} aria-label={`Удалить ${report.file.name}`}><Trash2 /></Button></div>)}</div>
 }
 
 function formatBytes(bytes: number) {
   if (!bytes) return '0 КБ'
   return bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} МБ` : `${Math.ceil(bytes / 1024)} КБ`
+}
+
+function pluralFiles(count: number) {
+  if (count % 10 === 1 && count % 100 !== 11) return 'файл'
+  if ([2, 3, 4].includes(count % 10) && ![12, 13, 14].includes(count % 100)) return 'файла'
+  return 'файлов'
 }

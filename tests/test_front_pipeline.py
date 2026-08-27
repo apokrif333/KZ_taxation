@@ -10,11 +10,7 @@ from pathlib import Path
 from unittest.mock import ANY, MagicMock, patch
 
 from conftest_imports import SRC  # noqa: F401
-from kztax270.brokers.account_detection import (
-    BROKER_REPORT_SPECS,
-    DetectedReportMetadata,
-    detect_report_account_id,
-)
+from kztax270.brokers.account_detection import DetectedReportMetadata, detect_report_account_id
 from kztax270.brokers.ib import _canonical_transfer_rows
 from kztax270.canonical.schema import CanonicalDataset
 from kztax270.cli import _run_form270_config
@@ -31,8 +27,6 @@ from kztax270.front_pipeline import (
     FrontPipeline,
     FrontPipelineResult,
     GlobalTransferLedger,
-    InvalidReportPeriod,
-    InvalidReportPeriodError,
     MissingTransferBasis,
 )
 from kztax270.pipeline import AccountPipelineResult
@@ -278,68 +272,18 @@ class FrontPipelineDiscoveryTests(unittest.TestCase):
                 joint_accounts=("UNKNOWN",),
             )
 
-    def test_non_year_end_report_stops_before_account_processing(self) -> None:
-        self._file("ib", "annual.csv")
-        self._file("exante", "partial.csv")
-        runner = MagicMock()
-        detected = {"annual": "U1", "partial": "E1"}
-
-        def metadata(_broker: str, path: Path) -> DetectedReportMetadata:
-            period_end = date(2025, 7, 9) if path.stem == "partial" else date(2024, 12, 31)
-            return DetectedReportMetadata(detected[path.stem], period_end)
-
-        with (
-            patch(
-                "kztax270.front_pipeline.detect_report_metadata",
-                side_effect=metadata,
-            ),
-            self.assertRaises(InvalidReportPeriodError) as raised,
-        ):
-            FrontPipeline(self.paths, account_runner=runner).run(
-                client_id="client_1",
-                tax_year=2025,
-                taxpayer={"iin": "1"},
-            )
-
-        runner.assert_not_called()
-        self.assertEqual(
-            raised.exception.reports,
-            (InvalidReportPeriod("exante", "E1", "partial.csv", date(2025, 7, 9)),),
-        )
-
-    def test_year_end_rule_applies_to_every_registered_broker(self) -> None:
+    def test_partial_or_unknown_report_period_does_not_block_discovery(self) -> None:
+        report = self._file("exante", "partial.csv")
         pipeline = FrontPipeline(self.paths)
-        accounts = tuple(
-            DiscoveredAccount(broker, f"account-{broker}", (Path(f"{broker}.report"),))
-            for broker in BROKER_REPORT_SPECS
-        )
-
-        for invalid_broker in BROKER_REPORT_SPECS:
-            with self.subTest(broker=invalid_broker):
-                def metadata(broker: str, _path: Path) -> DetectedReportMetadata:
-                    period_end = date(2025, 12, 30) if broker == invalid_broker else date(2025, 12, 31)
-                    return DetectedReportMetadata(None, period_end)
-
-                with (
-                    patch("kztax270.front_pipeline.detect_report_metadata", side_effect=metadata),
-                    self.assertRaises(InvalidReportPeriodError) as raised,
-                ):
-                    pipeline._validate_report_periods(accounts)
-
-                self.assertEqual(raised.exception.reports[0].broker, invalid_broker)
-
-    def test_unknown_report_period_end_is_rejected(self) -> None:
-        self._file("freedom_759023", "report.xlsx")
-        with (
-            patch(
+        for period_end in (date(2025, 7, 9), None):
+            with self.subTest(period_end=period_end), patch(
                 "kztax270.front_pipeline.detect_report_metadata",
-                return_value=DetectedReportMetadata(None, None),
-            ),
-            self.assertRaises(InvalidReportPeriodError) as raised,
-        ):
-            FrontPipeline(self.paths).discover_accounts("client_1")
-
-        self.assertIsNone(raised.exception.reports[0].period_end)
+                return_value=DetectedReportMetadata("E1", period_end),
+            ):
+                self.assertEqual(
+                    pipeline.discover_accounts("client_1"),
+                    (DiscoveredAccount("exante", "E1", (report,)),),
+                )
 
 
 class GlobalTransferLedgerTests(unittest.TestCase):
@@ -848,37 +792,6 @@ class FrontPipelineOrchestrationTests(unittest.TestCase):
         self.assertEqual(exit_code, 1)
         domain.run.assert_called_once()
         self.assertEqual(domain.run.call_args.kwargs["client_id"], "client")
-
-    def test_cli_prints_year_end_warning_without_traceback(self) -> None:
-        job = Form270JobConfig(
-            mode="front_pipeline",
-            owner=Form270OwnerConfig("Ivanov", "Ivan", "", "123456789012"),
-            tax_year=2025,
-            job_id="front-pipeline",
-            client_id="client",
-        )
-        config = Form270RunConfig(
-            paths=self.paths,
-            defaults=Form270DefaultsConfig(),
-            banks={},
-            jobs=(job,),
-        )
-        domain = MagicMock()
-        domain.run.side_effect = InvalidReportPeriodError(
-            (InvalidReportPeriod("exante", "E1", "partial.csv", date(2025, 7, 9)),)
-        )
-
-        with (
-            patch("kztax270.cli.FrontPipeline", return_value=domain),
-            patch("builtins.print") as print_mock,
-        ):
-            exit_code = _run_form270_config(config)
-
-        output = "\n".join(str(call.args[0]) for call in print_mock.call_args_list)
-        self.assertEqual(exit_code, 1)
-        self.assertIn("должны заканчиваться 31 декабря", output)
-        self.assertIn("exante:E1 | partial.csv | дата окончания: 2025-07-09", output)
-        self.assertIn("Расчёт остановлен", output)
 
     def test_cli_repeats_front_pipeline_in_approximate_mode_after_yes(self) -> None:
         account = _account("ib", "U1")

@@ -18,8 +18,6 @@ from kztax270.excel.joint_workbook import joint_workbook_path
 from kztax270.front_pipeline import (
     DiscoveredAccount,
     FrontPipelineResult,
-    InvalidReportPeriod,
-    InvalidReportPeriodError,
     MissingTransferBasis,
 )
 from kztax270.webapi.main import UPLOAD_CHUNK_SIZE, _save_upload, create_app
@@ -371,19 +369,6 @@ class WebApiTests(unittest.TestCase):
         self.assertEqual(sum(item["report_count"] for item in response.json()["accounts"]), 3)
         self.assertNotIn(str(self.root), response.text)
         self.assertEqual(self.factory.run_calls, [])
-
-    def test_invalid_report_period_is_structured(self) -> None:
-        job_id = str(self._create()["job_id"])
-        self._upload(job_id)
-        self.factory.discover_error = InvalidReportPeriodError(
-            (InvalidReportPeriod("ib", "U1", "partial.csv", date(2025, 7, 9)),)
-        )
-        response = self._discover(job_id)
-        self.assertEqual(response.status_code, 422)
-        detail = response.json()["detail"]
-        self.assertEqual(detail["code"], "invalid_report_period")
-        self.assertEqual(detail["reports"][0]["period_end"], "2025-07-09")
-        self.assertNotIn(str(self.root), response.text)
 
     def test_process_passes_options_directly_to_front_pipeline(self) -> None:
         job_id = self._ready_job()

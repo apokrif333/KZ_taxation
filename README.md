@@ -208,3 +208,19 @@ Freedom Broker XLSX batches require `account_id` and are stored separately as
 automatic account discovery and may contain several accounts per broker batch.
 Joint and merge-excluded account selections are passed directly to the existing
 domain-level `FrontPipeline`.
+
+### Local Next.js frontend
+
+The browser talks directly to FastAPI. Copy the public local setting and start
+Next.js in a second terminal:
+
+```powershell
+Copy-Item frontend/.env.example frontend/.env.local
+cd frontend
+pnpm install
+pnpm dev
+```
+
+Open `http://localhost:3000`. `NEXT_PUBLIC_API_URL` selects the FastAPI origin
+and defaults to `http://localhost:8000` when it is absent. The backend CORS
+configuration must allow the frontend origin.
