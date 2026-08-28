@@ -279,3 +279,85 @@ pnpm dev
 Open `http://localhost:3000`. `NEXT_PUBLIC_API_URL` selects the FastAPI origin
 and defaults to `http://localhost:8000` when it is absent. The backend CORS
 configuration must allow the frontend origin.
+
+## Vercel frontend deployment
+
+Vercel hosts only the Next.js application under `frontend/`. The browser sends
+configuration requests, broker-report uploads, job operations, and artifact
+downloads directly to Railway at the origin configured by
+`NEXT_PUBLIC_API_URL`. There is no Next.js API proxy, rewrite, or Vercel file
+storage in this deployment.
+
+Manual Vercel setup:
+
+1. Open Vercel.
+2. Import the GitHub repository `apokrif333/KZ_taxation`.
+3. Select the `web-app` branch.
+4. Set **Root Directory** to `frontend`.
+5. Set **Framework Preset** to **Next.js**.
+6. Keep package-manager detection automatic; Vercel will use pnpm from the
+   `packageManager` field. The build command is `pnpm build`.
+7. Add the Production environment variable:
+
+   ```text
+   NEXT_PUBLIC_API_URL=https://kztaxation-production.up.railway.app
+   ```
+
+8. Deploy.
+9. Copy the generated production Vercel domain, including `https://` and without
+   a trailing slash.
+10. In Railway, set:
+
+    ```text
+    QCM_CORS_ORIGINS=https://<generated-vercel-domain>
+    ```
+
+    To retain local frontend development too, use the backend's comma-separated
+    format:
+
+    ```text
+    QCM_CORS_ORIGINS=https://<generated-vercel-domain>,http://localhost:3000
+    ```
+
+11. Redeploy or restart Railway if required for the new environment value to
+    take effect. Do not use wildcard CORS.
+12. Open the Vercel site and perform the complete production browser E2E below.
+
+`NEXT_PUBLIC_API_URL` is public browser configuration, not a secret. Vercel
+inlines it into the client bundle during the production build, so redeploy the
+frontend after changing it. The `/api/config` request starts in the browser
+after the page mounts; the FastAPI service is not contacted by `next build`.
+Relative artifact URLs returned by FastAPI and the ZIP URL are resolved against
+the same Railway origin, so generated files do not pass through Vercel.
+
+### Production browser E2E checklist
+
+- [ ] The site loads on the generated production Vercel domain.
+- [ ] `/api/config` loads the broker configuration from Railway.
+- [ ] Select the supported tax year.
+- [ ] Upload multiple Interactive Brokers reports.
+- [ ] Upload Exante reports.
+- [ ] Upload multiple Freedom account groups.
+- [ ] Select **Continue** and confirm discovered accounts appear.
+- [ ] Confirm multiple Interactive Brokers accounts remain separated correctly.
+- [ ] Confirm joint-account selection works.
+- [ ] Confirm excluded-from-merged selection works.
+- [ ] Complete processing.
+- [ ] Download individual audit XLSX files.
+- [ ] Download the joint audit XLSX.
+- [ ] Download the merged audit XLSX.
+- [ ] Download Form 270 JSON.
+- [ ] Download the ZIP archive.
+
+Missing Transfer workflow:
+
+- [ ] Omit a required source report and receive the missing-transfer screen.
+- [ ] Add the source report to the same job.
+- [ ] Process the job successfully.
+
+Approximate workflow:
+
+- [ ] Process with the available data.
+- [ ] Choose the approximate-basis action, which sends
+      `allow_approximate_transfer_basis=true`.
+- [ ] Complete processing successfully.
