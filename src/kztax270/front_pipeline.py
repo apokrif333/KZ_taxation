@@ -535,7 +535,7 @@ def _transfer_events(
     grouped: dict[tuple[Any, ...], list[Mapping[str, Any]]] = defaultdict(list)
     ordinals: dict[tuple[Any, ...], int] = {}
     for ordinal, row in enumerate(rows):
-        if row.get("_synthetic_reconciliation_adjustment"):
+        if row.get("_synthetic_reconciliation_adjustment") or row.get("_internal_corporate_action_transfer"):
             continue
         direction = str(row.get("direction") or "").strip().lower()
         if direction == "in" and row.get("_broker_reported_transfer_basis"):

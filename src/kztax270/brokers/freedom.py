@@ -1611,6 +1611,11 @@ def _security_transfer_row(
         "_multiplier": "1",
         "_transfer_cost_basis_status": "pending_transfer_out_fifo_cost_basis",
     }
+    if corporate_action_type == "conversion":
+        # Freedom also repeats security-conversion legs in Sec In Out. They are
+        # needed by this parser to carry FIFO identity/cost basis through the
+        # conversion, but they are not transfers between brokerage accounts.
+        transfer["_internal_corporate_action_transfer"] = True
     if _security_transfer_should_be_audit_only(transfer, transfer_type, event_dt, internal_trades):
         transfer["_exclude_from_fifo"] = True
     return transfer

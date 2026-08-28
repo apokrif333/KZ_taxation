@@ -30,10 +30,26 @@ def discover_raw_reports(raw_root: Path, rule: DiscoveryRule) -> list[BrokerRepo
             continue
         if is_transfer_out_source_file(path):
             continue
-        if rule.filename_must_contain_account and rule.account_id.lower() not in path.name.lower():
+        if rule.filename_must_contain_account and not _filename_contains_account_id(path.name, rule.account_id):
             continue
         reports.append(BrokerReport(broker=rule.broker, account_id=rule.account_id, path=path))
     return reports
+
+
+def _filename_contains_account_id(filename: str, account_id: str) -> bool:
+    """Match a complete account ID instead of a substring of another ID."""
+
+    normalized_filename = filename.casefold()
+    normalized_account_id = account_id.casefold()
+    start = 0
+    while (index := normalized_filename.find(normalized_account_id, start)) >= 0:
+        end = index + len(normalized_account_id)
+        left_is_boundary = index == 0 or not normalized_filename[index - 1].isalnum()
+        right_is_boundary = end == len(normalized_filename) or not normalized_filename[end].isalnum()
+        if left_is_boundary and right_is_boundary:
+            return True
+        start = index + 1
+    return False
 
 
 def is_transfer_out_source_file(path: Path) -> bool:

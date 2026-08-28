@@ -1165,6 +1165,13 @@ class FreedomParserTests(unittest.TestCase):
             result = parser.parse_reports(parser.discover_reports(raw_root, "1467068"), "1467068")
 
         lenz_fifo = [row for row in result.dataset.tables["Fifo"] if row["symbol"] == "LENZ.US"]
+        conversion_legs = [
+            row
+            for row in result.dataset.tables["Transfers"]
+            if row["date"] == "2024-03-25" and row["symbol"] in {"GRPH.US", "LENZ.US"}
+        ]
+        self.assertEqual(len(conversion_legs), 2)
+        self.assertTrue(all(row["_internal_corporate_action_transfer"] for row in conversion_legs))
         self.assertEqual(len(lenz_fifo), 2)
         self.assertTrue(all(row["_opening_lot_status"] == "matched" for row in lenz_fifo))
         self.assertEqual([row["enter_price"] for row in lenz_fifo], ["119", "119"])

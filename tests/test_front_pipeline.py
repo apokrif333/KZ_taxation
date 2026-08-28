@@ -304,6 +304,23 @@ class GlobalTransferLedgerTests(unittest.TestCase):
 
         self.assertEqual(resolution.missing, ())
 
+    def test_internal_corporate_action_transfer_is_not_missing_basis(self) -> None:
+        account = _account("freedom", "7F8339")
+        conversion_leg = _transfer(
+            "in",
+            "2025-08-11",
+            "28",
+            symbol="PSKY.US",
+            isin="US69932A2042",
+        )
+        conversion_leg["_internal_corporate_action_transfer"] = True
+
+        resolution = GlobalTransferLedger().resolve(
+            [(account, _dataset("freedom", "7F8339", [conversion_leg]))]
+        )
+
+        self.assertEqual(resolution.missing, ())
+
     def test_freedom_bank_gift_with_reported_price_is_not_missing_basis(self) -> None:
         account = _account("freedom_bank", "610716400096")
         gift = _transfer(

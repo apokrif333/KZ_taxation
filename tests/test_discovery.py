@@ -39,6 +39,22 @@ class RawDiscoveryTests(unittest.TestCase):
 
         self.assertEqual([item.path.name for item in reports], [report.name])
 
+    def test_account_id_does_not_match_inside_another_account_id(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            raw_root = Path(tmp) / "raw"
+            broker_root = raw_root / "freedom"
+            broker_root.mkdir(parents=True)
+            expected_names = {
+                "7F8339_2025.xlsx",
+                "Client (7F8339) 2024.xlsx",
+            }
+            for name in [*expected_names, "D7F8339_2025.xlsx", "Client (D7F8339) 2024.xlsx"]:
+                (broker_root / name).write_text("raw report placeholder", encoding="utf-8")
+
+            reports = discover_raw_reports(raw_root, DiscoveryRule(broker="freedom", account_id="7F8339"))
+
+        self.assertEqual({item.path.name for item in reports}, expected_names)
+
 
 if __name__ == "__main__":
     unittest.main()
