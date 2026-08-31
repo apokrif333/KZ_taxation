@@ -100,7 +100,9 @@ export function UploadWorkflow({
 function BrokerReportCard({ broker, reports, onFiles, onRemove }: { broker: BrokerConfig; reports: SelectedReport[]; onFiles: (files: File[]) => void; onRemove: (reportId: string) => void }) {
   const guide = broker.code === 'ib'
     ? { href: '/faq/interactive-brokers', label: 'как скачать отчёты Interactive Brokers' }
-    : null
+    : broker.code === 'exante'
+      ? { href: '/faq/exante', label: 'как скачать отчёты Exante' }
+      : null
 
   return <div className="rounded-lg border bg-card p-4"><div><h2 className="font-semibold">{broker.display_name}</h2><p className="text-sm text-muted-foreground">{reports.length ? `${reports.length} ${pluralFiles(reports.length)}` : 'Файлы не добавлены'}</p></div><FilePicker className="mt-3 w-full" broker={broker} onFiles={onFiles} /><ReportList reports={reports} onRemove={onRemove} />{guide && <div className="mt-4 flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-primary/10 pt-3 text-sm"><BookOpen className="size-4 text-primary" aria-hidden="true" /><span className="font-medium">Инструкция:</span><Link href={guide.href} className="text-primary underline-offset-4 hover:underline">{guide.label}</Link></div>}</div>
 }

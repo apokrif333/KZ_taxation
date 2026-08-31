@@ -23,6 +23,7 @@ export function FaqHeader({ article = false }: FaqHeaderProps) {
         <nav className="hidden items-center gap-6 text-sm md:flex" aria-label="Основная навигация">
           <Link className="border-b-2 border-transparent py-5 text-muted-foreground hover:text-foreground" href="/">Расчёт</Link>
           <Link className="border-b-2 border-primary py-5 font-semibold text-primary" href="/faq" aria-current="page">FAQ</Link>
+          <Link className="border-b-2 border-transparent py-5 text-muted-foreground hover:text-foreground" href="/?view=privacy">Конфиденциальность</Link>
         </nav>
         <Link href={article ? '/faq' : '/'} className="flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground md:hidden" aria-label={article ? 'Вернуться к FAQ' : 'Вернуться к расчёту'}><ArrowLeft className="size-4" /></Link>
       </div>

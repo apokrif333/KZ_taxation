@@ -53,6 +53,9 @@ export function TaxApp() {
   }, [])
 
   useEffect(() => { void loadConfig() }, [loadConfig])
+  useEffect(() => {
+    setPrivacy(new URLSearchParams(window.location.search).get('view') === 'privacy')
+  }, [])
 
   const clearError = () => { setError(null); setInvalidReports([]) }
 
@@ -172,8 +175,8 @@ export function TaxApp() {
   const markManualUploaded = (groupId: string, ids: Set<string>) => setManualGroups((current) => current.map((group) => group.id === groupId ? { ...group, files: group.files.map((report) => ids.has(report.id) ? { ...report, uploaded: true } : report) } : group))
 
   return <div className="min-h-screen bg-background">
-    <SiteHeader privacyActive={privacy} onPrivacy={() => setPrivacy(true)} onStart={() => { void restart() }} />
-    {privacy ? <PrivacyView onBack={() => setPrivacy(false)} /> : <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+    <SiteHeader privacyActive={privacy} onPrivacy={() => { window.history.replaceState(null, '', '/?view=privacy'); setPrivacy(true) }} onStart={() => { window.history.replaceState(null, '', '/'); void restart() }} />
+    {privacy ? <PrivacyView onBack={() => { window.history.replaceState(null, '', '/'); setPrivacy(false) }} /> : <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
       {step === 'upload' && <>
         <section className="grid gap-6 py-10 lg:grid-cols-[1fr_auto] lg:items-end"><div><p className="text-sm font-semibold text-primary">ФОРМА 270.00 · КАЗАХСТАН</p><h1 className="mt-2 max-w-3xl text-balance text-3xl font-semibold tracking-tight sm:text-4xl">Подготовка формы 270.00 по брокерским отчётам</h1><p className="mt-3 max-w-2xl text-pretty leading-relaxed text-muted-foreground">Соберите отчёты нескольких брокеров и счетов в одном расчёте, проверьте обнаруженные счета и скачайте итоговые файлы.</p></div><div id="how-it-works" className="flex gap-5 border-l border-primary/25 pl-5 text-sm"><WorkflowItem number="1" label="Добавьте отчёты" /><WorkflowItem number="2" label="Настройте счета" /><WorkflowItem number="3" label="Скачайте результаты" /></div></section>
         {!config && !configError && <LoadingConfig />}
