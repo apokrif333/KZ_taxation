@@ -37,7 +37,7 @@ export default function TabysGuidePage() {
           </li>
           <li className="grid gap-4 lg:grid-cols-[3rem_minmax(0,1fr)]">
             <span className="flex size-10 items-center justify-center rounded-full bg-primary font-mono text-sm font-semibold text-primary-foreground">3</span>
-            <Card className="border-border/80"><CardHeader><CardTitle className="text-lg">Загрузите файлы в QCM Tax 270</CardTitle><CardDescription className="leading-relaxed">Добавьте все подготовленные PDF в блок Tabys на главной странице и продолжите расчёт.</CardDescription></CardHeader></Card>
+            <Card className="border-border/80"><CardHeader><CardTitle className="text-lg">Загрузите файлы в QCM Tax 270</CardTitle><CardDescription className="leading-relaxed">Добавьте все подготовленные PDF в блок Tabys на главной странице и продолжите расчёт.</CardDescription></CardHeader><CardContent><figure className="overflow-hidden rounded-lg border border-border bg-muted/20"><img src="/faq/tabys/step-3-upload.png" alt="Блок Tabys на странице загрузки QCM Tax 270" className="h-auto w-full" /><figcaption className="border-t bg-card px-3 py-2 text-xs text-muted-foreground">Загрузка отчётов Tabys</figcaption></figure></CardContent></Card>
           </li>
         </ol>
 
