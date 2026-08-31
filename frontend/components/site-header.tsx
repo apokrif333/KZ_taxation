@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { Menu } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -27,7 +28,7 @@ export function SiteHeader({ onPrivacy, onStart, privacyActive }: SiteHeaderProp
         </button>
         <nav className="hidden items-center gap-6 text-sm md:flex" aria-label="Основная навигация">
           <button className={cn('border-b-2 py-5', privacyActive ? 'border-transparent text-muted-foreground hover:text-foreground' : 'border-primary font-semibold text-primary')} onClick={onStart} aria-current={privacyActive ? undefined : 'page'}>Расчёт</button>
-          <a className="text-muted-foreground hover:text-foreground" href="#how-it-works">Как это работает</a>
+          <Link className="text-muted-foreground hover:text-foreground" href="/faq">FAQ</Link>
           <button className={cn('border-b-2 py-5', privacyActive ? 'border-primary font-semibold text-primary' : 'border-transparent text-muted-foreground hover:text-foreground')} onClick={onPrivacy} aria-current={privacyActive ? 'page' : undefined}>Конфиденциальность</button>
         </nav>
         <Button variant="ghost" size="icon" className="md:hidden" aria-label="Открыть меню"><Menu /></Button>
