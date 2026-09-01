@@ -91,7 +91,7 @@ COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
     COL_REALIZED_PL: ("Прибыль", "Realized P/L", "P/L", "P/L on closed trades", "P/L on Closed Trades"),
     COL_COMMISSION: ("Commission",),
     COL_TRADE_DATE: ("Дата", "Trade Date", "Date_Time", "Date Time"),
-    COL_ORDER_ID: ("Order ID", "OrderId", "Order Id", "Id/OrderId"),
+    COL_ORDER_ID: ("Номер сделки/Номер приказа", "Order ID", "OrderId", "Order Id", "Id/OrderId"),
     COL_TYPE: ("Type",),
     COL_DATE: ("Date",),
     COL_ASSET: ("Asset",),
@@ -256,7 +256,6 @@ def build_canonical_dataset(
         reports,
         [trade for trade in internal_trades if trade.get("_event_type") != "split"],
         dataset.tables["Dividends"],
-        dataset.tables["Interest"],
         dataset.tables["Coupons"],
         transfer_totals_by_currency,
         fifo_source_trade_ids,
@@ -2074,7 +2073,6 @@ def _populate_raw_totals(
     reports: Sequence[ParsedFreedomReport],
     trades: Sequence[Mapping[str, Any]],
     dividends: Sequence[Mapping[str, Any]],
-    interest: Sequence[Mapping[str, Any]],
     coupons: Sequence[Mapping[str, Any]],
     transfer_totals_by_currency: Mapping[str, Decimal],
     fifo_source_trade_ids: set[str],
@@ -2107,7 +2105,7 @@ def _populate_raw_totals(
 
     dividends_gross = sum((_decimal(row.get("gross_amount")) for row in dividends), Decimal("0"))
     dividends_tax = sum((_decimal(row.get("withholding_tax")) for row in dividends), Decimal("0"))
-    interest_gross = sum((_decimal(row.get("gross_amount")) for row in interest), Decimal("0"))
+    interest_gross = _raw_financing_interest_total(reports)
     coupons_gross = sum((_decimal(row.get("gross_amount")) for row in coupons), Decimal("0"))
     cash_transfer_total = sum(transfer_totals_by_currency.values(), Decimal("0"))
     totals.scalar_totals.update(
@@ -2127,6 +2125,29 @@ def _populate_raw_totals(
         totals.totals_by_metric_currency[_dimension_key(metric=ReconciliationMetric.TOTAL_DEPOSITS_WITHDRAWALS_TRANSFERS.value, currency=currency)] = amount
     _populate_raw_positions(totals, reports, positions)
     _populate_raw_cash(totals, reports)
+
+
+def _raw_financing_interest_total(reports: Sequence[ParsedFreedomReport]) -> Decimal:
+    """Return Freedom's raw financing P/L net of opening commissions.
+
+    This deliberately reads the broker's Trades rows instead of the canonical
+    Interest table so reconciliation can expose a broken REPO/SWAP pairing.
+    Freedom records the financing result in ``P/L по закрытым сделкам`` on the
+    closing row and any commission on the opening row.
+    """
+
+    realized_pl = Decimal("0")
+    opening_commissions = Decimal("0")
+    for report in reports:
+        for row in report.rows.get(SECTION_TRADES, []):
+            operation = str(_cell(row, COL_OPERATION) or "").strip()
+            if not _is_financing_operation(operation):
+                continue
+            if _is_financing_closing(operation):
+                realized_pl += _decimal(_cell(row, COL_REALIZED_PL))
+            elif _is_financing_opening(operation):
+                opening_commissions += abs(_decimal(_cell(row, COL_COMMISSION)))
+    return realized_pl - opening_commissions
 
 
 def _populate_fifo_raw_pnl_totals(

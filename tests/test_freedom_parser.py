@@ -10,6 +10,7 @@ from conftest_imports import SRC  # noqa: F401
 from kztax270.brokers import freedom as fe
 from kztax270.brokers.freedom import FreedomParser
 from kztax270.reference.fx import AnnualFxRateProvider
+from kztax270.reconciliation.engine import ReconciliationEngine
 from kztax270.reconciliation.models import ReconciliationMetric
 from kztax270.transfers import TransferInFifoLot, TransferInRequest
 
@@ -69,7 +70,7 @@ class FreedomParserTests(unittest.TestCase):
                             fe.COL_REALIZED_PL: 0,
                             fe.COL_COMMISSION: 0.5,
                             fe.COL_TRADE_DATE: "2024-03-01 10:00:00",
-                            fe.COL_ORDER_ID: "open/swap-1",
+                            "Номер сделки/Номер приказа": "open/swap-1",
                         },
                         {
                             fe.COL_TICKER: "SWAP.US",
@@ -83,7 +84,7 @@ class FreedomParserTests(unittest.TestCase):
                             fe.COL_REALIZED_PL: 12.34,
                             fe.COL_COMMISSION: 0,
                             fe.COL_TRADE_DATE: "2024-03-02 10:00:00",
-                            fe.COL_ORDER_ID: "close/swap-1",
+                            "Номер сделки/Номер приказа": "close/swap-1",
                         },
                         {
                             fe.COL_TICKER: "REPO.US",
@@ -97,7 +98,7 @@ class FreedomParserTests(unittest.TestCase):
                             fe.COL_REALIZED_PL: 0,
                             fe.COL_COMMISSION: 0,
                             fe.COL_TRADE_DATE: "2024-04-01 10:00:00",
-                            fe.COL_ORDER_ID: "open/repo-1",
+                            "Номер сделки/Номер приказа": "open/repo-1",
                         },
                         {
                             fe.COL_TICKER: "REPO.US",
@@ -111,7 +112,7 @@ class FreedomParserTests(unittest.TestCase):
                             fe.COL_REALIZED_PL: 5,
                             fe.COL_COMMISSION: 0,
                             fe.COL_TRADE_DATE: "2024-04-02 10:00:00",
-                            fe.COL_ORDER_ID: "close/repo-1",
+                            "Номер сделки/Номер приказа": "close/repo-1",
                         },
                     ]
                 ).to_excel(writer, sheet_name="Trades 20240101 - 20241231", index=False)
@@ -147,6 +148,22 @@ class FreedomParserTests(unittest.TestCase):
         self.assertEqual(yearly_interest[0]["amount"], "5.00")
         self.assertEqual(yearly_interest[0]["only_profit"], "5.00")
         self.assertEqual(yearly_interest[0]["tax_kzt"], "234.50")
+        self.assertEqual(
+            result.dataset.raw_totals.scalar_totals[ReconciliationMetric.TOTAL_INTEREST.value],
+            Decimal("16.84"),
+        )
+
+        # Reconciliation must use raw financing P/L, rather than merely
+        # comparing the Interest table with itself.
+        result.dataset.tables["Interest"] = []
+        interest_item = next(
+            item
+            for item in ReconciliationEngine().reconcile_dataset(result.dataset)
+            if item.metric == ReconciliationMetric.TOTAL_INTEREST
+        )
+        self.assertEqual(interest_item.broker_value, Decimal("16.84"))
+        self.assertEqual(interest_item.canonical_value, Decimal("0"))
+        self.assertEqual(interest_item.difference, Decimal("-16.84"))
 
     def test_ignores_legacy_trading_report_and_resolves_transfer_in_lots(self) -> None:
         import pandas as pd  # type: ignore
