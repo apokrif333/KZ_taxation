@@ -34,6 +34,18 @@ export interface UploadBatchResponse {
   status: 'collecting'
   accepted_files: number
   total_files: number
+  reports: UploadedReport[]
+}
+
+export interface UploadedReport {
+  report_id: string
+  filename: string
+}
+
+export interface DeleteReportResponse {
+  job_id: string
+  status: 'collecting'
+  total_files: number
 }
 
 export interface DiscoveredAccount {
@@ -120,6 +132,7 @@ export interface SelectedReport {
   status: 'valid' | 'invalid'
   error?: string
   uploaded: boolean
+  serverReportId?: string
 }
 
 export interface ManualAccountGroup {

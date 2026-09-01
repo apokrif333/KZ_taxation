@@ -33,6 +33,7 @@ from .schemas import (
     BrokerConfigResponse,
     ConfigResponse,
     CreateJobResponse,
+    DeleteReportResponse,
     DeleteJobResponse,
     DiscoverResponse,
     DiscoveredAccountResponse,
@@ -40,6 +41,7 @@ from .schemas import (
     MissingTransferBasisResponse,
     ProcessJobRequest,
     ProcessJobResponse,
+    UploadedReportResponse,
     UploadBatchResponse,
 )
 from .storage import (
@@ -50,6 +52,7 @@ from .storage import (
     JobRecord,
     JobStore,
     JobWorkspace,
+    ReportNotFoundError,
     WebApiSettings,
 )
 
@@ -256,6 +259,7 @@ def create_app(
                 status="collecting",
                 accepted_files=len(saved),
                 total_files=len(updated.uploads),
+                reports=[UploadedReportResponse(report_id=digest, filename=path.name) for digest, path in saved],
             )
         except Exception:
             _remove_paths(path for _digest, path in saved)
@@ -263,6 +267,18 @@ def create_app(
         finally:
             for upload in files:
                 await upload.close()
+
+    @application.delete("/api/jobs/{job_id}/reports/{report_id}", response_model=DeleteReportResponse)
+    async def delete_report(job_id: str, report_id: str) -> DeleteReportResponse:
+        _job_or_error(store, job_id)
+        try:
+            updated = store.remove_upload(job_id, report_id)
+        except ReportNotFoundError as exc:
+            raise ApiError(404, "report_not_found", "Загруженный отчёт не найден.") from exc
+        except InvalidJobStateError as exc:
+            _raise_job_state_error(exc)
+        LOGGER.info("Report deleted job_id=%s", job_id)
+        return DeleteReportResponse(job_id=job_id, status="collecting", total_files=len(updated.uploads))
 
     @application.post("/api/jobs/{job_id}/discover", response_model=DiscoverResponse)
     async def discover_accounts(job_id: str) -> DiscoverResponse:

@@ -142,6 +142,10 @@ class JobFileLimitError(ValueError):
     pass
 
 
+class ReportNotFoundError(ValueError):
+    pass
+
+
 class InvalidJobStateError(ValueError):
     pass
 
@@ -236,6 +240,27 @@ class JobStore:
             if record.status == "processing":
                 raise InvalidJobStateError("processing")
             record.status = "awaiting_options"
+            self._refresh_pending(record)
+            return record
+
+    def remove_upload(self, job_id: str, report_id: str) -> JobRecord:
+        with self._lock:
+            record = self._require(job_id)
+            if record.status == "completed":
+                raise InvalidJobStateError("completed")
+            if record.status == "processing":
+                raise InvalidJobStateError("processing")
+            path = record.uploads.get(report_id)
+            if path is None:
+                raise ReportNotFoundError(report_id)
+            if path.exists():
+                self._require_managed_file(record.workspace, path)
+                path.unlink()
+            del record.uploads[report_id]
+            parent = path.parent.resolve()
+            if parent.parent == record.workspace.client_root.resolve() and parent.is_dir() and not any(parent.iterdir()):
+                parent.rmdir()
+            record.status = "collecting"
             self._refresh_pending(record)
             return record
 

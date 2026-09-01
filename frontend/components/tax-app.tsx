@@ -11,7 +11,7 @@ import { SiteHeader } from '@/components/site-header'
 import { UploadWorkflow } from '@/components/upload-workflow'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
-import { ApiClientError, createJob, deleteJob, discoverAccounts, getConfig, processJob, uploadReports } from '@/lib/api-client'
+import { ApiClientError, createJob, deleteJob, deleteReport, discoverAccounts, getConfig, processJob, uploadReports } from '@/lib/api-client'
 import type {
   AccountSelection,
   ApiConfig,
@@ -103,16 +103,16 @@ export function TaxApp() {
       for (const broker of config.brokers.filter((item) => item.account_id_mode === 'auto')) {
         const pending = (autoFiles[broker.code] || []).filter((report) => !report.uploaded && report.status === 'valid')
         for (const batch of chunks(pending, config.max_files)) {
-          await uploadReports(currentJobId, broker.code, batch.map((report) => report.file))
-          markAutoUploaded(broker.code, new Set(batch.map((report) => report.id)))
+          const uploaded = await uploadReports(currentJobId, broker.code, batch.map((report) => report.file))
+          markAutoUploaded(broker.code, new Map(batch.map((report, index) => [report.id, uploaded.reports[index]?.report_id])))
         }
       }
 
       for (const group of manualGroups) {
         const pending = group.files.filter((report) => !report.uploaded && report.status === 'valid')
         for (const batch of chunks(pending, config.max_files)) {
-          await uploadReports(currentJobId, group.broker, batch.map((report) => report.file), group.accountId.trim())
-          markManualUploaded(group.id, new Set(batch.map((report) => report.id)))
+          const uploaded = await uploadReports(currentJobId, group.broker, batch.map((report) => report.file), group.accountId.trim())
+          markManualUploaded(group.id, new Map(batch.map((report, index) => [report.id, uploaded.reports[index]?.report_id])))
         }
       }
 
@@ -172,8 +172,39 @@ export function TaxApp() {
     setInvalidReports(caught instanceof ApiClientError ? caught.reports : [])
   }
 
-  const markAutoUploaded = (brokerCode: string, ids: Set<string>) => setAutoFiles((current) => ({ ...current, [brokerCode]: (current[brokerCode] || []).map((report) => ids.has(report.id) ? { ...report, uploaded: true } : report) }))
-  const markManualUploaded = (groupId: string, ids: Set<string>) => setManualGroups((current) => current.map((group) => group.id === groupId ? { ...group, files: group.files.map((report) => ids.has(report.id) ? { ...report, uploaded: true } : report) } : group))
+  const removeAutoReport = async (brokerCode: string, reportId: string) => {
+    const report = (autoFiles[brokerCode] || []).find((item) => item.id === reportId)
+    if (!report) return
+    clearError()
+    setBusy(true)
+    try {
+      if (report.uploaded && jobId && report.serverReportId) await deleteReport(jobId, report.serverReportId)
+      setAutoFiles((current) => ({ ...current, [brokerCode]: (current[brokerCode] || []).filter((item) => item.id !== reportId) }))
+    } catch (caught) {
+      applyError(caught)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const removeManualReport = async (groupId: string, reportId: string) => {
+    const group = manualGroups.find((item) => item.id === groupId)
+    const report = group?.files.find((item) => item.id === reportId)
+    if (!report) return
+    clearError()
+    setBusy(true)
+    try {
+      if (report.uploaded && jobId && report.serverReportId) await deleteReport(jobId, report.serverReportId)
+      setManualGroups((current) => current.map((item) => item.id === groupId ? { ...item, files: item.files.filter((file) => file.id !== reportId) } : item))
+    } catch (caught) {
+      applyError(caught)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const markAutoUploaded = (brokerCode: string, ids: Map<string, string | undefined>) => setAutoFiles((current) => ({ ...current, [brokerCode]: (current[brokerCode] || []).map((report) => ids.has(report.id) ? { ...report, uploaded: true, serverReportId: ids.get(report.id) } : report) }))
+  const markManualUploaded = (groupId: string, ids: Map<string, string | undefined>) => setManualGroups((current) => current.map((group) => group.id === groupId ? { ...group, files: group.files.map((report) => ids.has(report.id) ? { ...report, uploaded: true, serverReportId: ids.get(report.id) } : report) } : group))
 
   return <div className="min-h-screen bg-background">
     <SiteHeader privacyActive={privacy} onPrivacy={() => { window.history.replaceState(null, '', '/?view=privacy'); setPrivacy(true) }} onStart={() => { window.history.replaceState(null, '', '/'); void restart() }} />
@@ -191,7 +222,7 @@ export function TaxApp() {
         </Alert>
         {!config && !configError && <LoadingConfig />}
         {configError && <ConfigError message={configError} onRetry={() => { void loadConfig() }} />}
-        {config && <UploadWorkflow config={config} taxYear={taxYear} autoFiles={autoFiles} manualGroups={manualGroups} form27005={form27005} hasJob={Boolean(jobId)} busy={busy} error={error} invalidReports={invalidReports} onAddAutoFiles={handleAddAutoFiles} onRemoveAutoFile={(brokerCode, reportId) => setAutoFiles((current) => ({ ...current, [brokerCode]: (current[brokerCode] || []).filter((report) => report.id !== reportId || report.uploaded) }))} onAddManualGroup={(broker) => setManualGroups((current) => [...current, { id: crypto.randomUUID(), broker, accountId: '', files: [] }])} onRemoveManualGroup={(groupId) => setManualGroups((current) => current.filter((group) => group.id !== groupId || group.files.some((report) => report.uploaded)))} onManualAccountChange={(groupId, value) => setManualGroups((current) => current.map((group) => group.id === groupId ? { ...group, accountId: value } : group))} onAddManualFiles={handleAddManualFiles} onRemoveManualFile={(groupId, reportId) => setManualGroups((current) => current.map((group) => group.id === groupId ? { ...group, files: group.files.filter((report) => report.id !== reportId || report.uploaded) } : group))} onForm27005Change={setForm27005} onContinue={() => { void handleContinue() }} onAbandon={() => { void restart() }} />}
+        {config && <UploadWorkflow config={config} taxYear={taxYear} autoFiles={autoFiles} manualGroups={manualGroups} form27005={form27005} hasJob={Boolean(jobId)} busy={busy} error={error} invalidReports={invalidReports} onAddAutoFiles={handleAddAutoFiles} onRemoveAutoFile={(brokerCode, reportId) => { void removeAutoReport(brokerCode, reportId) }} onAddManualGroup={(broker) => setManualGroups((current) => [...current, { id: crypto.randomUUID(), broker, accountId: '', files: [] }])} onRemoveManualGroup={(groupId) => setManualGroups((current) => current.filter((group) => group.id !== groupId || group.files.some((report) => report.uploaded)))} onManualAccountChange={(groupId, value) => setManualGroups((current) => current.map((group) => group.id === groupId ? { ...group, accountId: value } : group))} onAddManualFiles={handleAddManualFiles} onRemoveManualFile={(groupId, reportId) => { void removeManualReport(groupId, reportId) }} onForm27005Change={setForm27005} onContinue={() => { void handleContinue() }} onAbandon={() => { void restart() }} />}
         <footer className="flex flex-col items-center gap-2 border-t border-primary/10 py-10 text-center text-xs text-muted-foreground"><span className="font-semibold text-primary">QCM Tax 270</span><span className="flex items-center gap-2"><a className="hover:text-foreground hover:underline" href="https://www.qcross.org" target="_blank" rel="noreferrer">by Quantum Cross Management</a><span aria-hidden="true">·</span><a className="text-primary transition-colors hover:text-primary/75" href="https://t.me/qcrossorg" target="_blank" rel="noreferrer" aria-label="Telegram @qcrossorg" title="Telegram @qcrossorg"><Send className="size-3.5" /></a><span aria-hidden="true">·</span><span>Результаты требуют проверки специалистом.</span></span><div className="mt-3 max-w-xl space-y-1 border-t border-primary/10 pt-4 leading-relaxed"><p className="font-medium text-foreground">BVI Business Company registered in the British Virgin Islands</p><p><a className="hover:text-foreground hover:underline" href="https://www.bvifsc.vg/certificate-validation?%3FqrCode=17BABB292F" target="_blank" rel="noreferrer">Company No. 2038391</a></p><p className="pt-2 font-medium text-foreground">BVI FSC Approved Investment Manager</p><p>Regulated by the British Virgin Islands Financial Services Commission</p><p><a className="hover:text-foreground hover:underline" href="https://www.bvifsc.vg/regulated-entities/quantum-cross-management-corp" target="_blank" rel="noreferrer">Approval No. IBR/AIM/20/0356</a></p><p className="pt-2">© 2026 Quantum Cross Management Corp. All rights reserved.</p></div></footer>
       </>}
       {step === 'accounts' && config && <DiscoveredAccounts accounts={accounts} brokers={config.brokers} selections={selections} busy={busy} error={error} invalidReports={invalidReports} onSelectionChange={(account, field, value) => setSelections((current) => ({ ...current, [accountKey(account)]: { ...(current[accountKey(account)] || { joint: false, excluded: false }), [field]: value } }))} onBack={() => { clearError(); setStep('upload') }} onProcess={() => { void runProcess(false) }} />}

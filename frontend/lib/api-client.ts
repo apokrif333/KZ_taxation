@@ -2,6 +2,7 @@ import type {
   ApiConfig,
   ApiErrorResponse,
   CreateJobResponse,
+  DeleteReportResponse,
   DiscoverResponse,
   InvalidReportPeriod,
   ProcessJobRequest,
@@ -79,6 +80,12 @@ export function uploadReports(
 
 export function discoverAccounts(jobId: string): Promise<DiscoverResponse> {
   return requestJson<DiscoverResponse>(`/api/jobs/${encodeURIComponent(jobId)}/discover`, { method: 'POST' })
+}
+
+export function deleteReport(jobId: string, reportId: string): Promise<DeleteReportResponse> {
+  return requestJson<DeleteReportResponse>(`/api/jobs/${encodeURIComponent(jobId)}/reports/${encodeURIComponent(reportId)}`, {
+    method: 'DELETE',
+  })
 }
 
 export function processJob(jobId: string, request: ProcessJobRequest): Promise<ProcessResponse> {

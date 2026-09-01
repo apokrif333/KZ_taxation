@@ -40,6 +40,18 @@ class UploadBatchResponse(BaseModel):
     status: Literal["collecting"]
     accepted_files: int = Field(ge=1)
     total_files: int = Field(ge=1)
+    reports: list["UploadedReportResponse"]
+
+
+class UploadedReportResponse(BaseModel):
+    report_id: str
+    filename: str
+
+
+class DeleteReportResponse(BaseModel):
+    job_id: str
+    status: Literal["collecting"]
+    total_files: int = Field(ge=0)
 
 
 class DiscoveredAccountResponse(BaseModel):

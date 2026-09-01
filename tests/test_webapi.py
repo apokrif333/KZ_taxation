@@ -343,6 +343,21 @@ class WebApiTests(unittest.TestCase):
         self.assertEqual(len(record.uploads), 1)
         self.assertTrue(next(iter(record.uploads.values())).exists())
 
+    def test_uploaded_report_can_be_deleted_before_processing(self) -> None:
+        job_id = str(self._create()["job_id"])
+        uploaded = self._upload(job_id, uploads=[("bad.csv", b"bad"), ("good.csv", b"good")]).json()
+        report_id = uploaded["reports"][0]["report_id"]
+        record = self.client.app.state.job_store.get(job_id)
+        self.assertIsNotNone(record)
+        removed_path = record.uploads[report_id]
+
+        response = self.client.delete(f"/api/jobs/{job_id}/reports/{report_id}")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["total_files"], 1)
+        self.assertNotIn(report_id, record.uploads)
+        self.assertFalse(removed_path.exists())
+
     def test_upload_copy_is_chunked_and_hashes_while_streaming(self) -> None:
         class Upload:
             def __init__(self) -> None:
