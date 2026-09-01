@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { LoaderCircle, RefreshCw, TriangleAlert } from 'lucide-react'
+import { Info, LoaderCircle, RefreshCw, Send, TriangleAlert } from 'lucide-react'
 import { DiscoveredAccounts, accountKey } from '@/components/discovered-accounts'
 import { MissingTransfers } from '@/components/missing-transfers'
 import { PrivacyView } from '@/components/privacy-view'
@@ -180,10 +180,19 @@ export function TaxApp() {
     {privacy ? <PrivacyView onBack={() => { window.history.replaceState(null, '', '/'); setPrivacy(false) }} /> : <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
       {step === 'upload' && <>
         <section className="grid gap-6 py-10 lg:grid-cols-[1fr_auto] lg:items-end"><div><p className="text-sm font-semibold text-primary">ФОРМА 270.00 · КАЗАХСТАН</p><h1 className="mt-2 max-w-3xl text-balance text-3xl font-semibold tracking-tight sm:text-4xl">Подготовка формы 270.00 по брокерским отчётам</h1><p className="mt-3 max-w-2xl text-pretty leading-relaxed text-muted-foreground">Соберите отчёты нескольких брокеров и счетов в одном расчёте, проверьте обнаруженные счета и скачайте итоговые файлы.</p></div><div id="how-it-works" className="flex gap-5 border-l border-primary/25 pl-5 text-sm"><WorkflowItem number="1" label="Добавьте отчёты" /><WorkflowItem number="2" label="Настройте счета" /><WorkflowItem number="3" label="Скачайте результаты" /></div></section>
+        <Alert className="mb-6 border-primary/20 bg-primary/5">
+          <Info />
+          <AlertDescription className="space-y-2 text-sm leading-relaxed text-muted-foreground">
+            <p>Ниже вы можете найти список брокеров, которых поддерживает наш <strong className="font-semibold text-foreground">бесплатный сервис</strong>.</p>
+            <p>Если вы не нашли вашего брокера в списке ниже, мы можем добавить его по вашей заявке.</p>
+            <p>Заявки на добавление брокеров принимаются через Telegram <a className="font-medium text-primary underline-offset-4 hover:underline" href="https://t.me/qcrossorg" target="_blank" rel="noreferrer">по данной ссылке</a> или через почту <a className="font-medium text-primary underline-offset-4 hover:underline" href="mailto:cio@qcross.org">cio@qcross.org</a>.</p>
+            <p>Предложения по работе сервиса и улучшению приветствуются и обсуждаются в <a className="font-medium text-primary underline-offset-4 hover:underline" href="https://t.me/qcrossorg" target="_blank" rel="noreferrer">данном чате</a>.</p>
+          </AlertDescription>
+        </Alert>
         {!config && !configError && <LoadingConfig />}
         {configError && <ConfigError message={configError} onRetry={() => { void loadConfig() }} />}
         {config && <UploadWorkflow config={config} taxYear={taxYear} autoFiles={autoFiles} manualGroups={manualGroups} form27005={form27005} hasJob={Boolean(jobId)} busy={busy} error={error} invalidReports={invalidReports} onAddAutoFiles={handleAddAutoFiles} onRemoveAutoFile={(brokerCode, reportId) => setAutoFiles((current) => ({ ...current, [brokerCode]: (current[brokerCode] || []).filter((report) => report.id !== reportId || report.uploaded) }))} onAddManualGroup={(broker) => setManualGroups((current) => [...current, { id: crypto.randomUUID(), broker, accountId: '', files: [] }])} onRemoveManualGroup={(groupId) => setManualGroups((current) => current.filter((group) => group.id !== groupId || group.files.some((report) => report.uploaded)))} onManualAccountChange={(groupId, value) => setManualGroups((current) => current.map((group) => group.id === groupId ? { ...group, accountId: value } : group))} onAddManualFiles={handleAddManualFiles} onRemoveManualFile={(groupId, reportId) => setManualGroups((current) => current.map((group) => group.id === groupId ? { ...group, files: group.files.filter((report) => report.id !== reportId || report.uploaded) } : group))} onForm27005Change={setForm27005} onContinue={() => { void handleContinue() }} onAbandon={() => { void restart() }} />}
-        <footer className="flex flex-col items-center gap-1 border-t border-primary/10 py-10 text-center text-xs text-muted-foreground"><span className="font-semibold text-primary">QCM Tax 270</span><span>by Quantum Cross Management · Результаты требуют проверки специалистом.</span></footer>
+        <footer className="flex flex-col items-center gap-2 border-t border-primary/10 py-10 text-center text-xs text-muted-foreground"><span className="font-semibold text-primary">QCM Tax 270</span><span className="flex items-center gap-2"><a className="hover:text-foreground hover:underline" href="https://www.qcross.org" target="_blank" rel="noreferrer">by Quantum Cross Management</a><span aria-hidden="true">·</span><a className="text-primary transition-colors hover:text-primary/75" href="https://t.me/qcrossorg" target="_blank" rel="noreferrer" aria-label="Telegram @qcrossorg" title="Telegram @qcrossorg"><Send className="size-3.5" /></a><span aria-hidden="true">·</span><span>Результаты требуют проверки специалистом.</span></span></footer>
       </>}
       {step === 'accounts' && config && <DiscoveredAccounts accounts={accounts} brokers={config.brokers} selections={selections} busy={busy} error={error} invalidReports={invalidReports} onSelectionChange={(account, field, value) => setSelections((current) => ({ ...current, [accountKey(account)]: { ...(current[accountKey(account)] || { joint: false, excluded: false }), [field]: value } }))} onBack={() => { clearError(); setStep('upload') }} onProcess={() => { void runProcess(false) }} />}
       {step === 'processing' && <ProcessingProgress />}
