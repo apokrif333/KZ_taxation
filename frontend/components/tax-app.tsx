@@ -42,6 +42,7 @@ export function TaxApp() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [invalidReports, setInvalidReports] = useState<InvalidReportPeriod[]>([])
+  const [form27005, setForm27005] = useState(false)
 
   const loadConfig = useCallback(async () => {
     setConfigError(null)
@@ -139,7 +140,7 @@ export function TaxApp() {
         taxpayer: FIXED_TAXPAYER,
         joint_accounts: accounts.filter((account) => selections[accountKey(account)]?.joint).map((account) => account.account_id),
         acc_not_included_for_merged: accounts.filter((account) => selections[accountKey(account)]?.excluded).map((account) => account.account_id),
-        form270_05: false,
+        form270_05: form27005,
         allow_approximate_transfer_basis: allowApproximate,
       })
       setResult(processed)
@@ -154,7 +155,7 @@ export function TaxApp() {
 
   const resetLocalState = () => {
     setStep('upload'); setPrivacy(false)
-    setAutoFiles({}); setManualGroups([]); setJobId(null); setAccounts([]); setSelections({}); setResult(null); setBusy(false); clearError()
+    setAutoFiles({}); setManualGroups([]); setJobId(null); setAccounts([]); setSelections({}); setResult(null); setBusy(false); setForm27005(false); clearError()
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
@@ -181,7 +182,7 @@ export function TaxApp() {
         <section className="grid gap-6 py-10 lg:grid-cols-[1fr_auto] lg:items-end"><div><p className="text-sm font-semibold text-primary">ФОРМА 270.00 · КАЗАХСТАН</p><h1 className="mt-2 max-w-3xl text-balance text-3xl font-semibold tracking-tight sm:text-4xl">Подготовка формы 270.00 по брокерским отчётам</h1><p className="mt-3 max-w-2xl text-pretty leading-relaxed text-muted-foreground">Соберите отчёты нескольких брокеров и счетов в одном расчёте, проверьте обнаруженные счета и скачайте итоговые файлы.</p></div><div id="how-it-works" className="flex gap-5 border-l border-primary/25 pl-5 text-sm"><WorkflowItem number="1" label="Добавьте отчёты" /><WorkflowItem number="2" label="Настройте счета" /><WorkflowItem number="3" label="Скачайте результаты" /></div></section>
         {!config && !configError && <LoadingConfig />}
         {configError && <ConfigError message={configError} onRetry={() => { void loadConfig() }} />}
-        {config && <UploadWorkflow config={config} taxYear={taxYear} autoFiles={autoFiles} manualGroups={manualGroups} hasJob={Boolean(jobId)} busy={busy} error={error} invalidReports={invalidReports} onAddAutoFiles={handleAddAutoFiles} onRemoveAutoFile={(brokerCode, reportId) => setAutoFiles((current) => ({ ...current, [brokerCode]: (current[brokerCode] || []).filter((report) => report.id !== reportId || report.uploaded) }))} onAddManualGroup={(broker) => setManualGroups((current) => [...current, { id: crypto.randomUUID(), broker, accountId: '', files: [] }])} onRemoveManualGroup={(groupId) => setManualGroups((current) => current.filter((group) => group.id !== groupId || group.files.some((report) => report.uploaded)))} onManualAccountChange={(groupId, value) => setManualGroups((current) => current.map((group) => group.id === groupId ? { ...group, accountId: value } : group))} onAddManualFiles={handleAddManualFiles} onRemoveManualFile={(groupId, reportId) => setManualGroups((current) => current.map((group) => group.id === groupId ? { ...group, files: group.files.filter((report) => report.id !== reportId || report.uploaded) } : group))} onContinue={() => { void handleContinue() }} onAbandon={() => { void restart() }} />}
+        {config && <UploadWorkflow config={config} taxYear={taxYear} autoFiles={autoFiles} manualGroups={manualGroups} form27005={form27005} hasJob={Boolean(jobId)} busy={busy} error={error} invalidReports={invalidReports} onAddAutoFiles={handleAddAutoFiles} onRemoveAutoFile={(brokerCode, reportId) => setAutoFiles((current) => ({ ...current, [brokerCode]: (current[brokerCode] || []).filter((report) => report.id !== reportId || report.uploaded) }))} onAddManualGroup={(broker) => setManualGroups((current) => [...current, { id: crypto.randomUUID(), broker, accountId: '', files: [] }])} onRemoveManualGroup={(groupId) => setManualGroups((current) => current.filter((group) => group.id !== groupId || group.files.some((report) => report.uploaded)))} onManualAccountChange={(groupId, value) => setManualGroups((current) => current.map((group) => group.id === groupId ? { ...group, accountId: value } : group))} onAddManualFiles={handleAddManualFiles} onRemoveManualFile={(groupId, reportId) => setManualGroups((current) => current.map((group) => group.id === groupId ? { ...group, files: group.files.filter((report) => report.id !== reportId || report.uploaded) } : group))} onForm27005Change={setForm27005} onContinue={() => { void handleContinue() }} onAbandon={() => { void restart() }} />}
         <footer className="flex flex-col items-center gap-1 border-t border-primary/10 py-10 text-center text-xs text-muted-foreground"><span className="font-semibold text-primary">QCM Tax 270</span><span>by Quantum Cross Management · Результаты требуют проверки специалистом.</span></footer>
       </>}
       {step === 'accounts' && config && <DiscoveredAccounts accounts={accounts} brokers={config.brokers} selections={selections} busy={busy} error={error} invalidReports={invalidReports} onSelectionChange={(account, field, value) => setSelections((current) => ({ ...current, [accountKey(account)]: { ...(current[accountKey(account)] || { joint: false, excluded: false }), [field]: value } }))} onBack={() => { clearError(); setStep('upload') }} onProcess={() => { void runProcess(false) }} />}
