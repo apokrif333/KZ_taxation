@@ -401,6 +401,8 @@ class ExanteParserTests(unittest.TestCase):
         option_fifo = [row for row in dataset.tables["Fifo"] if row["symbol"] == "SPY.CBOE.30M2023.P350"]
         self.assertEqual(len(option_fifo), 1)
         self.assertEqual(option_fifo[0]["exit_price"], "0")
+        self.assertEqual(option_fifo[0]["operation_type"], "option_expiration")
+        self.assertEqual(option_fifo[0]["years_result_table"], "Yearly Derivatives")
         self.assertEqual(option_fifo[0]["pnl"], "-300.0")
         self.assertFalse(any(row["symbol"] == "SPY" for row in dataset.tables["Trades"]))
         self.assertFalse(any(row["reason"] == "unhandled_exante_transaction" for row in dataset.tables["Unprocessed"]))

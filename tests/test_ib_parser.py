@@ -539,12 +539,24 @@ class InteractiveBrokersParserTests(unittest.TestCase):
         self.assertEqual(len(dataset.tables["Fifo"]), 1)
         fifo = dataset.tables["Fifo"][0]
         self.assertNotIn("opening_lot_status", fifo)
+        self.assertEqual(fifo["flag"], "non-preferential")
+        self.assertEqual(fifo["tax_exchange"], "outofKZ")
+        self.assertEqual(fifo["operation_type"], "trade")
+        self.assertEqual(fifo["years_result_table"], "Yearly Trades")
         self.assertEqual(fifo["acquisition_cost_with_commission"], "1001.0")
         self.assertEqual(fifo["pnl_before_commission"], "100")
         self.assertEqual(fifo["pnl"], "99.0")
         self.assertEqual(fifo["pnl_after_all_commissions"], "98.0")
         self.assertEqual(dataset.tables["Unprocessed"], [])
-        self.assertEqual(dataset.tables["Dividends"][0]["gross_amount_kzt"], "4700")
+        dividend = dataset.tables["Dividends"][0]
+        self.assertEqual(dividend["gross_amount_kzt"], "4700")
+        yearly_dividend = next(
+            row for row in dataset.tables["Years_Results"] if row["table"] == "Yearly Dividends"
+        )
+        self.assertEqual(dividend["flag"], yearly_dividend["flag"])
+        interest = dataset.tables["Interest"][0]
+        self.assertEqual(interest["flag"], "non-preferential")
+        self.assertEqual(interest["years_result_table"], "Yearly Interest")
 
         items = ReconciliationEngine().reconcile_dataset(dataset)
         non_info = [item for item in items if item.severity != ReconciliationSeverity.INFO]
@@ -638,6 +650,10 @@ class InteractiveBrokersParserTests(unittest.TestCase):
         self.assertEqual(fifo["acquisition_cost_with_commission"], "264.00")
         self.assertEqual(fifo["pnl"], "40.00")
         self.assertEqual(fifo["pnl_after_all_commissions"], "38.00")
+        self.assertEqual(fifo["flag"], "non-preferential")
+        self.assertEqual(fifo["tax_exchange"], "outofKZ")
+        self.assertEqual(fifo["operation_type"], "derivative_trade")
+        self.assertEqual(fifo["years_result_table"], "Yearly Derivatives")
         derivative_rows = [row for row in result.dataset.tables["Years_Results"] if row["table"] == "Yearly Derivatives"]
         self.assertEqual(len(derivative_rows), 1)
         self.assertEqual(derivative_rows[0]["flag"], "non-preferential")
@@ -1335,6 +1351,8 @@ Grant Activity,Data,UGRANTPRE,IBKR,2025-01-01,Stock Award Withholding,2024-01-01
         self.assertTrue(str(twtr_trades[-1]["source_report"]).startswith("corporate_action:"))
         self.assertEqual(len(fifo_rows), 2)
         self.assertTrue(all(str(row["source_trade_id"]).startswith("CA:") for row in fifo_rows))
+        self.assertTrue(all(row["operation_type"] == "corporate_action:merged" for row in fifo_rows))
+        self.assertTrue(all(row["years_result_table"] == "Yearly Trades" for row in fifo_rows))
         self.assertEqual([row["exit_date"] for row in fifo_rows], ["2022-10-28 20:25:00", "2022-10-28 20:25:00"])
         self.assertEqual([row["exit_quantity"] for row in fifo_rows], ["20", "20"])
         self.assertEqual([row["exit_price"] for row in fifo_rows], ["54.2", "54.2"])
@@ -1655,6 +1673,10 @@ Grant Activity,Data,UGRANTPRE,IBKR,2025-01-01,Stock Award Withholding,2024-01-01
             },
         ]
         yearly = ib_module._build_years_results(dataset)
+        self.assertEqual(dataset.tables["Fifo"][0]["operation_type"], "bond_redemption")
+        self.assertEqual(dataset.tables["Fifo"][0]["years_result_table"], "Yearly Bonds Redemption")
+        self.assertEqual(dataset.tables["Fifo"][1]["operation_type"], "corporate_action:maturity")
+        self.assertEqual(dataset.tables["Fifo"][1]["years_result_table"], "Yearly Trades")
         corp_rows = [row for row in yearly if row["table"] == "Yearly Bonds Redemption"]
         self.assertEqual(len(corp_rows), 1)
         self.assertEqual(corp_rows[0]["pnl"], "100.00")
@@ -1697,6 +1719,7 @@ Grant Activity,Data,UGRANTPRE,IBKR,2025-01-01,Stock Award Withholding,2024-01-01
         ]
         yearly = ib_module._build_years_results(dataset)
         coupon_rows = [row for row in yearly if row["table"] == "Yearly Coupons"]
+        self.assertTrue(all(row["flag"] == "non-preferential" for row in dataset.tables["Coupons"]))
         self.assertEqual(len(coupon_rows), 1)
         self.assertEqual(coupon_rows[0]["amount"], "50.00")
         self.assertEqual(coupon_rows[0]["amount_kzt"], "22500.00")
@@ -1729,6 +1752,7 @@ Grant Activity,Data,UGRANTPRE,IBKR,2025-01-01,Stock Award Withholding,2024-01-01
         ]
         yearly = ib_module._build_years_results(dataset)
         coupon_rows = [row for row in yearly if row["table"] == "Yearly Coupons"]
+        self.assertEqual(dataset.tables["Coupons"][0]["flag"], "preferential")
         self.assertEqual(len(coupon_rows), 1)
         self.assertEqual(coupon_rows[0]["flag"], "preferential")
         self.assertEqual(coupon_rows[0]["amount"], "100.00")
@@ -1765,6 +1789,8 @@ Grant Activity,Data,UGRANTPRE,IBKR,2025-01-01,Stock Award Withholding,2024-01-01
         ]
 
         yearly = ib_module._build_years_results(dataset)
+        self.assertEqual(dataset.tables["Fifo"][0]["operation_type"], "bond_redemption")
+        self.assertEqual(dataset.tables["Fifo"][0]["years_result_table"], "Yearly Bonds Redemption")
 
         redemption_rows = [row for row in yearly if row["table"] == "Yearly Bonds Redemption"]
         self.assertEqual(len(redemption_rows), 1)

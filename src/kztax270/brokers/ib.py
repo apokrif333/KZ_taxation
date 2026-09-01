@@ -2535,6 +2535,8 @@ def _build_fx_fifo_rows(
                 "isin": None,
                 "currency": _string_or_none(trade.get("currency")),
                 "country": _string_or_none(trade.get("country")),
+                "exchange": _string_or_none(trade.get("exchange")),
+                "operation_type": _fifo_operation_type_from_trade(trade),
                 "position_type": "fx",
                 "_opening_lot_status": "matched",
                 "enter_date": None,
@@ -2874,6 +2876,7 @@ def _close_unknown_opening_lot(
         "currency": _string_or_none(exit_trade.get("currency")),
         "country": _string_or_none(exit_trade.get("country")),
         "exchange": _string_or_none(exit_trade.get("exchange")),
+        "operation_type": _fifo_operation_type_from_trade(exit_trade),
         "position_type": position_type,
         "_opening_lot_status": opening_status,
         "enter_date": inferred_enter_dt.isoformat(sep=" ") if inferred_enter_dt else None,
@@ -3090,6 +3093,7 @@ def _close_fifo_lot(
         "currency": opening.currency,
         "country": opening.country,
         "exchange": _string_or_none(exit_trade.get("exchange")) or opening.exchange,
+        "operation_type": _fifo_operation_type_from_trade(exit_trade),
         "position_type": position_type,
         "_opening_lot_status": opening_lot_status,
         "_source_opening_lot_status": opening.opening_lot_status,
@@ -3304,6 +3308,96 @@ def _is_broker_country_forex_trade(record: Mapping[str, Any]) -> bool:
     return asset_type in {"forex", "fx spot", "fx_spot", "fx-spot", "currency"} or "FOREX" in asset_type or ".FX" in symbol
 
 
+def _annotate_audit_tax_dimensions(
+    dataset: CanonicalDataset,
+    instrument_flags: Mapping[str, Mapping[str, Any]],
+    *,
+    aix_provider: AixInstrumentProvider,
+    dividend_provider: KaseAixDividendProvider,
+    offshore_provider: OffshoreJurisdictionProvider,
+) -> None:
+    """Classify detail rows before Years_Results aggregates them."""
+
+    for record in dataset.tables.get("Fifo", []):
+        if not isinstance(record, dict):
+            continue
+        flags = _record_tax_flags(
+            record,
+            instrument_flags,
+            aix_provider=aix_provider,
+            offshore_provider=offshore_provider,
+        )
+        if _is_derivative_record(record):
+            table_name = "Yearly Derivatives"
+        elif _is_fx_trade(record):
+            flags = _issuer_outside_kz_flags()
+            table_name = "Yearly FX Trades"
+        else:
+            raw_pnl_kzt = _decimal(record.get("pnl_kzt"))
+            table_name = (
+                "Yearly Bonds Redemption"
+                if _is_bond_redemption_fifo_row(record) and raw_pnl_kzt > 0
+                else "Yearly Trades"
+            )
+        record["flag"] = _tax_source_flag(flags)
+        record["tax_exchange"] = (
+            _string_or_none(flags.get("exchange_bucket"))
+            if table_name in {"Yearly Trades", "Yearly Derivatives"}
+            else None
+        )
+        record["years_result_table"] = table_name
+        record["operation_type"] = _fifo_operation_type(record, table_name)
+        record["_is_kz_security"] = _is_kz_security_record(record, flags)
+
+    dividend_groups: dict[tuple[Any, ...], list[Mapping[str, Any]]] = defaultdict(list)
+    for record in dataset.tables.get("Dividends", []):
+        year = _record_year(record, "pay_date", "date")
+        dividend_groups[_dividend_reversal_key(record, year)].append(record)
+    for (year, _instrument_key, _currency), group_records in dividend_groups.items():
+        representative = _dividend_group_representative(group_records)
+        flags = _record_tax_flags(
+            representative,
+            instrument_flags,
+            aix_provider=aix_provider,
+            offshore_provider=offshore_provider,
+        )
+        dividend_flag = dividend_provider.preferential_flag(
+            flags.get("isin") or representative.get("isin"),
+            year,
+        )
+        if dividend_flag is not None:
+            flags["dividend_preferential_flag"] = dividend_flag
+        flag = _tax_source_flag(flags)
+        for record in group_records:
+            if isinstance(record, dict):
+                record["flag"] = flag
+
+    for record in dataset.tables.get("Interest", []):
+        if not isinstance(record, dict):
+            continue
+        flags = _issuer_outside_kz_flags()
+        table_name = "Yearly Derivatives" if _is_swap_interest_record(record) else "Yearly Interest"
+        record["flag"] = _tax_source_flag(flags)
+        record["years_result_table"] = table_name
+        record["tax_exchange"] = (
+            _string_or_none(flags.get("exchange_bucket"))
+            if table_name == "Yearly Derivatives"
+            else None
+        )
+
+    for record in dataset.tables.get("Coupons", []):
+        if not isinstance(record, dict):
+            continue
+        flags = _record_tax_flags(
+            record,
+            instrument_flags,
+            aix_provider=aix_provider,
+            offshore_provider=offshore_provider,
+        )
+        record["flag"] = _tax_source_flag(flags)
+        record["_is_kz_security"] = _is_kz_security_record(record, flags)
+
+
 def _build_years_results(
     dataset: CanonicalDataset,
     *,
@@ -3315,6 +3409,13 @@ def _build_years_results(
     dividend_provider = dividend_provider or KaseAixDividendProvider.from_xlsx()
     offshore_provider = offshore_provider or OffshoreJurisdictionProvider.from_xlsx()
     instrument_flags = _instrument_tax_flags(dataset)
+    _annotate_audit_tax_dimensions(
+        dataset,
+        instrument_flags,
+        aix_provider=aix_provider,
+        dividend_provider=dividend_provider,
+        offshore_provider=offshore_provider,
+    )
     rows: list[dict[str, Any]] = []
     pnl_groups: dict[tuple[Any, ...], dict[str, Decimal]] = defaultdict(
         lambda: {
@@ -3340,32 +3441,15 @@ def _build_years_results(
 
     for record in dataset.tables.get("Fifo", []):
         year = _record_year(record, "exit_date")
-        flags = _record_tax_flags(
-            record,
-            instrument_flags,
-            aix_provider=aix_provider,
-            offshore_provider=offshore_provider,
-        )
-        if _is_derivative_record(record):
-            table_name = "Yearly Derivatives"
-        elif _is_fx_trade(record):
-            flags = _issuer_outside_kz_flags()
-            table_name = "Yearly FX Trades"
-        else:
-            raw_pnl_kzt = _decimal(record.get("pnl_kzt"))
-            table_name = (
-                "Yearly Bonds Redemption"
-                if _is_bond_redemption_fifo_row(record) and raw_pnl_kzt > 0
-                else "Yearly Trades"
-            )
-        key = _years_result_key(table_name, year, record, flags)
+        table_name = _string_or_none(record.get("years_result_table")) or "Yearly Trades"
+        key = _years_result_key_from_dimensions(table_name, year, record)
         values = pnl_groups[key]
         pnl = _decimal(record.get("pnl"))
         pnl_kzt = _decimal(record.get("pnl_kzt"))
         # A Kazakh issuer's bond redemption stays visible in the audit as the
         # native-currency PnL, but it is outside Form 270.00.  Do not let its
         # KZT equivalent flow into the form aggregation.
-        if _is_bond_redemption_fifo_row(record) and _is_kz_security_record(record, flags):
+        if _is_bond_redemption_fifo_row(record) and bool(record.get("_is_kz_security")):
             pnl_kzt = Decimal("0")
         tax_pnl = _derivative_tax_pnl(record)
         tax_pnl_kzt = _derivative_tax_pnl_kzt(record)
@@ -3374,7 +3458,7 @@ def _build_years_results(
         if table_name == "Yearly Derivatives" and tax_pnl_kzt > 0:
             values["only_profit"] += tax_pnl
             values["only_profit_kzt"] += tax_pnl_kzt
-        if table_name == "Yearly Trades" and _tax_source_flag(flags) == FLAG_OFFSHORE:
+        if table_name == "Yearly Trades" and record.get("flag") == FLAG_OFFSHORE:
             values["taxable_proceeds_kzt"] += _taxable_exit_proceeds_kzt(record)
 
     for record in dataset.tables.get("_TradeWithholdingTax", []):
@@ -3393,13 +3477,7 @@ def _build_years_results(
         values["withhold_kzt"] += withholding_kzt
         values["foreign_tax_credit_kzt"] += withholding_kzt
 
-    for key, values in _build_dividend_year_groups(
-        dataset.tables.get("Dividends", []),
-        instrument_flags,
-        aix_provider=aix_provider,
-        dividend_provider=dividend_provider,
-        offshore_provider=offshore_provider,
-    ).items():
+    for key, values in _build_dividend_year_groups(dataset.tables.get("Dividends", [])).items():
         amount_groups[key]["amount"] += values["amount"]
         amount_groups[key]["amount_kzt"] += values["amount_kzt"]
         amount_groups[key]["withhold_kzt"] += values["withhold_kzt"]
@@ -3408,20 +3486,15 @@ def _build_years_results(
     for sheet_name, table_name in (("Interest", "Yearly Interest"), ("Coupons", "Yearly Coupons")):
         for record in dataset.tables.get(sheet_name, []):
             year = _record_year(record, "date")
-            flags = (
-                _issuer_outside_kz_flags()
-                if sheet_name == "Interest"
-                else _record_tax_flags(
-                    record,
-                    instrument_flags,
-                    aix_provider=aix_provider,
-                    offshore_provider=offshore_provider,
-                )
-            )
             amount = _decimal(record.get("gross_amount"))
             amount_kzt = _decimal(record.get("gross_amount_kzt"))
-            if sheet_name == "Interest" and _is_swap_interest_record(record):
-                key = _years_result_key("Yearly Derivatives", year, record, flags)
+            detail_table_name = (
+                _string_or_none(record.get("years_result_table"))
+                if sheet_name == "Interest"
+                else table_name
+            ) or table_name
+            if detail_table_name == "Yearly Derivatives":
+                key = _years_result_key_from_dimensions(detail_table_name, year, record)
                 values = pnl_groups[key]
                 values["pnl"] += amount
                 values["pnl_kzt"] += amount_kzt
@@ -3429,14 +3502,14 @@ def _build_years_results(
                     values["only_profit"] += amount
                     values["only_profit_kzt"] += amount_kzt
                 continue
-            key = _years_result_key(table_name, year, record, flags)
+            key = _years_result_key_from_dimensions(detail_table_name, year, record)
             values = amount_groups[key]
             values["amount"] += amount
             values["amount_kzt"] += amount_kzt
             if sheet_name == "Interest" and amount > 0:
                 values["only_profit"] += amount
                 values["only_profit_kzt"] += amount_kzt
-            elif sheet_name == "Coupons" and not _is_kz_coupon(record, flags) and (
+            elif sheet_name == "Coupons" and not bool(record.get("_is_kz_security")) and (
                 (amount > 0 and not bool(record.get("is_revert")))
                 or (amount < 0 and bool(record.get("is_revert")))
             ):
@@ -3575,6 +3648,43 @@ def _is_bond_redemption_fifo_row(record: Mapping[str, Any]) -> bool:
     return corporate_action_type == "redemption" and "bond" in asset_type
 
 
+def _fifo_operation_type_from_trade(trade: Mapping[str, Any]) -> str:
+    corporate_action_type = _string_or_none(
+        trade.get("_corporate_action_type") or trade.get("corporate_action_type")
+    )
+    asset_type = str(trade.get("asset_type") or "").lower()
+    if corporate_action_type in {"maturity", "full_call"} or (
+        corporate_action_type == "redemption" and "bond" in asset_type
+    ):
+        return "bond_redemption"
+    if corporate_action_type:
+        return f"corporate_action:{corporate_action_type}"
+    trade_type = _string_or_none(trade.get("trade_type"))
+    if trade_type and trade_type != "trade":
+        return trade_type
+    if _is_fx_trade(trade):
+        return "fx_trade"
+    if _is_derivative_record(trade):
+        return "derivative_trade"
+    return "trade"
+
+
+def _fifo_operation_type(record: Mapping[str, Any], years_result_table: str) -> str:
+    existing = _string_or_none(record.get("operation_type"))
+    if existing:
+        return existing
+    if years_result_table == "Yearly Bonds Redemption":
+        return "bond_redemption"
+    if years_result_table == "Yearly FX Trades":
+        return "fx_trade"
+    if years_result_table == "Yearly Derivatives":
+        return "derivative_trade"
+    corporate_action_type = _string_or_none(record.get("corporate_action_type"))
+    if corporate_action_type:
+        return f"corporate_action:{corporate_action_type}"
+    return "trade"
+
+
 def _is_derivative_record(record: Mapping[str, Any]) -> bool:
     asset_type = str(record.get("asset_type") or "").lower()
     symbol = str(record.get("symbol") or "").upper()
@@ -3654,11 +3764,6 @@ def _is_kz_coupon(record: Mapping[str, Any], flags: Mapping[str, Any]) -> bool:
 
 def _build_dividend_year_groups(
     records: Sequence[Mapping[str, Any]],
-    instrument_flags: Mapping[str, Mapping[str, Any]],
-    *,
-    aix_provider: AixInstrumentProvider,
-    dividend_provider: KaseAixDividendProvider,
-    offshore_provider: OffshoreJurisdictionProvider,
 ) -> dict[tuple[Any, ...], dict[str, Decimal]]:
     instrument_groups: dict[tuple[Any, ...], list[Mapping[str, Any]]] = defaultdict(list)
     for record in records:
@@ -3685,16 +3790,11 @@ def _build_dividend_year_groups(
     )
     for (year, _instrument_key, currency), group_records in instrument_groups.items():
         representative = _dividend_group_representative(group_records)
-        flags = _record_tax_flags(
-            representative,
-            instrument_flags,
-            aix_provider=aix_provider,
-            offshore_provider=offshore_provider,
+        key = _years_result_key_from_dimensions(
+            "Yearly Dividends",
+            year,
+            {**representative, "currency": currency},
         )
-        dividend_flag = dividend_provider.preferential_flag(flags.get("isin") or representative.get("isin"), year)
-        if dividend_flag is not None:
-            flags["dividend_preferential_flag"] = dividend_flag
-        key = _years_result_key("Yearly Dividends", year, {**representative, "currency": currency}, flags)
         gross_amount = sum((_decimal(record.get("gross_amount")) for record in group_records), Decimal("0"))
         gross_amount_kzt = sum((_decimal(record.get("gross_amount_kzt")) for record in group_records), Decimal("0"))
         tax_amount = sum((_decimal(record.get("tax")) for record in group_records), Decimal("0"))
@@ -3907,6 +4007,27 @@ def _years_result_key(
         _tax_source_flag(flags),
         country,
         exchange,
+        _string_or_none(record.get("currency")),
+    )
+
+
+def _years_result_key_from_dimensions(
+    table_name: str,
+    year: int | None,
+    record: Mapping[str, Any],
+) -> tuple[Any, ...]:
+    country = _string_or_none(record.get("country")) if table_name in {"Yearly Trades", "Yearly Dividends"} else None
+    tax_exchange = (
+        _string_or_none(record.get("tax_exchange"))
+        if table_name in {"Yearly Trades", "Yearly Derivatives"}
+        else None
+    )
+    return (
+        table_name,
+        year,
+        _string_or_none(record.get("flag")) or FLAG_NON_PREFERENTIAL,
+        country,
+        tax_exchange,
         _string_or_none(record.get("currency")),
     )
 

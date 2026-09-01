@@ -4,19 +4,24 @@ The canonical workbook is defined in code at `src/kztax270/canonical/workbook_sc
 
 ## Sheets
 
-1. `Instruments` - every financial instrument ever seen in the account reports.
-2. `CorporateActions` - mergers, redemptions, buybacks, spin-offs and similar actions.
-3. `Dividends` - gross, withholding tax and net dividend income.
-4. `Transfers` - cash and security deposits, withdrawals and transfers.
-5. `Trades` - normalized raw trades in execution order.
-6. `Fifo` - realized FIFO rows with commission allocation.
-7. `Positions` - end-of-year positions.
-8. `Interest` - interest on broker cash balances.
-9. `Coupons` - bond coupons.
-10. `CashBalances` - ending cash by year/currency.
-11. `Years_Results` - legacy-style yearly result blocks by income table, flag and currency.
-12. `Unprocessed` - preserved rows that could not be fully processed and require user attention.
-13. `Reconciliation` - raw-vs-canonical differences.
+1. `Years_Results` - yearly result blocks by income table, flag and currency.
+2. `Unprocessed` - preserved rows that could not be fully processed and require user attention.
+3. `Reconciliation` - raw-vs-canonical differences.
+4. `CorporateActions` - mergers, redemptions, buybacks, spin-offs and similar actions.
+5. `Dividends` - gross, withholding tax and net dividend income.
+6. `Transfers` - cash and security deposits, withdrawals and transfers.
+7. `Trades` - normalized raw trades in execution order.
+8. `Fifo` - realized FIFO rows with commission allocation and tax classification.
+9. `Positions` - end-of-year positions.
+10. `Interest` - interest on broker cash balances.
+11. `Coupons` - bond coupons.
+12. `CashBalances` - ending cash by year/currency.
+13. `Instruments` - every financial instrument ever seen in the account reports.
+
+Detail rows are tax-classified before `Years_Results` is aggregated. `Fifo`
+stores `flag`, `tax_exchange`, `operation_type`, and `years_result_table`;
+`Interest` stores `flag` and `years_result_table`; `Dividends` and `Coupons`
+store `flag`.
 
 ## Required Reference Tables
 

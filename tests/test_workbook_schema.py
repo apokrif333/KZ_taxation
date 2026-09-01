@@ -15,7 +15,9 @@ class WorkbookSchemaTests(unittest.TestCase):
         self.assertEqual(
             CANONICAL_SHEET_NAMES,
             (
-                "Instruments",
+                "Years_Results",
+                "Unprocessed",
+                "Reconciliation",
                 "CorporateActions",
                 "Dividends",
                 "Transfers",
@@ -25,9 +27,7 @@ class WorkbookSchemaTests(unittest.TestCase):
                 "Interest",
                 "Coupons",
                 "CashBalances",
-                "Years_Results",
-                "Unprocessed",
-                "Reconciliation",
+                "Instruments",
             ),
         )
 
@@ -42,6 +42,7 @@ class WorkbookSchemaTests(unittest.TestCase):
 
     def test_dividends_columns_include_row_tax_and_exclude_old_kzt_net_tax(self) -> None:
         columns = required_columns("Dividends")
+        self.assertIn("flag", columns)
         self.assertIn("tax", columns)
         self.assertIn("tax_kzt", columns)
         self.assertNotIn("tax_kzt_usd", columns)
@@ -53,6 +54,19 @@ class WorkbookSchemaTests(unittest.TestCase):
         self.assertIn("quantity", columns)
         self.assertIn("price", columns)
         self.assertIn("enter_date", columns)
+
+    def test_fifo_columns_include_tax_audit_dimensions(self) -> None:
+        columns = required_columns("Fifo")
+        self.assertIn("tax_exchange", columns)
+        self.assertIn("flag", columns)
+        self.assertIn("operation_type", columns)
+        self.assertIn("years_result_table", columns)
+
+    def test_interest_and_coupon_columns_include_tax_audit_dimensions(self) -> None:
+        interest_columns = required_columns("Interest")
+        self.assertIn("flag", interest_columns)
+        self.assertIn("years_result_table", interest_columns)
+        self.assertIn("flag", required_columns("Coupons"))
 
     def test_trades_columns_include_trade_type_marker(self) -> None:
         columns = required_columns("Trades")
@@ -150,6 +164,45 @@ class WorkbookSchemaTests(unittest.TestCase):
         self.assertEqual(quantity_cell.data_type, "n")
         self.assertEqual(amount_cell.data_type, "n")
         self.assertEqual(isin_cell.data_type, "s")
+
+    def test_fifo_audit_hides_acquisition_cost_columns(self) -> None:
+        from openpyxl import load_workbook
+
+        dataset = CanonicalDataset.empty("ib", "UTEST")
+        dataset.tables["Fifo"] = [
+            {
+                "symbol": "AAPL",
+                "tax_exchange": "outofKZ",
+                "flag": "non-preferential",
+                "operation_type": "trade",
+                "years_result_table": "Yearly Trades",
+                "exit_amount": "1200",
+                "acquisition_cost_with_commission": "1005",
+                "acquisition_cost_with_commission_kzt": "502500",
+                "pnl_before_commission_kzt": "100000",
+                "pnl_after_all_commissions_kzt": "97000",
+                "pnl": "195",
+                "pnl_kzt": "97500",
+            }
+        ]
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "audit.xlsx"
+            ExcelAuditWorkbookWriter().write(dataset, path)
+            workbook = load_workbook(path, data_only=True)
+
+        headers = [cell.value for cell in workbook["Fifo"][1]]
+        self.assertEqual(workbook.sheetnames, list(CANONICAL_SHEET_NAMES))
+        self.assertNotIn("Acquisition_Cost_With_Commission", headers)
+        self.assertNotIn("Acquisition_Cost_With_Commission_KZT", headers)
+        self.assertNotIn("PnL_Before_Commission_KZT", headers)
+        self.assertNotIn("PnL_After_All_Commissions_KZT", headers)
+        self.assertIn("Tax_Exchange", headers)
+        self.assertIn("Flag", headers)
+        self.assertIn("Operation_Type", headers)
+        self.assertIn("Years_Result_Table", headers)
+        self.assertIn("PnL", headers)
+        self.assertIn("PnL_KZT", headers)
 
     def test_years_results_blocks_have_titles_headers_and_dimension_cells_formatted(self) -> None:
         from openpyxl import load_workbook

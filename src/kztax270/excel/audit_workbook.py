@@ -62,6 +62,15 @@ NUMERIC_WORKBOOK_COLUMNS = {
     "tolerance",
 }
 
+HIDDEN_FIFO_AUDIT_COLUMNS = frozenset(
+    {
+        "acquisition_cost_with_commission",
+        "acquisition_cost_with_commission_kzt",
+        "pnl_before_commission_kzt",
+        "pnl_after_all_commissions_kzt",
+    }
+)
+
 YEARS_RESULTS_DIMENSION_COLUMNS = frozenset({"year", "flag", "country", "tax_exchange", "currency"})
 YEARS_RESULTS_KZT_COLUMNS = frozenset({"pnl_kzt", "amount_kzt", "only_profit_kzt", "withhold_kzt", "tax_kzt", "tax_kzt_withhold"})
 YEARS_RESULTS_AMOUNT_FORMAT = "0.00"
@@ -95,6 +104,8 @@ class ExcelAuditWorkbookWriter:
                     ]
                 df = pd.DataFrame(records)
                 df = ensure_columns(df, sheet.required_columns)
+                if sheet.name == "Fifo":
+                    df = df.drop(columns=HIDDEN_FIFO_AUDIT_COLUMNS, errors="ignore")
                 df = coerce_numeric_columns_for_excel(df)
                 df = df.rename(columns=display_column_name)
                 df.to_excel(writer, sheet_name=sheet.name, index=False)
@@ -150,6 +161,16 @@ def display_column_name(column: str) -> str:
 
 def write_years_results_sheet(writer: Any, records: Sequence[Mapping[str, Any]]) -> None:
     import pandas as pd  # type: ignore
+
+    if not records:
+        pd.DataFrame().to_excel(
+            writer,
+            sheet_name="Years_Results",
+            index=False,
+            header=False,
+        )
+        return
+
     grouped: dict[str, list[Mapping[str, Any]]] = {}
     for record in records:
         table_name = str(record.get("table") or "Unclassified")

@@ -35,6 +35,10 @@ class JointWorkbookTests(unittest.TestCase):
         dataset.tables["Fifo"] = [
             {
                 "symbol": "AAA",
+                "tax_exchange": "outofKZ",
+                "flag": "non-preferential",
+                "operation_type": "trade",
+                "years_result_table": "Yearly Trades",
                 "enter_quantity": "3",
                 "enter_price": "100",
                 "enter_amount": "300",
@@ -49,6 +53,7 @@ class JointWorkbookTests(unittest.TestCase):
             {
                 "date": "2024-06-01",
                 "symbol": "AAA",
+                "flag": "non-preferential",
                 "currency": "USD",
                 "gross_amount": "101",
                 "withholding_tax": "-15.15",
@@ -97,7 +102,12 @@ class JointWorkbookTests(unittest.TestCase):
         self.assertEqual(Decimal(str(tables["Trades"][0]["price"])), Decimal("100"))
         self.assertEqual(Decimal(str(tables["Trades"][0]["amount"])), Decimal("150"))
         self.assertEqual(Decimal(str(tables["Fifo"][0]["pnl_kzt"])), Decimal("13500"))
+        self.assertEqual(tables["Fifo"][0]["tax_exchange"], "outofKZ")
+        self.assertEqual(tables["Fifo"][0]["flag"], "non-preferential")
+        self.assertEqual(tables["Fifo"][0]["operation_type"], "trade")
+        self.assertEqual(tables["Fifo"][0]["years_result_table"], "Yearly Trades")
         self.assertEqual(Decimal(str(tables["Dividends"][0]["gross_amount"])), Decimal("50.5"))
+        self.assertEqual(tables["Dividends"][0]["flag"], "non-preferential")
         self.assertEqual(
             Decimal(str(tables["Dividends"][0]["withholding_tax"])),
             Decimal("-7.575"),

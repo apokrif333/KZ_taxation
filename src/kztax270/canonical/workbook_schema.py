@@ -16,7 +16,7 @@ class SheetDefinition:
     description: str
 
 
-CANONICAL_WORKBOOK_SHEETS: tuple[SheetDefinition, ...] = (
+_CANONICAL_WORKBOOK_SHEET_DEFINITIONS: tuple[SheetDefinition, ...] = (
     SheetDefinition(
         "Instruments",
         (
@@ -75,6 +75,7 @@ CANONICAL_WORKBOOK_SHEETS: tuple[SheetDefinition, ...] = (
             "symbol",
             "isin",
             "country",
+            "flag",
             "currency",
             "gross_amount",
             "withholding_tax",
@@ -143,6 +144,10 @@ CANONICAL_WORKBOOK_SHEETS: tuple[SheetDefinition, ...] = (
             "currency",
             "country",
             "exchange",
+            "tax_exchange",
+            "flag",
+            "operation_type",
+            "years_result_table",
             "position_type",
             "enter_date",
             "enter_quantity",
@@ -195,6 +200,8 @@ CANONICAL_WORKBOOK_SHEETS: tuple[SheetDefinition, ...] = (
             "date",
             "description",
             "financing_kind",
+            "flag",
+            "years_result_table",
             "currency",
             "gross_amount",
             "withholding_tax",
@@ -215,6 +222,7 @@ CANONICAL_WORKBOOK_SHEETS: tuple[SheetDefinition, ...] = (
             "symbol",
             "isin",
             "country",
+            "flag",
             "currency",
             "gross_amount",
             "withholding_tax",
@@ -302,6 +310,28 @@ CANONICAL_WORKBOOK_SHEETS: tuple[SheetDefinition, ...] = (
         ),
         "Differences between raw broker report totals and canonical workbook data.",
     ),
+)
+
+_CANONICAL_SHEET_ORDER = (
+    "Years_Results",
+    "Unprocessed",
+    "Reconciliation",
+    "CorporateActions",
+    "Dividends",
+    "Transfers",
+    "Trades",
+    "Fifo",
+    "Positions",
+    "Interest",
+    "Coupons",
+    "CashBalances",
+    "Instruments",
+)
+_CANONICAL_SHEET_DEFINITIONS_BY_NAME = {
+    sheet.name: sheet for sheet in _CANONICAL_WORKBOOK_SHEET_DEFINITIONS
+}
+CANONICAL_WORKBOOK_SHEETS: tuple[SheetDefinition, ...] = tuple(
+    _CANONICAL_SHEET_DEFINITIONS_BY_NAME[name] for name in _CANONICAL_SHEET_ORDER
 )
 
 CANONICAL_SHEET_NAMES: tuple[str, ...] = tuple(sheet.name for sheet in CANONICAL_WORKBOOK_SHEETS)
