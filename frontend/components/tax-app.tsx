@@ -186,7 +186,7 @@ export function TaxApp() {
             <p>Ниже вы можете найти список брокеров, которых поддерживает наш <strong className="font-semibold text-foreground">бесплатный сервис</strong>.</p>
             <p>Если вы не нашли вашего брокера в списке ниже, мы можем добавить его по вашей заявке.</p>
             <p>Заявки на добавление брокеров принимаются через Telegram <a className="font-medium text-primary underline-offset-4 hover:underline" href="https://t.me/aleksei_ash" target="_blank" rel="noreferrer">по данной ссылке</a> или через почту <a className="font-medium text-primary underline-offset-4 hover:underline" href="mailto:cio@qcross.org">cio@qcross.org</a>.</p>
-            <p>Предложения по работе сервиса и улучшению приветствуются и обсуждаются в <a className="font-medium text-primary underline-offset-4 hover:underline" href="https://t.me/qcrossorg" target="_blank" rel="noreferrer">данном чате</a>.</p>
+            <p>Предложения по работе сервиса и улучшению приветствуются и обсуждаются в <a className="font-medium text-primary underline-offset-4 hover:underline" href="https://t.me/qcrossorg_chat" target="_blank" rel="noreferrer">данном чате</a>.</p>
           </AlertDescription>
         </Alert>
         {!config && !configError && <LoadingConfig />}
