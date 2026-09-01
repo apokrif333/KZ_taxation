@@ -4,10 +4,12 @@ import tempfile
 import unittest
 from decimal import Decimal
 from pathlib import Path
+from unittest.mock import patch
 
 from conftest_imports import ROOT, SRC  # noqa: F401
 from kztax270.canonical.schema import CanonicalDataset
 from kztax270.config import load_form270_run_config
+from kztax270.form270 import json_builder
 from kztax270.form270.json_builder import (
     ASSET_TYPES_FILE,
     COUNTRY_CODES_FILE,
@@ -19,6 +21,7 @@ from kztax270.form270.json_builder import (
     Form270Owner,
     _country_code_for_form,
     _currency_code_for_form,
+    _reference_code_map,
     _reference_codes,
     _trade_type_code_for_form,
 )
@@ -27,6 +30,20 @@ from kztax270.form270.split import split_form270_json
 
 
 class Form270JsonTests(unittest.TestCase):
+    def test_form_reference_codes_have_safe_defaults_without_reference_files(self) -> None:
+        missing_templates_dir = ROOT / "does-not-exist"
+        try:
+            with patch.object(json_builder, "REFERENCE_TEMPLATES_DIR", missing_templates_dir):
+                _reference_code_map.cache_clear()
+                _reference_codes.cache_clear()
+                self.assertEqual(json_builder._asset_kind_code({"asset_type": "Stocks"}), "3")
+                self.assertEqual(json_builder._asset_kind_code({"asset_type": "Option"}), "4")
+                self.assertEqual(_trade_type_code_for_form(json_builder.OPERATION_PURCHASE), "1")
+                self.assertEqual(_trade_type_code_for_form(json_builder.OPERATION_SALE), "4")
+        finally:
+            _reference_code_map.cache_clear()
+            _reference_codes.cache_clear()
+
     def test_builder_fills_application_01_from_years_results(self) -> None:
         dataset = CanonicalDataset.empty("ib", "UTEST")
         dataset.tables["Years_Results"] = [

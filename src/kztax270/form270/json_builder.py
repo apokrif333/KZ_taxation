@@ -36,12 +36,39 @@ OPERATION_GRATUITOUS = "Безвозмездно полученное (за ис
 OPERATION_GRATUITOUS_TRANSFERRED = "Безвозмездно переданное"
 OPERATION_OTHER = "Другой способ"
 BOND_REDEMPTION_OTHER_TEXT = "Погашение"
-REFERENCE_TEMPLATES_DIR = Path(__file__).resolve().parents[3] / "data" / "templates"
+
+
+def _reference_templates_dir() -> Path:
+    """Locate reference JSON files in both source and installed-package runs.
+
+    In the Docker image the package is installed in ``site-packages``, while
+    the reference files deliberately remain in ``/app/data/templates``.
+    Resolving the path solely from ``__file__`` therefore works locally but
+    misses the files in a production image.
+    """
+
+    candidates = (
+        Path.cwd() / "data" / "templates",
+        Path(__file__).resolve().parents[3] / "data" / "templates",
+    )
+    return next((candidate for candidate in candidates if candidate.is_dir()), candidates[0])
+
+
+REFERENCE_TEMPLATES_DIR = _reference_templates_dir()
 COUNTRY_CODES_FILE = "ThreeSymbolsISOCountres.json"
 CURRENCY_CODES_FILE = "ThreeSymbolsCurrency.json"
 TRADES_TYPES_FILE = "TradesTypes.json"
 ASSET_TYPES_FILE = "AssetsTypes.json"
 SOURCE_OF_EXPENSE_FILE = "SourceOfExpense.json"
+TRADE_TYPE_CODES = {
+    OPERATION_PURCHASE: "1",
+    OPERATION_EXCHANGE_ACQUIRED: "2",
+    OPERATION_EXCHANGE_DISPOSED: "3",
+    OPERATION_SALE: "4",
+    OPERATION_GRATUITOUS: "6",
+    OPERATION_GRATUITOUS_TRANSFERRED: "7",
+    OPERATION_OTHER: "13",
+}
 
 COUNTRY_ISO3_BY_ISO2 = {
     "BM": "BMU",
@@ -1016,8 +1043,11 @@ def _rate_lookup(tables: Mapping[str, Sequence[Mapping[str, Any]]]) -> dict[tupl
 
 def _asset_kind_code(row: Mapping[str, Any]) -> str:
     if _is_derivative_asset(row):
-        return _reference_code_or_original(DERIVATIVE_ASSET_NAME, ASSET_TYPES_FILE) or DERIVATIVE_ASSET_CODE
-    return _reference_code_or_original(SECURITIES_ASSET_NAME, ASSET_TYPES_FILE) or SECURITIES_ASSET_CODE
+        value, fallback = DERIVATIVE_ASSET_NAME, DERIVATIVE_ASSET_CODE
+    else:
+        value, fallback = SECURITIES_ASSET_NAME, SECURITIES_ASSET_CODE
+    code = _reference_code_or_original(value, ASSET_TYPES_FILE)
+    return code if code in _reference_codes(ASSET_TYPES_FILE) else fallback
 
 
 def _is_application_04_property_asset(row: Mapping[str, Any]) -> bool:
@@ -1110,7 +1140,10 @@ def _currency_code_for_form(currency: str | None) -> str:
 
 
 def _trade_type_code_for_form(operation: str | None) -> str:
-    return _reference_code_or_original(operation, TRADES_TYPES_FILE)
+    code = _reference_code_or_original(operation, TRADES_TYPES_FILE)
+    if code in _reference_codes(TRADES_TYPES_FILE):
+        return code
+    return TRADE_TYPE_CODES.get(operation or "", "")
 
 
 def _source_of_expense_code(value: str | None) -> str:
