@@ -572,9 +572,21 @@ class Form270JsonTests(unittest.TestCase):
             ["US0000000002", "US0000000003"],
         )
 
-    def test_application_05_c_sale_value_is_rounded_to_whole_tenge(self) -> None:
+    def test_application_05_values_are_rounded_to_whole_tenge(self) -> None:
         dataset = CanonicalDataset.empty("ib", "UROUND05")
         dataset.tables["Trades"] = [
+            {
+                "date_time": "2025-02-01 09:00:00",
+                "trade_type": "trade",
+                "symbol": "ROUND-BUY",
+                "isin": "US0000000002",
+                "asset_type": "Stocks",
+                "quantity": "1",
+                "amount": "1.5",
+                "kzt_rate": "1.5",
+                "currency": "USD",
+                "country": "US",
+            },
             {
                 "date_time": "2025-02-01 10:00:00",
                 "trade_type": "trade",
@@ -591,6 +603,9 @@ class Form270JsonTests(unittest.TestCase):
 
         form = _builder().build_account_draft(dataset, tax_year=2025, form270_05=True)
 
+        buy = form["fnoContent"]["application_05"]["B"][0]
+        self.assertEqual(buy["H"], 2)
+        self.assertEqual(buy["val_M"], {"value": 2, "manual": True})
         self.assertEqual(form["fnoContent"]["application_05"]["C"][0]["I"], 2)
 
     def test_builder_groups_cash_by_source_broker_for_merged_workbook(self) -> None:

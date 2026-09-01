@@ -770,13 +770,13 @@ def _build_application_05(
                     "E": country,
                     "F": country_name,
                     "G": currency,
-                    "H": _decimal_json(amount, places=2),
+                    "H": _decimal_json(amount, places=0),
                     "I": source,
                     "_02": None,
                     "J": "-",
                     "K": "-",
                     "L": "KZT",
-                    "val_M": {"value": _decimal_json(amount_kzt, places=2), "manual": True},
+                    "val_M": {"value": _decimal_json(amount_kzt, places=0), "manual": True},
                     "index": len(buys),
                 }
             )
