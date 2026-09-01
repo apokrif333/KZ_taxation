@@ -46,6 +46,10 @@ TRANSACTIONS_FIRST_WITH_MARGIN_TAIL_EXANTE_CSV = '''"Metrics per symbols"
 "EX2"\t"2/27/2024"\t"0"\t"0"\t"0"\t"0.00%"\t""\t""\t""\t""\t""\t""\t""\t""\t""\t""\t""\t""\t""\t""
 '''
 
+RUSSIAN_HEADERS_EXANTE_CSV = '''"Время"\t"Счет"\t"Направление"\t"ID символа"\t"ISIN"\t"Тип"\t"Цена"\t"Валюта"\t"Количество"\t"Комиссия"\t"Валюта комиссии"\t"P&L"\t"Объем"\t"Номер заявки"\t"Позиция заявки"\t"Дата валютирования"\t"UTI"\t"Тип сделки"\t"ID конвертации"
+"2023-01-10 10:00:00"\t"IEO1069.001"\t"buy"\t"AAPL.NASDAQ"\t"US0378331005"\t"STOCK"\t"100"\t"USD"\t"10"\t"1"\t"USD"\t"0"\t"1000"\t"1"\t"1"\t""\t""\t"TRADE"\t""
+'''
+
 
 SNAPSHOT_REVERT_FX_EXANTE_CSV = '''"Costs and Charges Report: 2024-01-01 - 2024-12-31"
 "Account"\t"EX3"
@@ -113,6 +117,15 @@ HXR_TRANSFER_KSPI_OPTION_EXANTE_CSV = '''"Costs and Charges Report: 2022-01-01 -
 
 
 class ExanteParserTests(unittest.TestCase):
+    def test_russian_header_export_detects_account_id_and_trades(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "Custom_IEO1069.001 2023.csv"
+            path.write_text(RUSSIAN_HEADERS_EXANTE_CSV, encoding="utf-8")
+            parsed = parse_exante_csv_report(path)
+
+        self.assertEqual(parsed.account_id, "IEO1069.001")
+        self.assertEqual(len(parsed.rows["Trades"]), 1)
+
     def test_utf8_bom_comma_delimited_export_detects_account_id(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "Custom_EXX3093.001.csv"

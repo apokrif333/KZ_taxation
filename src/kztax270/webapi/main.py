@@ -277,8 +277,9 @@ def create_app(
                 record.workspace.internal_client_id,
             )
         except ValueError as exc:
-            LOGGER.info("Discovery validation failed job_id=%s error_class=%s", job_id, type(exc).__name__)
-            raise ApiError(422, "validation_error", "Загруженные отчёты не прошли проверку.") from exc
+            message = _discovery_validation_message(exc)
+            LOGGER.info("Discovery validation failed job_id=%s error=%s", job_id, str(exc))
+            raise ApiError(422, "validation_error", message) from exc
         except Exception as exc:
             LOGGER.info("Report discovery failed job_id=%s error_class=%s", job_id, type(exc).__name__)
             raise ApiError(422, "report_parse_error", "Не удалось прочитать загруженные отчёты.") from exc
@@ -395,6 +396,28 @@ async def _save_upload(upload: UploadFile, destination: Path, max_bytes: int) ->
         destination.unlink(missing_ok=True)
         raise
     return digest.hexdigest()
+
+
+def _discovery_validation_message(exc: ValueError) -> str:
+    """Return the actionable, user-safe reason a report could not be discovered."""
+
+    detail = " ".join(str(exc).split())
+    missing_account = re.fullmatch(r"Cannot detect account ID in (?P<broker>.+?) report (?P<filename>[^/\\]+)", detail)
+    if missing_account:
+        broker = missing_account.group("broker")
+        filename = missing_account.group("filename")
+        return f"В отчёте {_broker_display_name(broker)} «{filename}» не удалось определить номер счёта."
+    unsupported_encoding = re.fullmatch(r"Unsupported text encoding in (?P<broker>.+?) report: (?P<filename>[^/\\]+)", detail)
+    if unsupported_encoding:
+        broker = unsupported_encoding.group("broker")
+        filename = unsupported_encoding.group("filename")
+        return f"Отчёт {_broker_display_name(broker)} «{filename}» имеет неподдерживаемую кодировку."
+    return f"Не удалось проверить загруженные отчёты: {detail or 'неизвестная ошибка проверки.'}"
+
+
+def _broker_display_name(value: str) -> str:
+    spec = BROKER_REPORT_SPECS.get(value.casefold())
+    return spec.display_name if spec is not None else value
 
 
 def _safe_upload_name(filename: str | None) -> tuple[str, str]:

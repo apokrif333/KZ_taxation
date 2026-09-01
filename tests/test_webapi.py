@@ -370,6 +370,22 @@ class WebApiTests(unittest.TestCase):
         self.assertNotIn(str(self.root), response.text)
         self.assertEqual(self.factory.run_calls, [])
 
+    def test_discover_returns_actionable_report_validation_error(self) -> None:
+        job_id = str(self._create()["job_id"])
+        self._upload(job_id, broker="exante", uploads=[("Custom_IEO1069.001 2023.csv", b"report")])
+        self.factory.discover_error = ValueError(
+            "Cannot detect account ID in exante report Custom_IEO1069.001 2023.csv"
+        )
+
+        response = self._discover(job_id)
+
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.json()["detail"]["code"], "validation_error")
+        self.assertEqual(
+            response.json()["detail"]["message"],
+            "В отчёте Exante «Custom_IEO1069.001 2023.csv» не удалось определить номер счёта.",
+        )
+
     def test_process_passes_options_directly_to_front_pipeline(self) -> None:
         job_id = self._ready_job()
         response = self._process(

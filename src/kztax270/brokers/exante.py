@@ -81,6 +81,31 @@ TRANSACTION_REQUIRED_COLUMNS = {
 }
 EXANTE_HEADER_CANONICAL_NAMES = {
     "operation type": "Operation type",
+    # Exante's historical exports use these Russian column names.  Keep the
+    # parser schema in English after ingest so the remaining calculation path
+    # is identical for both report languages.
+    "время": "Time",
+    "счет": "Account ID",
+    "направление": "Side",
+    "id символа": "Symbol ID",
+    "тип": "Type",
+    "цена": "Price",
+    "валюта": "Currency",
+    "количество": "Quantity",
+    "комиссия": "Commission",
+    "валюта комиссии": "Commission Currency",
+    "объем": "Traded Volume",
+    "объём": "Traded Volume",
+    "номер заявки": "Order Id",
+    "позиция заявки": "Order pos",
+    "дата валютирования": "Value Date",
+    "тип сделки": "Trade type",
+    "id конвертации": "Exchange Order ID",
+    "номер транзакции": "Transaction ID",
+    "тип операции": "Operation type",
+    "когда": "When",
+    "сумма": "Sum",
+    "актив": "Asset",
 }
 HANDLED_TRANSACTION_OPERATION_TYPES = {
     "TRADE",
@@ -376,9 +401,10 @@ def _find_header(
     required_columns: set[str] | None = None,
 ) -> int | None:
     for idx, row in enumerate(rows):
-        if not row or row[0] != first_cell:
+        canonical_header = _canonicalize_header(row)
+        if not canonical_header or canonical_header[0] != first_cell:
             continue
-        if required_columns is not None and not required_columns.issubset(set(_canonicalize_header(row))):
+        if required_columns is not None and not required_columns.issubset(set(canonical_header)):
             continue
         return idx
     return None
