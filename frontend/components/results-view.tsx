@@ -1,6 +1,7 @@
 'use client'
 
-import { Archive, CheckCircle2, Download, FileJson, FileSpreadsheet, RotateCcw } from 'lucide-react'
+import { Archive, ArrowRight, CheckCircle2, Download, FileJson, FileSearch, FileSpreadsheet, RotateCcw } from 'lucide-react'
+import Link from 'next/link'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { artifactUrl, downloadAllUrl } from '@/lib/api-client'
@@ -25,7 +26,7 @@ export function ResultsView({ result, brokers, onRestart }: ResultsViewProps) {
   const forms = result.artifacts.filter((artifact) => artifact.kind === 'form270')
 
   return <section className="flex flex-col gap-8 py-8" aria-labelledby="result-title">
-    <header className="flex flex-col gap-4 border-b pb-6 sm:flex-row sm:items-center sm:justify-between"><div className="flex items-start gap-4"><span className="flex size-11 items-center justify-center rounded-full bg-primary/10 text-primary"><CheckCircle2 aria-hidden="true" /></span><div><p className="text-sm font-medium text-primary">РАСЧЁТ ЗАВЕРШЁН</p><h1 id="result-title" className="text-2xl font-semibold tracking-tight">Файлы готовы</h1><p className="mt-1 text-sm text-muted-foreground">Налоговый год: {result.tax_year}. Скачайте audit-файлы и черновик формы 270.00.</p></div></div><Button variant="outline" onClick={onRestart}><RotateCcw data-icon="inline-start" />Начать новый расчёт</Button></header>
+    <header className="flex flex-col gap-4 border-b pb-6 sm:flex-row sm:items-center sm:justify-between"><div className="flex items-start gap-4"><span className="flex size-11 items-center justify-center rounded-full bg-primary/10 text-primary"><CheckCircle2 aria-hidden="true" /></span><div><p className="text-sm font-medium text-primary">РАСЧЁТ ЗАВЕРШЁН</p><h1 id="result-title" className="text-2xl font-semibold tracking-tight">Файлы готовы</h1><p className="mt-1 text-sm text-muted-foreground">Налоговый год: {result.tax_year}. Скачайте audit-файлы и черновик формы 270.00.</p><Link href="/faq/audit-file" className="mt-3 inline-flex items-center gap-2 rounded-md border border-primary/15 bg-accent/25 px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"><FileSearch className="size-4 shrink-0 text-primary" aria-hidden="true" /><span>Описание audit XLSX-файлов и их структуры.</span><span className="inline-flex items-center gap-1 font-medium text-primary">Что находится в audit-файле <ArrowRight className="size-3.5" aria-hidden="true" /></span></Link></div></div><Button variant="outline" onClick={onRestart}><RotateCcw data-icon="inline-start" />Начать новый расчёт</Button></header>
 
     <div>
       <h2 className="text-xl font-semibold">Audit по счетам</h2>
