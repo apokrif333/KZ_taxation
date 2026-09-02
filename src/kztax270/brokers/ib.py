@@ -34,6 +34,7 @@ IB_SECTION_DIVIDENDS = "Dividends"
 IB_SECTION_FI = "Financial Instrument Information"
 IB_SECTION_GRANT = "Grant Activity"
 IB_SECTION_INTEREST = "Interest"
+IB_SECTION_SYEP_INTEREST = "Stock Yield Enhancement Program Securities Lent Interest Details"
 IB_SECTION_MTM = "Mark-to-Market Performance Summary"
 IB_SECTION_NAV = "Change in NAV"
 IB_SECTION_POSITIONS = "Open Positions"
@@ -792,14 +793,28 @@ def _build_corporate_action_identity_changes(
     changes: list[CorporateActionIdentityChange] = []
     for action in corporate_actions:
         action_type = _string_or_none(action.get("action_type"))
-        if action_type not in {"merger", "merged"}:
+        if action_type not in {"merger", "merged", "split"}:
             continue
         action_dt = _parse_datetime(action.get("date_time") or action.get("date"))
+        if action_type == "split" and "option" in str(action.get("asset_type") or "").lower():
+            option_change = _option_split_identity_change(action, action_dt)
+            if option_change is not None:
+                changes.append(option_change)
+            continue
         old_isin = _string_or_none(action.get("_source_isin") or action.get("isin"))
         old_symbol = _string_or_none(action.get("_source_symbol") or action.get("symbol"))
         new_isin = _string_or_none(action.get("_target_isin"))
         new_symbol = _string_or_none(action.get("_target_symbol"))
-        if not action_dt or not old_isin or not new_isin or old_isin == new_isin:
+        if action_type == "split":
+            # The negative .OLD leg names the security being removed and is
+            # not a second conversion.  A stock split identity change is the
+            # positive leg whose target ISIN differs from the source ISIN.
+            identity_changed = bool(old_isin and new_isin and old_isin != new_isin)
+        else:
+            identity_changed = bool(old_isin and new_isin and old_isin != new_isin) or bool(
+                old_symbol and new_symbol and old_symbol != new_symbol
+            )
+        if not action_dt or not identity_changed:
             continue
         ratio = _decimal(action.get("_ratio") or "1") or Decimal("1")
         changes.append(
@@ -813,8 +828,64 @@ def _build_corporate_action_identity_changes(
                 description=_string_or_none(action.get("description")),
             )
         )
-    changes.sort(key=lambda item: item.action_dt)
-    return changes
+    unique_changes = list(dict.fromkeys(changes))
+    unique_changes.sort(key=lambda item: item.action_dt)
+    return unique_changes
+
+
+_IB_OPTION_SYMBOL_RE = re.compile(
+    r"^(?P<underlying>.+?)\s+(?P<expiry>\d{2}[A-Z]{3}\d{2})\s+"
+    r"(?P<strike>\d+(?:\.\d+)?)\s+(?P<option_type>[CP])$",
+    flags=re.IGNORECASE,
+)
+
+
+def _option_split_identity_change(
+    action: Mapping[str, Any],
+    action_dt: datetime | None,
+) -> CorporateActionIdentityChange | None:
+    """Build the old/new option identity implied by an IB split action."""
+
+    description = _string_or_none(action.get("description"))
+    ratio = _decimal(action.get("_ratio") or "1")
+    if not description or not action_dt or ratio == 0:
+        return None
+    trailing_match = re.search(r"\(([^()]*)\)\s*$", description)
+    if trailing_match is None:
+        return None
+    new_symbol = next(
+        (
+            token.strip()
+            for token in trailing_match.group(1).split(",")
+            if _IB_OPTION_SYMBOL_RE.fullmatch(token.strip())
+        ),
+        None,
+    )
+    if new_symbol is None:
+        return None
+    match = _IB_OPTION_SYMBOL_RE.fullmatch(new_symbol)
+    if match is None:
+        return None
+    new_strike_text = match.group("strike")
+    old_strike = Decimal(new_strike_text) / ratio
+    old_strike_text = format(old_strike.normalize(), "f")
+    if "." in new_strike_text and "." not in old_strike_text:
+        old_strike_text += ".0"
+    old_symbol = (
+        f"{match.group('underlying')} {match.group('expiry')} "
+        f"{old_strike_text} {match.group('option_type').upper()}"
+    )
+    if old_symbol == new_symbol:
+        return None
+    return CorporateActionIdentityChange(
+        action_dt=action_dt,
+        old_symbol=old_symbol,
+        old_isin=None,
+        new_symbol=new_symbol,
+        new_isin=None,
+        ratio=ratio,
+        description=description,
+    )
 
 
 def _apply_corporate_action_identity_changes_to_records(
@@ -834,11 +905,15 @@ def _apply_corporate_action_identity_changes_to_records(
             normalized.append(row)
             continue
         for change in changes:
-            if row_dt >= change.action_dt:
-                continue
             if not _record_matches_identity_change(row, change):
                 continue
-            _apply_identity_change_to_record(row, change, instrument_lookup, row_dt.year)
+            _apply_identity_change_to_record(
+                row,
+                change,
+                instrument_lookup,
+                row_dt.year,
+                adjust_values=row_dt < change.action_dt,
+            )
         normalized.append(row)
     return normalized
 
@@ -868,6 +943,8 @@ def _apply_identity_change_to_record(
     change: CorporateActionIdentityChange,
     instrument_lookup: Mapping[tuple[str, int | None], dict[str, Any]],
     year: int | None,
+    *,
+    adjust_values: bool = True,
 ) -> None:
     instrument = (
         _lookup_instrument(instrument_lookup, change.new_isin, year)
@@ -888,7 +965,7 @@ def _apply_identity_change_to_record(
         row["_conid"] = conid
     if "_instrument_identity_key" in row:
         row["_instrument_identity_key"] = _instrument_identity_key_from_values(isin=new_isin, conid=conid, symbol=new_symbol)
-    if change.ratio != 0 and change.ratio != 1:
+    if adjust_values and change.ratio != 0 and change.ratio != 1:
         if row.get("calculation_quantity") not in (None, ""):
             row["calculation_quantity"] = str(_decimal(row.get("calculation_quantity")) / change.ratio)
         if row.get("calculation_price") not in (None, ""):
@@ -1148,53 +1225,64 @@ def _incoming_transfer_cost_basis(
 
 
 def _drop_zero_sum_security_transfers(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
-    grouped: dict[tuple[Any, ...], dict[str, Any]] = {}
-    for row in rows:
+    result: list[dict[str, Any]] = []
+    pending_out: dict[tuple[Any, ...], list[int]] = defaultdict(list)
+    for source_row in rows:
+        row = dict(source_row)
+        raw_quantity = _decimal(row.get("_raw_quantity") or row.get("quantity"))
+        declared_direction = str(row.get("direction") or "").lower()
         key = (
-            _string_or_none(row.get("date")),
             _string_or_none(row.get("asset_type")),
             _string_or_none(row.get("symbol")),
             _string_or_none(row.get("isin")),
             _string_or_none(row.get("currency")),
             _string_or_none(row.get("counterparty")),
         )
-        raw_quantity = _decimal(row.get("_raw_quantity") or row.get("quantity"))
-        group = grouped.setdefault(key, {"rows": [], "quantity": Decimal("0"), "ids": []})
-        group["rows"].append(dict(row))
-        group["quantity"] += raw_quantity
-        if row.get("_transfer_id"):
-            group["ids"].append(row.get("_transfer_id"))
 
-    result: list[dict[str, Any]] = []
-    for group in grouped.values():
-        net_quantity = group["quantity"]
-        if net_quantity == 0:
+        if declared_direction == "out" and raw_quantity < 0:
+            row["quantity"] = _decimal_text(abs(raw_quantity))
+            row["_raw_quantity"] = str(raw_quantity)
+            result.append(row)
+            pending_out[key].append(len(result) - 1)
             continue
-        source_rows = list(group["rows"])
-        row = _representative_transfer_row(source_rows, net_quantity)
-        declared_direction = str(row.get("direction") or "").lower()
-        if declared_direction == "out" and net_quantity > 0:
+
+        # IB reports a cancelled/returned FOP as Direction=Out with a positive
+        # quantity, sometimes months after the original transfer.  Cancel it
+        # against the latest still-open outgoing movement so the original FIFO
+        # lots remain available instead of creating an unknown transfer-in lot.
+        if declared_direction == "out" and raw_quantity > 0:
+            remaining = raw_quantity
+            while remaining > 0 and pending_out[key]:
+                index = pending_out[key][-1]
+                prior = result[index]
+                prior_quantity = abs(_decimal(prior.get("_raw_quantity") or prior.get("quantity")))
+                cancelled = min(remaining, prior_quantity)
+                remaining -= cancelled
+                prior_quantity -= cancelled
+                if prior_quantity == 0:
+                    prior["_raw_quantity"] = "0"
+                    prior["quantity"] = "0"
+                    pending_out[key].pop()
+                else:
+                    prior["_raw_quantity"] = str(-prior_quantity)
+                    prior["quantity"] = _decimal_text(prior_quantity)
+            if remaining == 0:
+                continue
+            # A cancellation can pre-date the discovered report range.  Treat
+            # an unmatched positive remainder as returned inventory.
+            row["direction"] = "in"
+            row["quantity"] = _decimal_text(remaining)
+            row["_raw_quantity"] = str(remaining)
+            row["_transfer_cost_basis_status"] = "returned_outgoing_transfer"
+            result.append(row)
             continue
-        if declared_direction == "in" and net_quantity < 0:
-            continue
-        row["direction"] = "in" if net_quantity > 0 else "out"
-        row["quantity"] = _decimal_text(abs(net_quantity))
-        row["_raw_quantity"] = str(net_quantity)
-        if group["ids"]:
-            row["_transfer_id"] = ";".join(str(value) for value in group["ids"])
+
+        row["direction"] = "in" if raw_quantity > 0 else "out"
+        row["quantity"] = _decimal_text(abs(raw_quantity))
+        row["_raw_quantity"] = str(raw_quantity)
         result.append(row)
-    return result
 
-
-def _representative_transfer_row(rows: Sequence[Mapping[str, Any]], net_quantity: Decimal) -> dict[str, Any]:
-    if net_quantity > 0:
-        candidates = [row for row in rows if _decimal(row.get("_raw_quantity") or row.get("quantity")) > 0]
-    else:
-        candidates = [row for row in rows if _decimal(row.get("_raw_quantity") or row.get("quantity")) < 0]
-    source = candidates[-1] if candidates else rows[-1]
-    return dict(source)
-
-
+    return [row for row in result if _decimal(row.get("_raw_quantity") or row.get("quantity")) != 0]
 def _canonical_transfer_rows(transfers: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
     columns = (
         "date",
@@ -3177,6 +3265,11 @@ def _build_interest_and_coupons(
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     interest_rows: list[dict[str, Any]] = []
     coupon_rows: list[dict[str, Any]] = []
+    has_syep_summary = any(
+        _is_syep_interest_description(_string_or_none(row.get("Description")))
+        for report in reports
+        for row in report.rows.get(IB_SECTION_INTEREST, [])
+    )
     for report in reports:
         for row in report.rows.get(IB_SECTION_INTEREST, []):
             if _is_total_amount_row(row):
@@ -3224,7 +3317,43 @@ def _build_interest_and_coupons(
                 )
             else:
                 interest_rows.append(base_record)
+    if not has_syep_summary:
+        for report in reports:
+            for row in report.rows.get(IB_SECTION_SYEP_INTEREST, []):
+                if _is_total_amount_row(row):
+                    continue
+                amount = _decimal(row.get("Interest Paid to Customer"))
+                if amount == 0:
+                    continue
+                event_date = _parse_date(row.get("Value Date"))
+                year = event_date.year if event_date else _year_for_report(report)
+                currency = _string_or_none(row.get("Currency"))
+                symbol = _string_or_none(row.get("Symbol"))
+                rate = _annual_rate(fx_provider, year, currency, warnings)
+                description = "IBKR Managed Securities (SYEP) Interest"
+                if symbol:
+                    description += f" for {symbol}"
+                interest_rows.append(
+                    {
+                        "date": _date_to_iso(event_date),
+                        "description": description,
+                        "currency": currency,
+                        "gross_amount": str(amount),
+                        "withholding_tax": "0",
+                        "net_amount": str(amount),
+                        "kzt_rate": str(rate) if rate is not None else None,
+                        "gross_amount_kzt": _amount_kzt(amount, rate),
+                        "withholding_tax_kzt": _amount_kzt(Decimal("0"), rate),
+                        "net_amount_kzt": _amount_kzt(amount, rate),
+                        "source_report": str(report.path),
+                    }
+                )
     return interest_rows, coupon_rows
+
+
+def _is_syep_interest_description(description: str | None) -> bool:
+    text = str(description or "").casefold()
+    return "syep" in text or "managed securities" in text
 
 
 def _infer_interest_symbol_isin(
@@ -4089,6 +4218,11 @@ def _populate_raw_totals(
     dividends_tax = Decimal("0")
     interest = Decimal("0")
     realized_pl = Decimal("0")
+    has_syep_summary = any(
+        _is_syep_interest_description(_string_or_none(row.get("Description")))
+        for report in reports
+        for row in report.rows.get(IB_SECTION_INTEREST, [])
+    )
 
     for report in reports:
         year = _year_for_report(report)
@@ -4192,6 +4326,17 @@ def _populate_raw_totals(
             if key in raw_position_keys:
                 continue
             totals.positions_by_key[key] = totals.positions_by_key.get(key, Decimal("0")) + _decimal(row.get("Current Quantity"))
+
+    if not has_syep_summary:
+        interest += sum(
+            (
+                _decimal(row.get("Interest Paid to Customer"))
+                for report in reports
+                for row in report.rows.get(IB_SECTION_SYEP_INTEREST, [])
+                if not _is_total_amount_row(row)
+            ),
+            Decimal("0"),
+        )
 
     for currency, amount in transfer_totals_by_currency.items():
         key = _dimension_key(metric=ReconciliationMetric.TOTAL_DEPOSITS_WITHDRAWALS_TRANSFERS.value, currency=currency)

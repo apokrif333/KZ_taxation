@@ -1834,6 +1834,82 @@ Grant Activity,Data,UGRANTPRE,IBKR,2025-01-01,Stock Award Withholding,2024-01-01
         self.assertEqual(dividend_rows[0]["tax_kzt"], "0.00")
         self.assertEqual(dividend_rows[0]["tax_kzt_withhold"], "0.00")
 
+    def test_u1349731_split_option_and_cancelled_transfer_regressions(self) -> None:
+        raw_root = Path(__file__).resolve().parents[1] / "data" / "raw"
+        parser = InteractiveBrokersParser(AnnualFxRateProvider({}))
+        result = parser.parse_reports(parser.discover_reports(raw_root, "U1349731"), "U1349731")
+        dataset = result.dataset
+
+        affected_symbols = {"VXX", "TQQQ 05FEB21 95.5 C", "XIACY", "IAU", "SNDL", "TNXP"}
+        self.assertEqual(
+            [row for row in dataset.tables["Unprocessed"] if row.get("symbol") in affected_symbols],
+            [],
+        )
+
+        expected_closures = {
+            ("VXX", "2021-05-19"): Decimal("125"),
+            ("TQQQ 05FEB21 95.5 C", "2021-02-03"): Decimal("2"),
+            ("XIACY", "2021-06-21"): Decimal("200"),
+            ("IAU", "2022-01-26"): Decimal("266"),
+            ("SNDL", "2023-04-27"): Decimal("39"),
+            ("TNXP", "2023-05"): Decimal("12.96"),
+        }
+        for (symbol, exit_prefix), expected_quantity in expected_closures.items():
+            rows = [
+                row
+                for row in dataset.tables["Fifo"]
+                if row.get("symbol") == symbol and str(row.get("exit_date") or "").startswith(exit_prefix)
+            ]
+            self.assertEqual(sum(Decimal(row["exit_quantity"]) for row in rows), expected_quantity)
+            self.assertTrue(rows)
+            self.assertTrue(all(row["_opening_lot_status"] == "matched" for row in rows))
+
+        sndl_rows = [
+            row
+            for row in dataset.tables["Fifo"]
+            if row.get("symbol") == "SNDL" and str(row.get("exit_date") or "").startswith("2023-04-27")
+        ]
+        self.assertTrue(all(row["position_type"] == "short" for row in sndl_rows))
+        self.assertEqual([row for row in dataset.tables["Transfers"] if row.get("symbol") == "XIACY"], [])
+
+        syep_rows = [row for row in dataset.tables["Interest"] if "SYEP" in str(row.get("description") or "")]
+        self.assertTrue(syep_rows)
+        self.assertTrue(all(row["years_result_table"] == "Yearly Interest" for row in syep_rows))
+
+    def test_syep_interest_details_are_used_as_fallback_without_monthly_summary(self) -> None:
+        report = """Statement,Header,Field Name,Field Value
+Statement,Data,Period,"January 1, 2024 - December 31, 2024"
+Account Information,Header,Field Name,Field Value
+Account Information,Data,Account,USYEP
+Account Information,Data,Base Currency,USD
+Stock Yield Enhancement Program Securities Lent Interest Details,Header,Currency,Value Date,Symbol,Start Date,Quantity,Collateral Amount,Market-based Rate (%),Interest Rate on Customer Collateral (%),Interest Paid to Customer,Code
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,USD,2024-06-01,AAPL,2024-06-01,-10,1900,1.00,0.50,0.25,Po
+Cash Report,Header,Currency Summary,Currency,Total,Securities,Futures,
+Cash Report,Data,Ending Cash,USD,0,0,0,
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            raw_root = Path(tmp) / "raw"
+            ib_root = raw_root / "ib"
+            ib_root.mkdir(parents=True)
+            (ib_root / "USYEP_2024_2024.csv").write_text(report, encoding="utf-8")
+            parser = InteractiveBrokersParser(AnnualFxRateProvider({(2024, "USD"): Decimal("500")}))
+            result = parser.parse_reports(parser.discover_reports(raw_root, "USYEP"), "USYEP")
+
+        self.assertEqual(len(result.dataset.tables["Interest"]), 1)
+        interest = result.dataset.tables["Interest"][0]
+        self.assertEqual(interest["date"], "2024-06-01")
+        self.assertEqual(interest["gross_amount"], "0.25")
+        self.assertEqual(interest["gross_amount_kzt"], "125.00")
+        self.assertEqual(interest["years_result_table"], "Yearly Interest")
+        yearly = [row for row in result.dataset.tables["Years_Results"] if row["table"] == "Yearly Interest"]
+        self.assertEqual(len(yearly), 1)
+        self.assertEqual(yearly[0]["amount"], "0.25")
+        self.assertEqual(yearly[0]["amount_kzt"], "125.00")
+        self.assertEqual(
+            result.dataset.raw_totals.scalar_totals[ReconciliationMetric.TOTAL_INTEREST.value],
+            Decimal("0.25"),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
