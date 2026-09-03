@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { AlertTriangle, ArrowLeft, ExternalLink, FileJson, Landmark, Send, WalletCards } from 'lucide-react'
 import { FaqHeader } from '@/components/faq-header'
+import { ZoomableImage } from '@/components/zoomable-image'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 
@@ -11,7 +12,7 @@ export const metadata: Metadata = {
 }
 
 function GuideImage({ src, alt, caption }: { src: string; alt: string; caption: string }) {
-  return <figure className="overflow-hidden rounded-lg border border-border bg-muted/20"><img src={src} alt={alt} className="h-auto w-full" /><figcaption className="border-t bg-card px-3 py-2 text-xs text-muted-foreground">{caption}</figcaption></figure>
+  return <figure className="overflow-hidden rounded-lg border border-border bg-muted/20"><ZoomableImage src={src} alt={alt} /><figcaption className="border-t bg-card px-3 py-2 text-xs text-muted-foreground">{caption}</figcaption></figure>
 }
 
 export default function Form270UploadPage() {

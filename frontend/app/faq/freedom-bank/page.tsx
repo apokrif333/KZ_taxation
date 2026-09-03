@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { ArrowLeft, FileSpreadsheet, UploadCloud } from 'lucide-react'
 import { FaqHeader } from '@/components/faq-header'
+import { ZoomableImage } from '@/components/zoomable-image'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 
 export const metadata: Metadata = {
@@ -79,7 +80,7 @@ export default function FreedomBankGuidePage() {
                   <CardTitle className="text-lg">{step.title}</CardTitle>
                   <CardDescription className="leading-relaxed">{step.text}</CardDescription>
                 </CardHeader>
-                {step.image && <CardContent><figure className="overflow-hidden rounded-lg border border-border bg-muted/20"><img src={step.image} alt={step.alt} className="h-auto w-full" /><figcaption className="border-t bg-card px-3 py-2 text-xs text-muted-foreground">Шаг {index + 1}</figcaption></figure></CardContent>}
+                {step.image && <CardContent><figure className="overflow-hidden rounded-lg border border-border bg-muted/20"><ZoomableImage src={step.image} alt={step.alt} /><figcaption className="border-t bg-card px-3 py-2 text-xs text-muted-foreground">Шаг {index + 1}</figcaption></figure></CardContent>}
               </Card>
             </li>
           ))}

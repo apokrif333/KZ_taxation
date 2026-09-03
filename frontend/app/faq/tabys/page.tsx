@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { ArrowLeft, FileSpreadsheet, UploadCloud } from 'lucide-react'
 import { FaqHeader } from '@/components/faq-header'
+import { ZoomableImage } from '@/components/zoomable-image'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 
 export const metadata: Metadata = {
@@ -33,11 +34,11 @@ export default function TabysGuidePage() {
           </li>
           <li className="grid gap-4 lg:grid-cols-[3rem_minmax(0,1fr)]">
             <span className="flex size-10 items-center justify-center rounded-full bg-primary font-mono text-sm font-semibold text-primary-foreground">2</span>
-            <Card className="border-border/80"><CardHeader><CardTitle className="text-lg">Проверьте формат отчёта</CardTitle><CardDescription className="leading-relaxed">Нужен PDF «Отчёт по операциям», аналогичный примеру ниже.</CardDescription></CardHeader><CardContent><figure className="overflow-hidden rounded-lg border border-border bg-muted/20"><img src="/faq/tabys/report-example.png" alt="Пример PDF-отчёта по операциям Tabys" className="h-auto w-full" /><figcaption className="border-t bg-card px-3 py-2 text-xs text-muted-foreground">Пример подходящего отчёта Tabys</figcaption></figure></CardContent></Card>
+            <Card className="border-border/80"><CardHeader><CardTitle className="text-lg">Проверьте формат отчёта</CardTitle><CardDescription className="leading-relaxed">Нужен PDF «Отчёт по операциям», аналогичный примеру ниже.</CardDescription></CardHeader><CardContent><figure className="overflow-hidden rounded-lg border border-border bg-muted/20"><ZoomableImage src="/faq/tabys/report-example.png" alt="Пример PDF-отчёта по операциям Tabys" /><figcaption className="border-t bg-card px-3 py-2 text-xs text-muted-foreground">Пример подходящего отчёта Tabys</figcaption></figure></CardContent></Card>
           </li>
           <li className="grid gap-4 lg:grid-cols-[3rem_minmax(0,1fr)]">
             <span className="flex size-10 items-center justify-center rounded-full bg-primary font-mono text-sm font-semibold text-primary-foreground">3</span>
-            <Card className="border-border/80"><CardHeader><CardTitle className="text-lg">Загрузите файлы в QCM Tax 270</CardTitle><CardDescription className="leading-relaxed">Добавьте все подготовленные PDF в блок Tabys на главной странице и продолжите расчёт.</CardDescription></CardHeader><CardContent><figure className="overflow-hidden rounded-lg border border-border bg-muted/20"><img src="/faq/tabys/step-3-upload.png" alt="Блок Tabys на странице загрузки QCM Tax 270" className="h-auto w-full" /><figcaption className="border-t bg-card px-3 py-2 text-xs text-muted-foreground">Загрузка отчётов Tabys</figcaption></figure></CardContent></Card>
+            <Card className="border-border/80"><CardHeader><CardTitle className="text-lg">Загрузите файлы в QCM Tax 270</CardTitle><CardDescription className="leading-relaxed">Добавьте все подготовленные PDF в блок Tabys на главной странице и продолжите расчёт.</CardDescription></CardHeader><CardContent><figure className="overflow-hidden rounded-lg border border-border bg-muted/20"><ZoomableImage src="/faq/tabys/step-3-upload.png" alt="Блок Tabys на странице загрузки QCM Tax 270" /><figcaption className="border-t bg-card px-3 py-2 text-xs text-muted-foreground">Загрузка отчётов Tabys</figcaption></figure></CardContent></Card>
           </li>
         </ol>
 
