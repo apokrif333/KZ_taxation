@@ -205,7 +205,12 @@ def build_canonical_dataset(
     instrument_lookup = _instrument_lookup(instruments)
     symbol_history = _instrument_symbol_history(instruments)
     dataset.tables["Instruments"] = instruments
-    corporate_actions = [*_build_corporate_actions(reports), *_build_inferred_symbol_change_actions(instruments)]
+    raw_trades = _build_trades(reports, instrument_lookup)
+    corporate_actions = [
+        *_build_corporate_actions(reports),
+        *_build_inferred_symbol_change_actions(instruments),
+        *_build_inferred_option_symbol_change_actions(reports, instruments, raw_trades),
+    ]
     identity_changes = _build_corporate_action_identity_changes(corporate_actions)
     dataset.tables["CorporateActions"] = corporate_actions
     dataset.tables["Dividends"] = _apply_corporate_action_identity_changes_to_records(
@@ -222,7 +227,7 @@ def build_canonical_dataset(
         date_fields=("date",),
     )
     raw_internal_trades = _apply_corporate_action_identity_changes_to_records(
-        _build_trades(reports, instrument_lookup),
+        raw_trades,
         identity_changes,
         instrument_lookup,
         date_fields=("date_time",),
@@ -796,7 +801,12 @@ def _build_corporate_action_identity_changes(
     changes: list[CorporateActionIdentityChange] = []
     for action in corporate_actions:
         action_type = _string_or_none(action.get("action_type"))
-        if action_type not in {"merger", "merged", "split"}:
+        if action_type not in {"merger", "merged", "split", "symbol_change"}:
+            continue
+        if action_type == "symbol_change" and not action.get("_apply_identity_change"):
+            # Stable ISIN/Conid renames are already grouped by their immutable
+            # identity.  Only heuristic option-root aliases need a physical
+            # rewrite before FIFO.
             continue
         action_dt = _parse_datetime(action.get("date_time") or action.get("date"))
         if action_type == "split" and "option" in str(action.get("asset_type") or "").lower():
@@ -805,9 +815,9 @@ def _build_corporate_action_identity_changes(
                 changes.append(option_change)
             continue
         old_isin = _string_or_none(action.get("_source_isin") or action.get("isin"))
-        old_symbol = _string_or_none(action.get("_source_symbol") or action.get("symbol"))
+        old_symbol = _string_or_none(action.get("_source_symbol") or action.get("_previous_symbol") or action.get("symbol"))
         new_isin = _string_or_none(action.get("_target_isin"))
-        new_symbol = _string_or_none(action.get("_target_symbol"))
+        new_symbol = _string_or_none(action.get("_target_symbol") or action.get("_new_symbol"))
         if action_type == "split":
             # The negative .OLD leg names the security being removed and is
             # not a second conversion.  A stock split identity change is the
@@ -841,6 +851,277 @@ _IB_OPTION_SYMBOL_RE = re.compile(
     r"(?P<strike>\d+(?:\.\d+)?)\s+(?P<option_type>[CP])$",
     flags=re.IGNORECASE,
 )
+_IB_ADJUSTED_OPTION_ROOT_RE = re.compile(r"^(?P<base>.+?)(?P<suffix>[1-9]\d*)$")
+
+
+def _build_inferred_option_symbol_change_actions(
+    reports: Sequence[ParsedIbReport],
+    instruments: Sequence[Mapping[str, Any]],
+    trades: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    """Infer adjusted IB option roots when no broker corporate action is present.
+
+    IB can rename an adjusted option root (for example ``USO`` to ``USO1``)
+    without preserving an ISIN or Conid in the exported rows.  The contract is
+    only aliased when a prior position under the old root is demonstrably being
+    closed under the new root.  This deliberately avoids matching contracts on
+    symbol similarity alone.
+    """
+
+    observations: dict[str, dict[str, Any]] = {}
+
+    def observe(
+        symbol: str | None,
+        *,
+        asset_type: str | None,
+        multiplier: Any = None,
+        currency: str | None = None,
+        underlying: str | None = None,
+        isin: str | None = None,
+        conid: str | None = None,
+        country: str | None = None,
+        source_report: str | None = None,
+        trade: Mapping[str, Any] | None = None,
+    ) -> None:
+        if not _is_option_asset_type(asset_type):
+            return
+        normalized_symbol = _strip_yield_suffix(_string_or_none(symbol))
+        components = _ib_option_contract_components(normalized_symbol)
+        if components is None or normalized_symbol is None:
+            return
+        root, expiry, strike, right = components
+        observation = observations.setdefault(
+            normalized_symbol,
+            {
+                "symbol": normalized_symbol,
+                "root": root,
+                "signature": (expiry, strike, right),
+                "multipliers": set(),
+                "currencies": set(),
+                "underlyings": set(),
+                "stable_ids": set(),
+                "countries": set(),
+                "source_reports": set(),
+                "trades": [],
+            },
+        )
+        if multiplier not in (None, ""):
+            observation["multipliers"].add(_decimal(multiplier))
+        if currency := _string_or_none(currency):
+            observation["currencies"].add(currency)
+        if underlying := _string_or_none(underlying):
+            observation["underlyings"].add(underlying)
+        if isin := _string_or_none(isin):
+            observation["stable_ids"].add(f"ISIN:{isin}")
+        if conid := _string_or_none(conid):
+            observation["stable_ids"].add(f"CONID:{conid}")
+        if country := _string_or_none(country):
+            observation["countries"].add(country)
+        if source_report := _string_or_none(source_report):
+            observation["source_reports"].add(source_report)
+        if trade is not None:
+            observation["trades"].append(trade)
+
+    for instrument in instruments:
+        observe(
+            _string_or_none(instrument.get("symbol")),
+            asset_type=_string_or_none(instrument.get("asset_type") or instrument.get("type")),
+            multiplier=instrument.get("multiplier"),
+            underlying=_string_or_none(instrument.get("underlying")),
+            isin=_string_or_none(instrument.get("isin")),
+            conid=_string_or_none(instrument.get("conid")),
+            country=_string_or_none(instrument.get("country")),
+            source_report=_string_or_none(instrument.get("source_report")),
+        )
+    for trade in trades:
+        observe(
+            _string_or_none(trade.get("symbol")),
+            asset_type=_string_or_none(trade.get("asset_type")),
+            multiplier=trade.get("multiplier"),
+            currency=_string_or_none(trade.get("currency")),
+            country=_string_or_none(trade.get("country")),
+            source_report=_string_or_none(trade.get("source_report")),
+            trade=trade,
+        )
+
+    actions: list[dict[str, Any]] = []
+    emitted: set[tuple[str, str, datetime]] = set()
+    by_root_and_contract: dict[tuple[str, tuple[str, Decimal, str]], list[dict[str, Any]]] = defaultdict(list)
+    for observation in observations.values():
+        by_root_and_contract[(observation["root"], observation["signature"])].append(observation)
+    for new in observations.values():
+        old_root = _ib_adjusted_option_root_base(new["root"])
+        if old_root is None:
+            continue
+        first_close = _ib_first_closing_option_trade(new["trades"])
+        if first_close is None:
+            continue
+        action_dt = _parse_datetime(first_close.get("date_time"))
+        if action_dt is None:
+            continue
+        for old in by_root_and_contract.get((old_root, new["signature"]), []):
+            if old["symbol"] == new["symbol"] or old["stable_ids"] & new["stable_ids"]:
+                # A shared stable ID is already covered by ordinary inferred
+                # symbol history and does not need heuristic matching.
+                continue
+            if not _ib_option_metadata_is_compatible(old, new):
+                continue
+
+            prior_quantity = _ib_option_position_before(
+                reports,
+                old["symbol"],
+                action_dt,
+                old["trades"],
+            )
+            closing_quantity = _ib_matching_option_closing_quantity(
+                new["trades"],
+                action_dt,
+                prior_quantity,
+            )
+            if prior_quantity == 0 or closing_quantity == 0 or abs(closing_quantity) > abs(prior_quantity):
+                continue
+
+            key = (old["symbol"], new["symbol"], action_dt)
+            if key in emitted:
+                continue
+            emitted.add(key)
+            country = next(iter(new["countries"] or old["countries"]), None)
+            currency = next(iter(new["currencies"] or old["currencies"]), None)
+            source_report = _string_or_none(first_close.get("source_report"))
+            actions.append(
+                {
+                    "date": _date_to_iso(action_dt),
+                    "date_time": action_dt.isoformat(sep=" "),
+                    "report_date": None,
+                    "asset_type": "Equity and Index Options",
+                    "symbol": new["symbol"],
+                    "isin": None,
+                    "action_type": "symbol_change",
+                    "description": (
+                        "Inferred adjusted option symbol change: "
+                        f"{old['symbol']} -> {new['symbol']}. "
+                        f"Prior quantity {prior_quantity} is closed under the new root by {closing_quantity}."
+                    ),
+                    "quantity": "0",
+                    "proceeds": "0",
+                    "value": "0",
+                    "currency": currency,
+                    "realized_pl": "0",
+                    "year": action_dt.year,
+                    "exit_price": "0",
+                    "country": country,
+                    "source_report": (
+                        f"inferred:option_contract_continuity:{source_report}"
+                        if source_report
+                        else "inferred:option_contract_continuity"
+                    ),
+                    "_source_symbol": old["symbol"],
+                    "_target_symbol": new["symbol"],
+                    "_previous_symbol": old["symbol"],
+                    "_new_symbol": new["symbol"],
+                    "_ratio": "1",
+                    "_inference_method": "option_contract_continuity",
+                    "_apply_identity_change": True,
+                }
+            )
+    return actions
+
+
+def _ib_option_contract_components(symbol: str | None) -> tuple[str, str, Decimal, str] | None:
+    if symbol is None:
+        return None
+    match = _IB_OPTION_SYMBOL_RE.fullmatch(symbol)
+    if match is None:
+        return None
+    return (
+        match.group("underlying").upper(),
+        match.group("expiry").upper(),
+        _decimal(match.group("strike")),
+        match.group("option_type").upper(),
+    )
+
+
+def _ib_adjusted_option_root_base(root: str) -> str | None:
+    match = _IB_ADJUSTED_OPTION_ROOT_RE.fullmatch(root)
+    return match.group("base") if match else None
+
+
+def _is_option_asset_type(asset_type: str | None) -> bool:
+    return "option" in str(asset_type or "").casefold()
+
+
+def _ib_option_metadata_is_compatible(old: Mapping[str, Any], new: Mapping[str, Any]) -> bool:
+    for field_name in ("multipliers", "currencies"):
+        old_values = old[field_name]
+        new_values = new[field_name]
+        if old_values and new_values and not old_values.intersection(new_values):
+            return False
+    old_underlyings = {_ib_adjusted_option_root_base(value) or value for value in old["underlyings"]}
+    new_underlyings = {_ib_adjusted_option_root_base(value) or value for value in new["underlyings"]}
+    return not old_underlyings or not new_underlyings or bool(old_underlyings.intersection(new_underlyings))
+
+
+def _ib_first_closing_option_trade(trades: Sequence[Mapping[str, Any]]) -> Mapping[str, Any] | None:
+    ordered_trades = sorted(
+        trades,
+        key=lambda row: _parse_datetime(row.get("date_time")) or datetime.max,
+    )
+    return next((trade for trade in ordered_trades if _closes_position(trade)), None)
+
+
+def _ib_option_position_before(
+    reports: Sequence[ParsedIbReport],
+    symbol: str,
+    cutoff: datetime,
+    trades: Sequence[Mapping[str, Any]],
+) -> Decimal:
+    latest_seed: tuple[datetime, Decimal] | None = None
+    for report in reports:
+        report_start = _report_start_datetime(report)
+        if report_start is not None and report_start <= cutoff:
+            for row in report.rows.get(IB_SECTION_MTM, []):
+                if not _is_option_asset_type(_string_or_none(row.get("Asset Category"))):
+                    continue
+                if _strip_yield_suffix(_string_or_none(row.get("Symbol"))) != symbol:
+                    continue
+                quantity = _decimal(row.get("Prior Quantity"))
+                if quantity != 0 and (latest_seed is None or report_start > latest_seed[0]):
+                    latest_seed = (report_start, quantity)
+        report_end = report.period_end
+        if report_end is not None:
+            report_end_dt = datetime.combine(report_end, datetime.max.time())
+            if report_end_dt <= cutoff:
+                for row in report.rows.get(IB_SECTION_POSITIONS, []):
+                    if not _is_option_asset_type(_string_or_none(row.get("Asset Category"))):
+                        continue
+                    if _strip_yield_suffix(_string_or_none(row.get("Symbol"))) != symbol:
+                        continue
+                    quantity = _decimal(row.get("Quantity"))
+                    if quantity != 0 and (latest_seed is None or report_end_dt > latest_seed[0]):
+                        latest_seed = (report_end_dt, quantity)
+
+    seed_dt, quantity = latest_seed if latest_seed is not None else (datetime.min, Decimal("0"))
+    for trade in trades:
+        trade_dt = _parse_datetime(trade.get("date_time"))
+        if trade_dt is not None and seed_dt <= trade_dt < cutoff:
+            quantity += _decimal(trade.get("quantity"))
+    return quantity
+
+
+def _ib_matching_option_closing_quantity(
+    trades: Sequence[Mapping[str, Any]],
+    cutoff: datetime,
+    prior_quantity: Decimal,
+) -> Decimal:
+    total = Decimal("0")
+    for trade in trades:
+        trade_dt = _parse_datetime(trade.get("date_time"))
+        quantity = _decimal(trade.get("quantity"))
+        if trade_dt is None or trade_dt < cutoff or quantity == 0 or quantity * prior_quantity >= 0:
+            continue
+        if _closes_position(trade):
+            total += abs(quantity)
+    return total
 
 
 def _option_split_identity_change(

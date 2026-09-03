@@ -107,6 +107,24 @@ Realized & Unrealized Performance Summary,Data,Total (All Assets),,0,38,0,0,0,38
 """
 
 
+ADJUSTED_OPTION_ROOT_IB_CSV = """Statement,Header,Field Name,Field Value
+Statement,Data,Period,"January 1, 2020 - December 31, 2020"
+Account Information,Header,Field Name,Field Value
+Account Information,Data,Account,UADJUST
+Account Information,Data,Base Currency,USD
+Financial Instrument Information,Header,Asset Category,Symbol,Description,Conid,Security ID,Underlying,Listing Exch,Multiplier,Type,Code
+Financial Instrument Information,Data,Equity and Index Options,USO 15JAN21 8.0 C,USO 15JAN21 8 C,,,USO,NYSE,100,CALL,
+Financial Instrument Information,Data,Equity and Index Options,USO1 15JAN21 8.0 C,USO1 15JAN21 8 C,,,USO1,NYSE,100,CALL,
+Trades,Header,DataDiscriminator,Asset Category,Currency,Symbol,Date/Time,Quantity,T. Price,C. Price,Proceeds,Comm/Fee,Basis,Realized P/L,MTM P/L,Code
+Trades,Data,Order,Equity and Index Options,USD,USO 15JAN21 8.0 C,"2020-01-10, 10:00:00",5,1,1,-500,-1,501,0,0,O
+Trades,Data,Order,Equity and Index Options,USD,USO1 15JAN21 8.0 C,"2020-05-19, 14:42:37",-5,2,2,1000,-1,-501,498,0,C
+Trades,Total,,Equity and Index Options,USD,,,,,,500,-2,0,498,0,
+Cash Report,Header,Currency Summary,Currency,Total,Securities,Futures,
+Cash Report,Data,Ending Cash,USD,0,0,0,
+Open Positions,Header,DataDiscriminator,Asset Category,Currency,Symbol,Quantity,Mult,Cost Price,Cost Basis,Close Price,Value,Unrealized P/L,Code
+"""
+
+
 MISSING_OPENING_LOT_IB_CSV = """Statement,Header,Field Name,Field Value
 Statement,Data,Period,"January 1, 2018 - December 31, 2018"
 Account Information,Header,Field Name,Field Value
@@ -1443,6 +1461,31 @@ Grant Activity,Data,UGRANTPRE,IBKR,2025-01-01,Stock Award Withholding,2024-01-01
         self.assertEqual(positions_by_year[2024]["symbol"], "SQ")
         self.assertEqual(positions_by_year[2025]["symbol"], "XYZ")
         self.assertEqual(positions_by_year[2025]["entry_trade_id"], "URENAME_2024_2024.csv:1")
+
+    def test_adjusted_option_root_is_inferred_from_position_continuity_before_fifo(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            raw_root = Path(tmp) / "raw"
+            ib_root = raw_root / "ib"
+            ib_root.mkdir(parents=True)
+            (ib_root / "UADJUST_2020_2020.csv").write_text(ADJUSTED_OPTION_ROOT_IB_CSV, encoding="utf-8")
+
+            parser = InteractiveBrokersParser(AnnualFxRateProvider({(2020, "USD"): Decimal("431.8")}))
+            result = parser.parse_reports(parser.discover_reports(raw_root, "UADJUST"), "UADJUST")
+
+        inferred_change = next(
+            row
+            for row in result.dataset.tables["CorporateActions"]
+            if row.get("_inference_method") == "option_contract_continuity"
+        )
+        self.assertEqual(inferred_change["action_type"], "symbol_change")
+        self.assertEqual(inferred_change["_source_symbol"], "USO 15JAN21 8.0 C")
+        self.assertEqual(inferred_change["_target_symbol"], "USO1 15JAN21 8.0 C")
+        self.assertFalse(any(row["reason"] == "missing_opening_lot" for row in result.dataset.tables["Unprocessed"]))
+        fifo = result.dataset.tables["Fifo"]
+        self.assertEqual(len(fifo), 1)
+        self.assertEqual(fifo[0]["symbol"], "USO1 15JAN21 8.0 C")
+        self.assertEqual(fifo[0]["entry_trade_id"], "UADJUST_2020_2020.csv:1")
+        self.assertEqual(result.dataset.tables["Positions"], [])
 
     def test_yearly_interest_taxes_only_positive_interest_not_margin_expense_net(self) -> None:
         dataset = CanonicalDataset.empty("ib", "UINT")
