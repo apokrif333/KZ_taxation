@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { ArrowRight, BookOpen, Calculator, FileSearch, FileSpreadsheet } from 'lucide-react'
+import { ArrowRight, BookOpen, Calculator, FileJson, FileSearch, FileSpreadsheet, Landmark } from 'lucide-react'
 import { FaqHeader } from '@/components/faq-header'
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -48,6 +48,17 @@ export default function FaqPage() {
             <AccordionContent className="pb-5 pt-1">
               <div className="grid gap-4">
                 <GuideCard href="/faq/audit-file" title="Что находится в audit-файле" description="Описание всех листов audit Excel, колонок, расчётных показателей и связи детальных операций с Years_Results." icon={<FileSearch aria-hidden="true" />} />
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+
+          <AccordionItem value="tax-and-law" className="rounded-xl border border-primary/15 bg-card px-5">
+            <AccordionTrigger className="items-center gap-4 py-5 text-left text-xl font-semibold hover:no-underline sm:text-2xl">
+              <span className="flex items-center gap-3"><Landmark className="size-5 text-primary" aria-hidden="true" />Налоги и законы</span>
+            </AccordionTrigger>
+            <AccordionContent className="pb-5 pt-1">
+              <div className="grid gap-4">
+                <GuideCard href="/faq/form270-upload" title="Загрузка JSON формы 270.00 и оплата налога" description="Как проверить предзаполненные данные КГД, загрузить JSON, отправить декларацию и оплатить ИПН." icon={<FileJson aria-hidden="true" />} />
               </div>
             </AccordionContent>
           </AccordionItem>
