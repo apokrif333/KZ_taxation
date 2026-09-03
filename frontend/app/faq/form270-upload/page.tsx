@@ -28,7 +28,7 @@ export default function Form270UploadPage() {
           <p className="mt-3 text-pretty leading-relaxed text-muted-foreground">Пошаговая инструкция: проверка предзаполненных сведений КГД, загрузка JSON, отправка декларации и оплата ИПН.</p>
         </header>
 
-        <Alert className="mt-8 border-amber-500/35 bg-amber-500/10 text-foreground"><AlertTriangle className="text-amber-700 dark:text-amber-400" /><AlertDescription className="text-sm leading-relaxed">Перед отправкой декларации проверьте данные, которые КГД уже добавил в форму. JSON из сервиса заполняет расчёт по брокерским отчётам, но не заменяет сведения о другом имуществе, доходах или обязательствах.</AlertDescription></Alert>
+        <Alert className="mt-8 border-amber-500/35 bg-amber-500/10 text-foreground"><AlertTriangle className="text-amber-700 dark:text-amber-400" /><AlertDescription className="text-sm leading-relaxed"><p><strong>Подать налоговую форму нужно до 15 сентября.</strong><br /><strong>Оплатить налог нужно до 25 сентября.</strong></p><p className="mt-2">Перед отправкой декларации проверьте данные, которые КГД уже добавил в форму. JSON из сервиса заполняет расчёт по брокерским отчётам, но не заменяет сведения о другом имуществе, доходах или обязательствах.</p></AlertDescription></Alert>
 
         <section className="mt-10" aria-labelledby="check-data-title">
           <div className="flex items-center gap-2"><Landmark className="size-5 text-primary" aria-hidden="true" /><h2 id="check-data-title" className="text-2xl font-semibold tracking-tight">1. Проверьте имеющиеся данные КГД</h2></div>
