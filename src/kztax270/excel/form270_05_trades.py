@@ -6,10 +6,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
-from kztax270.canonical.trade_enrichment import (
-    classify_form270_05_sources,
-    enrich_trades_with_kzt,
-)
+from kztax270.canonical.trade_enrichment import classify_form270_05_sources
 from kztax270.canonical.workbook_schema import required_columns
 from kztax270.reference.fx import AnnualFxRateProvider
 
@@ -20,7 +17,7 @@ def prepare_form270_05_trades_workbook(
     workbook_path: Path,
     fx_provider: AnnualFxRateProvider,
 ) -> Path:
-    """Add KZT/source columns, classify purchases, and sort Trades chronologically."""
+    """Classify purchase sources and sort already-enriched Trades chronologically."""
 
     try:
         from openpyxl import load_workbook  # type: ignore
@@ -56,7 +53,6 @@ def prepare_form270_05_trades_workbook(
         if any(value not in (None, "") for value in row.values()):
             trades.append(row)
 
-    enrich_trades_with_kzt(trades, fx_provider)
     trades = classify_form270_05_sources(trades)
 
     worksheet.delete_rows(1, worksheet.max_row)

@@ -640,6 +640,25 @@ class Form270JsonTests(unittest.TestCase):
         self.assertEqual(by_bank["IBKRUS33XXX"]["F"], 150)
         self.assertEqual(by_bank["EXAEMTM1"]["F"], 200)
 
+    def test_builder_excludes_freedom_broker_cash_from_application_04_c(self) -> None:
+        dataset = CanonicalDataset.empty("merged", "Test_User")
+        dataset.tables["CashBalances"] = [
+            {"broker": "freedom", "account_id": "FB1", "year": 2024, "currency": "USD", "ending_cash": "500"},
+            {
+                "broker": "freedom_broker",
+                "account_id": "FB2",
+                "year": 2024,
+                "currency": "EUR",
+                "ending_cash": "250",
+            },
+            {"broker": "ib", "account_id": "U1", "year": 2024, "currency": "USD", "ending_cash": "100"},
+        ]
+
+        form = _builder().build_account_draft(dataset, tax_year=2024)
+        rows = form["fnoContent"]["application_04"]["C"]
+
+        self.assertEqual([(row["B"], row["E"], row["F"]) for row in rows], [("IBKRUS33XXX", "USD", 100)])
+
     def test_builder_places_exchange_preferential_dividends_in_e1_and_e4(self) -> None:
         dataset = CanonicalDataset.empty("ib", "UPREF")
         dataset.tables["Years_Results"] = [

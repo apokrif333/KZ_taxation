@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from collections import defaultdict
-from collections.abc import Iterable
+from collections.abc import Iterable, MutableMapping, Sequence
 from typing import Any
 
 from .schema import CanonicalDataset, Record
@@ -24,13 +24,12 @@ _NON_SECURITY_ASSET_TYPES = {"cash", "forex", "fx spot"}
 
 
 def validate_dataset_for_tax_forms(dataset: CanonicalDataset) -> None:
-    """Enrich known market countries and surface blocking data gaps.
+    """Surface blocking data gaps without changing calculated tables.
 
     ``Unprocessed`` is the single diagnostic source for the audit workbook.
     The reconciliation engine mirrors every row from it into ``Reconciliation``.
     """
 
-    _fill_known_countries(dataset)
     unprocessed = dataset.table("Unprocessed")
     existing = {_unprocessed_key(row) for row in unprocessed}
 
@@ -40,11 +39,15 @@ def validate_dataset_for_tax_forms(dataset: CanonicalDataset) -> None:
         _append_unique(unprocessed, existing, diagnostic)
 
 
-def _fill_known_countries(dataset: CanonicalDataset) -> None:
+def _fill_known_countries(
+    dataset: CanonicalDataset,
+    *,
+    trades: Sequence[MutableMapping[str, Any]] | None = None,
+) -> None:
     countries_by_isin: dict[str, str] = {}
     countries_by_symbol: dict[str, set[str]] = defaultdict(set)
 
-    for row in _records(dataset, _COUNTRY_SHEETS):
+    for row in _country_records(dataset, trades):
         country = _text(row.get("country"))
         if not country:
             country = _country_from_exchange(row.get("exchange") or row.get("listing_exchange"))
@@ -57,7 +60,7 @@ def _fill_known_countries(dataset: CanonicalDataset) -> None:
         if symbol:
             countries_by_symbol[symbol].add(country)
 
-    for row in _records(dataset, _COUNTRY_SHEETS):
+    for row in _country_records(dataset, trades):
         if _text(row.get("country")):
             continue
         country = _country_from_exchange(row.get("exchange") or row.get("listing_exchange"))
@@ -141,6 +144,17 @@ def _missing_fx_rate_diagnostics(dataset: CanonicalDataset) -> Iterable[Record]:
 def _records(dataset: CanonicalDataset, sheet_names: Iterable[str]) -> Iterable[Record]:
     for sheet_name in sheet_names:
         yield from dataset.tables.get(sheet_name, [])
+
+
+def _country_records(
+    dataset: CanonicalDataset,
+    trades: Sequence[MutableMapping[str, Any]] | None,
+) -> Iterable[MutableMapping[str, Any]]:
+    for sheet_name in _COUNTRY_SHEETS:
+        if sheet_name == "Trades" and trades is not None:
+            yield from trades
+        else:
+            yield from dataset.tables.get(sheet_name, [])
 
 
 def _country_from_exchange(value: Any) -> str | None:

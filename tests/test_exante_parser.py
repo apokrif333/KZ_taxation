@@ -7,6 +7,7 @@ from pathlib import Path
 
 from conftest_imports import SRC  # noqa: F401
 from kztax270.brokers.exante import ExanteParser, parse_exante_csv_report
+from kztax270.form270.json_builder import _build_application_04_b
 from kztax270.reconciliation.engine import ReconciliationEngine
 from kztax270.reconciliation.models import ReconciliationSeverity
 from kztax270.reference.fx import AnnualFxRateProvider
@@ -44,6 +45,20 @@ TRANSACTIONS_FIRST_WITH_MARGIN_TAIL_EXANTE_CSV = '''"Metrics per symbols"
 "General EX2, 2023-12-31"\t""\t""\t""\t""\t""\t""\t""\t""\t""\t""\t""\t""\t""\t""\t""\t""\t""\t""\t""
 "Account"\t"Date"\t"Account Value"\t"Available"\t"Used Margin"\t"Margin Utilization"\t""\t""\t""\t""\t""\t""\t""\t""\t""\t""\t""\t""\t""\t""
 "EX2"\t"2/27/2024"\t"0"\t"0"\t"0"\t"0.00%"\t""\t""\t""\t""\t""\t""\t""\t""\t""\t""\t""\t""\t""\t""
+'''
+
+EXANTE_SYMBOL_METRICS = '''
+"Metrics per symbols"
+"Symbol"\t"Turnover"\t"Realised P&L"\t"Unrealised P&L"\t"P&L"\t"Commission"\t"Currency"
+"AAPL.NASDAQ"\t"15"\t"50"\t"25"\t"75"\t"-1.5"\t"USD"
+'''
+
+HISTORICAL_CRYPTO_FUND_EXANTE_CSV = '''"Costs and Charges Report: 2021-01-01 - 2021-12-31"
+"Account"\t"EXCFD"
+""
+"Time"\t"Account ID"\t"Side"\t"Symbol ID"\t"ISIN"\t"Type"\t"Price"\t"Currency"\t"Quantity"\t"Commission"\t"Commission Currency"\t"P&L"\t"Traded Volume"\t"Order Id"\t"Order pos"\t"Value Date"\t"Unique Transaction Identifier (UTI)"\t"Trade type"\t"Exchange Order ID"
+"2021-01-10 10:00:00"\t"EXCFD"\t"buy"\t"BTC.EXANTE"\t"None"\t"FUND"\t"30000"\t"USD"\t"0.01"\t"1"\t"USD"\t"0"\t"300"\t"btc-open"\t"1"\t""\t""\t"TRADE"\t""
+"2021-02-10 10:00:00"\t"EXCFD"\t"sell"\t"BTC.EXANTE"\t"None"\t"FUND"\t"40000"\t"USD"\t"0.01"\t"1"\t"USD"\t"100"\t"400"\t"btc-close"\t"1"\t""\t""\t"TRADE"\t""
 '''
 
 RUSSIAN_HEADERS_EXANTE_CSV = '''"Время"\t"Счет"\t"Направление"\t"ID символа"\t"ISIN"\t"Тип"\t"Цена"\t"Валюта"\t"Количество"\t"Комиссия"\t"Валюта комиссии"\t"P&L"\t"Объем"\t"Номер заявки"\t"Позиция заявки"\t"Дата валютирования"\t"UTI"\t"Тип сделки"\t"ID конвертации"
@@ -87,6 +102,7 @@ DERIVATIVES_EXANTE_CSV = '''"Costs and Charges Report: 2024-01-01 - 2024-12-31"
 "2024-01-11 10:00:00"\t"EXD"\t"sell"\t"MES.CME.Z2024"\t"None"\t"FUTURE"\t"110"\t"USD"\t"1"\t"3"\t"USD"\t"10"\t"110"\t"fut-close"\t"1"\t""\t""\t""\t""
 "2024-02-19 08:25:14"\t"EXD"\t"sell"\t"EUR/USD.E.FX"\t"None"\t"FX_SPOT"\t"1.53"\t"USD"\t"1000"\t"0.2"\t"USD"\t"0"\t"1530"\t"fx-open"\t"1"\t""\t""\t""\t""
 "2024-02-20 08:25:14"\t"EXD"\t"buy"\t"EUR/USD.E.FX"\t"None"\t"FX_SPOT"\t"1.52"\t"USD"\t"1000"\t"0.3"\t"USD"\t"10"\t"1520"\t"fx-close"\t"1"\t""\t""\t""\t""
+"2024-03-01 08:25:14"\t"EXD"\t"buy"\t"BTC.EXANTE"\t"None"\t"CFD"\t"50000"\t"USD"\t"0.01"\t"0.1"\t"USD"\t"0"\t"500"\t"cfd-open"\t"1"\t""\t""\t""\t""
 '''
 
 
@@ -116,6 +132,20 @@ HXR_TRANSFER_KSPI_OPTION_EXANTE_CSV = '''"Costs and Charges Report: 2022-01-01 -
 '''
 
 
+PHYSICAL_OPTION_SETTLEMENT_EXANTE_CSV = '''"Costs and Charges Report: 2021-01-01 - 2021-12-31"
+"Account"\t"EXP"
+""
+"Time"\t"Account ID"\t"Side"\t"Symbol ID"\t"ISIN"\t"Type"\t"Price"\t"Currency"\t"Quantity"\t"Commission"\t"Commission Currency"\t"P&L"\t"Traded Volume"\t"Order Id"\t"Order pos"\t"Value Date"\t"Unique Transaction Identifier (UTI)"\t"Trade type"\t"Exchange Order ID"
+"2021-10-01 10:00:00"\t"EXP"\t"sell"\t"MA.CBOE.19X2021.P345"\t"None"\t"OPTION"\t"2"\t"USD"\t"1"\t"2"\t"USD"\t"0"\t"200"\t"open-put"\t"1"\t""\t""\t"TRADE"\t""
+"2021-11-21 23:28:53"\t"EXP"\t"buy"\t"MA.CBOE.19X2021.P345"\t"None"\t"OPTION"\t"0"\t"USD"\t"1"\t"0"\t"USD"\t"0"\t"0"\t"exercise-put"\t"1"\t""\t""\t"EXERCISE"\t""
+"2021-11-21 23:28:53"\t"EXP"\t"buy"\t"MA.NYSE"\t"US57636Q1040"\t"STOCK"\t"345"\t"USD"\t"100"\t"2"\t"USD"\t"0"\t"34500"\t"exercise-stock"\t"1"\t""\t""\t"EXERCISE"\t""
+"Transaction ID"\t"Account ID"\t"Symbol ID"\t"ISIN"\t"Operation type"\t"When"\t"Sum"\t"Asset"\t"EUR equivalent"\t"Comment"\t"UUID"\t"Parent UUID"
+"1"\t"EXP"\t"MA.CBOE.19X2021.P345"\t"None"\t"EXERCISE"\t"2021-11-21 23:28:53"\t"1"\t"MA.CBOE.19X2021.P345"\t""\t"MA.CBOE.19X2021.P345 physical settlement"\t""\t""
+"2"\t"EXP"\t"MA.NYSE"\t"US57636Q1040"\t"EXERCISE"\t"2021-11-21 23:28:53"\t"100"\t"MA.NYSE"\t""\t"MA.CBOE.19X2021.P345 physical settlement"\t""\t""
+"3"\t"EXP"\t"MA.NYSE"\t"None"\t"EXERCISE"\t"2021-11-21 23:28:53"\t"-34500"\t"USD"\t""\t"MA.CBOE.19X2021.P345 physical settlement"\t""\t""
+'''
+
+
 class ExanteParserTests(unittest.TestCase):
     def test_russian_header_export_detects_account_id_and_trades(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -134,6 +164,52 @@ class ExanteParserTests(unittest.TestCase):
 
         self.assertEqual(parsed.account_id, "EX1")
         self.assertEqual(len(parsed.rows["Trades"]), 2)
+
+    def test_metrics_per_symbols_feed_fifo_pnl_reconciliation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            raw_root = Path(tmp) / "raw"
+            broker_root = raw_root / "exante"
+            broker_root.mkdir(parents=True)
+            path = broker_root / "Custom_EX1.csv"
+            path.write_text(MINIMAL_EXANTE_CSV + EXANTE_SYMBOL_METRICS, encoding="utf-16")
+
+            parser = ExanteParser(fx_provider=AnnualFxRateProvider({(2023, "USD"): Decimal("470")}))
+            result = parser.parse_reports(parser.discover_reports(raw_root, "EX1"), "EX1")
+            parsed_metrics = parse_exante_csv_report(path).rows["SymbolMetricsRaw"]
+
+        self.assertEqual(len(result.reports), 1)
+        self.assertEqual(len(parsed_metrics), 1)
+        self.assertEqual(parsed_metrics[0]["Realised P&L"], "50")
+        self.assertEqual(parsed_metrics[0]["Unrealised P&L"], "25")
+        pnl_items = [
+            item
+            for item in ReconciliationEngine().reconcile_dataset(result.dataset)
+            if item.metric.value == "pnl_after_all_commissions_by_instrument"
+        ]
+        self.assertEqual(len(pnl_items), 1)
+        self.assertEqual(pnl_items[0].broker_value, Decimal("48.5"))
+        self.assertEqual(pnl_items[0].canonical_value, Decimal("48.5"))
+        self.assertEqual(pnl_items[0].severity, ReconciliationSeverity.INFO)
+
+    def test_historical_exante_crypto_fund_is_classified_as_cfd_before_fifo(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            raw_root = Path(tmp) / "raw"
+            broker_root = raw_root / "exante"
+            broker_root.mkdir(parents=True)
+            path = broker_root / "Custom_EXCFD.csv"
+            path.write_text(HISTORICAL_CRYPTO_FUND_EXANTE_CSV, encoding="utf-16")
+
+            parser = ExanteParser(fx_provider=AnnualFxRateProvider({(2021, "USD"): Decimal("426")}))
+            dataset = parser.parse_reports(parser.discover_reports(raw_root, "EXCFD"), "EXCFD").dataset
+
+        self.assertTrue(all(row["asset_type"] == "CFD" for row in dataset.tables["Trades"]))
+        self.assertTrue(all(row["country"] == "Cyprus" for row in dataset.tables["Trades"]))
+        self.assertEqual(dataset.tables["Fifo"][0]["asset_type"], "CFD")
+        self.assertEqual(dataset.tables["Fifo"][0]["country"], "Cyprus")
+        self.assertEqual(
+            {row["table"] for row in dataset.tables["Years_Results"]},
+            {"Yearly Derivatives"},
+        )
 
     def test_snapshot_account_date_header_does_not_replace_transaction_account_id(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -219,9 +295,9 @@ class ExanteParserTests(unittest.TestCase):
         self.assertEqual(cash_transfers[2]["broker_comment"], "BANK CHARGE: Bank withdrawal fee")
         self.assertFalse(any("crossrate=" in str(row.get("broker_comment")) for row in cash_transfers))
         self.assertFalse(any("from 2023-04-24 till" in str(row.get("broker_comment")) for row in cash_transfers))
-        self.assertEqual(len(result.dataset.tables["Unprocessed"]), 2)
+        self.assertEqual(len(result.dataset.tables["Unprocessed"]), 1)
         reasons = {row["reason"] for row in result.dataset.tables["Unprocessed"]}
-        self.assertEqual(reasons, {"unhandled_exante_transaction", "unsupported_exante_trade_side"})
+        self.assertEqual(reasons, {"unsupported_exante_trade_side"})
 
     def test_exante_snapshots_reverts_and_fx_do_not_create_positions(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -321,6 +397,8 @@ class ExanteParserTests(unittest.TestCase):
         future_trades = [row for row in result.dataset.tables["Trades"] if row["asset_type"] == "Futures"]
         self.assertTrue(all(row["country"] == "US" for row in future_trades))
         self.assertEqual(future_fifo["country"], "US")
+        cfd_trade = next(row for row in result.dataset.tables["Trades"] if row["asset_type"] == "CFD")
+        self.assertEqual(cfd_trade["country"], "Cyprus")
         self.assertEqual(future_fifo["pnl_before_commission"], "10")
         self.assertEqual(future_fifo["pnl"], "10")
         self.assertEqual(future_fifo["pnl_after_all_commissions"], "5")
@@ -419,6 +497,34 @@ class ExanteParserTests(unittest.TestCase):
         self.assertEqual(option_fifo[0]["pnl"], "-300.0")
         self.assertFalse(any(row["symbol"] == "SPY" for row in dataset.tables["Trades"]))
         self.assertFalse(any(row["reason"] == "unhandled_exante_transaction" for row in dataset.tables["Unprocessed"]))
+        declaration_rows = _build_application_04_b(dataset.tables, tax_year=2023, split=False)
+        expiration = next(
+            row
+            for row in declaration_rows
+            if row["E"] == "SPY.CBOE.30M2023.P350" and row["_01"] == "Экспирация"
+        )
+        self.assertEqual(expiration["B"], "13")
+        self.assertEqual(expiration["_01"], "Экспирация")
+
+    def test_physical_option_settlement_capitalizes_premium_into_underlying_and_excludes_option_fifo(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            raw_root = Path(tmp) / "raw"
+            broker_root = raw_root / "exante"
+            broker_root.mkdir(parents=True)
+            path = broker_root / "Custom_EXP.csv"
+            path.write_text(PHYSICAL_OPTION_SETTLEMENT_EXANTE_CSV, encoding="utf-16")
+
+            parser = ExanteParser(fx_provider=AnnualFxRateProvider({(2021, "USD"): Decimal("426.03")}))
+            dataset = parser.parse_reports(parser.discover_reports(raw_root, "EXP"), "EXP").dataset
+
+        option_fifo = [row for row in dataset.tables["Fifo"] if row["symbol"] == "MA.CBOE.19X2021.P345"]
+        self.assertEqual(option_fifo, [])
+        delivered_stock = next(row for row in dataset.tables["Trades"] if row["symbol"] == "MA")
+        self.assertEqual(delivered_stock["trade_type"], "physical_settlement")
+        self.assertEqual(delivered_stock["quantity"], "100")
+        self.assertEqual(delivered_stock["price"], "343")
+        self.assertEqual(delivered_stock["commission"], "4")
+        self.assertEqual(dataset.tables["Unprocessed"], [])
 
     def test_capitalized_operation_type_parses_transfers_in_and_requests_fifo_source(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -5,7 +5,7 @@ from decimal import Decimal
 
 from conftest_imports import SRC  # noqa: F401
 from kztax270.canonical.schema import CanonicalDataset
-from kztax270.canonical.validation import validate_dataset_for_tax_forms
+from kztax270.canonical.validation import _fill_known_countries, validate_dataset_for_tax_forms
 from kztax270.reconciliation.engine import ReconciliationEngine
 from kztax270.reconciliation.models import ReconciliationMetric, ReconciliationSeverity
 
@@ -164,7 +164,7 @@ class ReconciliationTests(unittest.TestCase):
         self.assertEqual(len(unprocessed), 2)
         self.assertTrue(all(item.severity == ReconciliationSeverity.ERROR for item in unprocessed))
 
-    def test_cme_country_is_filled_before_country_validation(self) -> None:
+    def test_cme_country_is_filled_during_precalculation_enrichment(self) -> None:
         dataset = CanonicalDataset.empty("test", "account")
         dataset.tables["Trades"] = [
             {
@@ -185,6 +185,7 @@ class ReconciliationTests(unittest.TestCase):
             }
         ]
 
+        _fill_known_countries(dataset)
         validate_dataset_for_tax_forms(dataset)
 
         self.assertEqual({row["country"] for row in dataset.tables["Trades"]}, {"US"})

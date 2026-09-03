@@ -7,11 +7,30 @@ from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
+from kztax270.canonical.schema import CanonicalDataset
 from kztax270.reference.fx import AnnualFxRateProvider
 
 ZERO = Decimal("0")
 SOURCE_OWN_FUNDS_CODE = "11"
 SOURCE_ASSET_SALE_CODE = "12"
+
+
+def enrich_trades_before_calculations(
+    dataset: CanonicalDataset,
+    trades: Sequence[MutableMapping[str, Any]],
+    fx_provider: AnnualFxRateProvider,
+) -> None:
+    """Enrich shared trade rows before FIFO and annual aggregation.
+
+    Broker adapters keep richer internal trade rows while building FIFO.
+    Country and FX enrichment operate on those same dictionaries, so both the
+    eventual audit rows and FIFO receive the result without rebuilding Trades.
+    """
+
+    from kztax270.canonical.validation import _fill_known_countries
+
+    _fill_known_countries(dataset, trades=trades)
+    enrich_trades_with_kzt(trades, fx_provider, dataset.warnings)
 
 
 def enrich_trades_with_kzt(
@@ -42,7 +61,7 @@ def enrich_trades_with_kzt(
 
     if warnings is not None:
         for year, currency in sorted(missing_rates):
-            message = f"Missing annual KZT rate for Trades: year={year}, currency={currency}"
+            message = f"Missing annual NBK FX rate for {currency}/{year}; KZT fields left empty."
             if message not in warnings:
                 warnings.append(message)
 

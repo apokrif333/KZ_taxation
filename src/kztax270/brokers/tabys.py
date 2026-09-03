@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from kztax270.canonical.schema import AccountMetadata, CanonicalDataset
+from kztax270.canonical.trade_enrichment import enrich_trades_before_calculations
 from kztax270.reconciliation.models import ReconciliationMetric
 from kztax270.reference.fx import AnnualFxRateProvider
 from kztax270.reference.securities import AixInstrumentResolver
@@ -133,6 +134,7 @@ def build_canonical_dataset(
     dataset.tables["Dividends"] = _build_dividends(reports, instrument_lookup, fx_provider, dataset.warnings)
 
     internal_trades = _sort_trades_by_datetime(_build_trades(reports, instrument_lookup, dataset.warnings))
+    enrich_trades_before_calculations(dataset, internal_trades, fx_provider)
     transfers, transfer_totals = _build_transfers(reports, instrument_lookup, internal_trades)
     dataset.tables["Trades"] = _canonical_trade_rows(internal_trades)
     dataset.tables["_BrokerTradeRealizedPL"] = _build_broker_trade_realized_pl(internal_trades)

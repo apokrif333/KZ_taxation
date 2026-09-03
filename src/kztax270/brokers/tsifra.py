@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from kztax270.canonical.schema import AccountMetadata, CanonicalDataset, RawReportTotals
+from kztax270.canonical.trade_enrichment import enrich_trades_before_calculations
 from kztax270.reconciliation.models import ReconciliationMetric
 from kztax270.reference.fx import AnnualFxRateProvider
 from kztax270.transfers import TransferInFifoResolver
@@ -133,6 +134,7 @@ def build_canonical_dataset(
 ) -> CanonicalDataset:
     dataset = CanonicalDataset(metadata=AccountMetadata(broker="tsifra", account_id=account_id, base_currency=TSIFRA_BASE_CURRENCY))
     instruments = _build_instruments(reports, account_id)
+    _apply_broker_country_to_forex_trades(instruments, "tsifra")
     instrument_lookup = _instrument_lookup(instruments)
     symbol_history = _instrument_symbol_history(instruments)
     dataset.tables["Instruments"] = instruments
@@ -141,6 +143,7 @@ def build_canonical_dataset(
     transfers, transfer_totals_by_currency = _build_transfers(reports, instrument_lookup)
     internal_trades = _sort_trades_by_datetime(_build_trades(reports, instrument_lookup))
     _apply_broker_country_to_forex_trades(internal_trades, "tsifra")
+    enrich_trades_before_calculations(dataset, internal_trades, fx_provider)
     dataset.tables["Trades"] = _canonical_trade_rows(internal_trades)
     dataset.tables["_BrokerTradeRealizedPL"] = _build_broker_trade_realized_pl(internal_trades)
     fifo_rows, fifo_positions, transfer_rows = _build_fifo_and_positions(

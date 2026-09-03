@@ -24,6 +24,11 @@ from kztax270.canonical.trade_enrichment import (
 
 ZERO = Decimal("0")
 HALF = Decimal("0.5")
+
+# Cash held with Freedom Broker is held by a Kazakhstan broker and is not
+# reported as a foreign-bank balance in application 04 C.  The second code is
+# retained for datasets produced by the broker/bank account split.
+FREEDOM_BROKER_CODES = frozenset({"freedom", "freedom_broker"})
 SECURITIES_ASSET_CODE = "3"
 DERIVATIVE_ASSET_CODE = "4"
 SECURITIES_ASSET_NAME = "ценные бумаги"
@@ -36,6 +41,7 @@ OPERATION_GRATUITOUS = "Безвозмездно полученное (за ис
 OPERATION_GRATUITOUS_TRANSFERRED = "Безвозмездно переданное"
 OPERATION_OTHER = "Другой способ"
 BOND_REDEMPTION_OTHER_TEXT = "Погашение"
+OPTION_EXPIRATION_OTHER_TEXT = "Экспирация"
 
 
 def _reference_templates_dir() -> Path:
@@ -667,6 +673,8 @@ def _build_application_04_c(
         if _int_or_none(row.get("year")) != tax_year:
             continue
         source_broker = (_str_or_none(row.get("broker")) or broker).lower()
+        if source_broker in FREEDOM_BROKER_CODES:
+            continue
         currency = _str_or_none(row.get("currency"))
         if currency is None or currency == "KZT":
             continue
@@ -1075,6 +1083,8 @@ def _is_derivative_asset(row: Mapping[str, Any]) -> bool:
 
 def _application_04_operation(row: Mapping[str, Any], quantity: Decimal) -> tuple[str, str | None]:
     trade_type = str(row.get("trade_type") or "").lower()
+    if trade_type == "option_expiration":
+        return _trade_type_code_for_form(OPERATION_OTHER), OPTION_EXPIRATION_OTHER_TEXT
     if trade_type in {"stock_award_grant", "stock_award_vesting"}:
         return _trade_type_code_for_form(OPERATION_GRATUITOUS), None
     if trade_type == "stock_award_withholding":

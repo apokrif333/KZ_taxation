@@ -11,6 +11,7 @@ from kztax270.canonical.trade_enrichment import (
     classify_form270_05_sources,
     enrich_trades_with_kzt,
 )
+from kztax270.canonical.validation import validate_dataset_for_tax_forms
 from kztax270.excel.audit_workbook import ExcelAuditWorkbookWriter
 from kztax270.excel.form270_05_trades import prepare_form270_05_trades_workbook
 from kztax270.form270.json_builder import load_processed_workbook_tables
@@ -99,11 +100,12 @@ class TradeEnrichmentTests(unittest.TestCase):
             ),
         ]
         provider = AnnualFxRateProvider({(2024, "USD"): Decimal("400"), (2025, "USD"): Decimal("400")})
+        enrich_trades_with_kzt(dataset.tables["Trades"], provider, dataset.warnings)
 
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "ib_U1_audit.xlsx"
             ExcelAuditWorkbookWriter().write(dataset, path)
-            prepare_form270_05_trades_workbook(path, provider)
+            prepare_form270_05_trades_workbook(path, AnnualFxRateProvider({}))
             rows = load_processed_workbook_tables(path)["Trades"]
             from openpyxl import load_workbook
 
@@ -122,6 +124,22 @@ class TradeEnrichmentTests(unittest.TestCase):
 
         self.assertEqual(headers[source_index + 1], "Cumulative_Source_Of_Expense")
         self.assertEqual(cumulative_values, [40000, 40000, 0])
+
+    def test_missing_rate_warning_uses_validation_contract(self) -> None:
+        dataset = CanonicalDataset.empty("test", "NO-RATE")
+        dataset.tables["Trades"] = [_trade("2025-01-01", "NO-RATE", "1", "10", currency="ZZZ")]
+
+        enrich_trades_with_kzt(dataset.tables["Trades"], AnnualFxRateProvider({}), dataset.warnings)
+        validate_dataset_for_tax_forms(dataset)
+
+        self.assertEqual(
+            dataset.warnings,
+            ["Missing annual NBK FX rate for ZZZ/2025; KZT fields left empty."],
+        )
+        self.assertEqual(
+            [row["reason"] for row in dataset.tables["Unprocessed"]],
+            ["missing_kzt_fx_rate"],
+        )
 
 
 def _trade(

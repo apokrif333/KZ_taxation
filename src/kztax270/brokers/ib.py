@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
 from kztax270.canonical.schema import AccountMetadata, CanonicalDataset, RawReportTotals
+from kztax270.canonical.trade_enrichment import enrich_trades_before_calculations
 from kztax270.form270.json_builder import DEFAULT_BROKER_BANK_INFO
 from kztax270.reconciliation.models import ReconciliationMetric
 from kztax270.reference.fx import AnnualFxRateProvider
@@ -200,6 +201,7 @@ def build_canonical_dataset(
     dataset = CanonicalDataset(metadata=AccountMetadata(broker="ib", account_id=account_id, base_currency=base_currency))
 
     instruments = _build_instruments(reports, account_id)
+    _apply_broker_country_to_forex_trades(instruments, "ib")
     instrument_lookup = _instrument_lookup(instruments)
     symbol_history = _instrument_symbol_history(instruments)
     dataset.tables["Instruments"] = instruments
@@ -232,6 +234,7 @@ def build_canonical_dataset(
         [*raw_internal_trades, *grant_activity_trades, *synthetic_corporate_action_trades]
     )
     _apply_broker_country_to_forex_trades(internal_trades, "ib")
+    enrich_trades_before_calculations(dataset, internal_trades, fx_provider)
     # Vesting only changes an existing stock award from unvested to vested.
     # Keep it in the internal event stream for FIFO, but do not expose it as a
     # reportable trade in the audit workbook or Form 270.00 input.
@@ -1527,6 +1530,9 @@ def _canonical_trade_rows(trades: Sequence[Mapping[str, Any]]) -> list[dict[str,
         "amount",
         "commission",
         "amount_with_commission",
+        "kzt_rate",
+        "amount_kzt",
+        "source_of_expense",
         "currency",
         "exchange",
         "country",
@@ -1624,6 +1630,7 @@ def _apply_corporate_action_split_adjustments_to_fifo_trades(
     corporate_actions: Sequence[Mapping[str, Any]],
 ) -> list[dict[str, Any]]:
     fifo_trades = [dict(trade) for trade in trades]
+    seen_splits: set[tuple[datetime, str, Decimal]] = set()
     for action in corporate_actions:
         action_type = action.get("action_type")
         action_dt = _parse_datetime(action.get("date_time") or action.get("date"))
@@ -1634,6 +1641,10 @@ def _apply_corporate_action_split_adjustments_to_fifo_trades(
             ratio = _split_ratio(_string_or_none(action.get("description")))
             if ratio is None or ratio == 0:
                 continue
+            split_key = (action_dt, isin, ratio)
+            if split_key in seen_splits:
+                continue
+            seen_splits.add(split_key)
             for trade in fifo_trades:
                 trade_dt = _parse_datetime(trade.get("date_time"))
                 if trade_dt is None or trade_dt >= action_dt:
@@ -2754,9 +2765,16 @@ def _closes_position(trade: Mapping[str, Any]) -> bool:
 def _should_close_unknown_prior_lot(trade: Mapping[str, Any], matched_any: bool) -> bool:
     if _broker_realized_pl(trade) == 0:
         return False
+    # Exante executions from a report with a year-end position snapshot are
+    # explicitly marked ``O``.  When such an execution exhausts the opposite
+    # book, its remainder is the newly opened side of a reversal.  Keep the
+    # established IB behaviour for closing residuals without that marker:
+    # those can still represent undiscovered opening history.
+    if matched_any and _opens_position(trade):
+        return False
     if _opens_position(trade):
         return False
-    return matched_any or _closes_position(trade)
+    return _closes_position(trade)
 
 
 def _append_position_snapshots(
@@ -3419,6 +3437,10 @@ def _apply_broker_country_to_forex_trades(trades: Sequence[Mapping[str, Any]], b
     for trade in trades:
         if _is_broker_country_forex_trade(trade) and isinstance(trade, dict):
             trade["country"] = country
+            if "issuer_country" in trade:
+                trade["issuer_country"] = country
+            if "issuer_outside_kz_flag" in trade:
+                trade["issuer_outside_kz_flag"] = country not in {"KZ", "Kazakhstan"}
 
 
 def _broker_registration_country(broker_code: str) -> str | None:
@@ -3432,9 +3454,16 @@ def _broker_registration_country(broker_code: str) -> str | None:
 
 
 def _is_broker_country_forex_trade(record: Mapping[str, Any]) -> bool:
-    asset_type = str(record.get("asset_type") or record.get("Asset_Type") or "").strip().lower()
+    asset_type = str(
+        record.get("asset_type") or record.get("Asset_Type") or record.get("type") or ""
+    ).strip().lower()
     symbol = str(record.get("symbol") or record.get("Symbol") or "").strip().upper()
-    return asset_type in {"forex", "fx spot", "fx_spot", "fx-spot", "currency"} or "FOREX" in asset_type or ".FX" in symbol
+    return (
+        asset_type in {"forex", "fx spot", "fx_spot", "fx-spot", "currency", "cfd"}
+        or "FOREX" in asset_type
+        or "CFD" in asset_type
+        or ".FX" in symbol
+    )
 
 
 def _annotate_audit_tax_dimensions(
@@ -3833,6 +3862,7 @@ def _is_derivative_record(record: Mapping[str, Any]) -> bool:
             "fx spot",
             "swap",
             "derivative",
+            "cfd",
             "\u043e\u043f\u0446\u0438\u043e\u043d",
             "\u0444\u044c\u044e\u0447\u0435\u0440",
             "\u0441\u0432\u043e\u043f",

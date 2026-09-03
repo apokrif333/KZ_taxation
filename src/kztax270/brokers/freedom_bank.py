@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from kztax270.canonical.schema import AccountMetadata, CanonicalDataset, RawReportTotals
+from kztax270.canonical.trade_enrichment import enrich_trades_before_calculations
 from kztax270.reconciliation.models import ReconciliationMetric
 from kztax270.reference.fx import AnnualFxRateProvider
 from kztax270.transfers import TransferInFifoLot, TransferInRequest
@@ -142,10 +143,13 @@ def build_canonical_dataset(
     dataset = CanonicalDataset(metadata=AccountMetadata(broker=BROKER_CODE, account_id=account_id, base_currency=base_currency))
 
     instrument = _instrument_record(reports, account_id)
+    if instrument:
+        _apply_broker_country_to_forex_trades([instrument], BROKER_CODE)
     dataset.tables["Instruments"] = [instrument] if instrument else []
 
     internal_trades = _sort_trades_by_datetime(_build_trades(reports))
     _apply_broker_country_to_forex_trades(internal_trades, BROKER_CODE)
+    enrich_trades_before_calculations(dataset, internal_trades, fx_provider)
     transfers = _build_transfers(reports)
     transfers.extend(_build_summary_position_adjustments(reports))
     dataset.tables["Trades"] = _canonical_trade_rows(internal_trades)

@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from kztax270.canonical.schema import AccountMetadata, CanonicalDataset, RawReportTotals
+from kztax270.canonical.trade_enrichment import enrich_trades_before_calculations
 from kztax270.reconciliation.models import ReconciliationMetric
 from kztax270.reference.fx import AnnualFxRateProvider
 from kztax270.transfers import TransferInFifoResolver
@@ -54,6 +55,7 @@ EXANTE_SECTION_TRADES = "Trades"
 EXANTE_SECTION_TRANSACTIONS = "Transactions"
 EXANTE_SECTION_CASH_BALANCES = "CashBalancesRaw"
 EXANTE_SECTION_OPEN_POSITIONS = "OpenPositionsRaw"
+EXANTE_SECTION_SYMBOL_METRICS = "SymbolMetricsRaw"
 
 TRADE_REQUIRED_COLUMNS = {
     "Time",
@@ -123,6 +125,10 @@ HANDLED_TRANSACTION_OPERATION_TYPES = {
     "COUPON",
     "CORPORATE ACTION",
     "STOCK SPLIT",
+    "EXERCISE",
+    "FEE",
+    "ISSUANCE FEE",
+    "MARKET DATA FEE",
 }
 
 DIVIDEND_AMOUNT_RE = re.compile(
@@ -135,10 +141,12 @@ DIVIDEND_PAY_DATE_RE = re.compile(r"\bPD\s+(?P<date>\d{4}-\d{2}-\d{2})\b", re.IG
 PERIOD_RE = re.compile(r"(?P<start>\d{4}-\d{2}-\d{2})\s+-\s+(?P<end>\d{4}-\d{2}-\d{2})")
 CASH_BALANCE_SECTION_RE = re.compile(r"^Cash Balance .*?, (?P<date>\d{4}-\d{2}-\d{2})$")
 OPEN_POSITIONS_SECTION_RE = re.compile(r"^Stocks & ETFs .*?, (?P<date>\d{4}-\d{2}-\d{2})\)?$")
+OPTIONS_SECTION_RE = re.compile(r"^Options .*?, (?P<date>\d{4}-\d{2}-\d{2})\)?$")
 EXANTE_OPTION_SYMBOL_RE = re.compile(
     r"^(?P<underlying>[A-Z0-9_/-]+)\.(?P<exchange>[A-Z]+)\.\d{1,2}[A-Z]\d{4}\.[CP]\d+(?:\.\d+)?$",
     re.IGNORECASE,
 )
+HISTORICAL_EXANTE_CFD_SYMBOLS = {"BTC.EXANTE"}
 
 
 @dataclass(slots=True)
@@ -205,6 +213,23 @@ def parse_exante_csv_report(path: Path) -> ParsedExanteReport:
                 parsed.account_id = account_id
 
     _parse_snapshot_sections(parsed, rows, path)
+
+    metrics_header_idx = _find_header(
+        rows,
+        "Symbol",
+        required_columns={"Symbol", "Realised P&L", "Unrealised P&L"},
+    )
+    if metrics_header_idx is not None:
+        metrics_header = _canonicalize_header(rows[metrics_header_idx])
+        for row in rows[metrics_header_idx + 1 :]:
+            if not row or not any(row):
+                break
+            if len(row) < len(metrics_header):
+                continue
+            record = _row_to_record(metrics_header, row, path)
+            if not _string_or_none(record.get("Symbol")):
+                continue
+            parsed.rows[EXANTE_SECTION_SYMBOL_METRICS].append(record)
 
     trade_header_idx = _find_header(rows, "Time", required_columns=TRADE_REQUIRED_COLUMNS)
     if trade_header_idx is not None:
@@ -282,6 +307,8 @@ def _parse_snapshot_sections(parsed: ParsedExanteReport, rows: Sequence[Sequence
             continue
 
         positions_match = OPEN_POSITIONS_SECTION_RE.match(title)
+        if positions_match is None:
+            positions_match = OPTIONS_SECTION_RE.match(title)
         if positions_match:
             _append_snapshot_rows(
                 parsed,
@@ -323,7 +350,11 @@ def _append_snapshot_rows(
 
 def _looks_like_section_title(row: Sequence[str]) -> bool:
     first_cell = row[0] if row else ""
-    return bool(CASH_BALANCE_SECTION_RE.match(first_cell) or OPEN_POSITIONS_SECTION_RE.match(first_cell))
+    return bool(
+        CASH_BALANCE_SECTION_RE.match(first_cell)
+        or OPEN_POSITIONS_SECTION_RE.match(first_cell)
+        or OPTIONS_SECTION_RE.match(first_cell)
+    )
 
 
 def build_canonical_dataset(
@@ -337,6 +368,7 @@ def build_canonical_dataset(
     dataset = CanonicalDataset(metadata=AccountMetadata(broker="exante", account_id=account_id, base_currency=base_currency))
 
     instruments = _build_instruments(reports, account_id)
+    _apply_broker_country_to_forex_trades(instruments, "exante")
     instrument_lookup = _instrument_lookup(instruments)
     symbol_history = _instrument_symbol_history(instruments)
     dataset.tables["Instruments"] = instruments
@@ -345,8 +377,15 @@ def build_canonical_dataset(
     dataset.tables["Dividends"] = _build_dividends(reports, instrument_lookup, fx_provider, dataset.warnings)
 
     transfers, transfer_totals_by_currency = _build_transfers(reports, instrument_lookup)
-    internal_trades = _sort_trades_by_datetime(_build_trades(reports, instrument_lookup))
+    internal_trades = _sort_trades_by_datetime(
+        _apply_exante_corporate_action_renames_to_trades(
+            _build_trades(reports, instrument_lookup),
+            corporate_actions,
+        )
+    )
+    _capitalize_exante_physical_option_settlements(internal_trades, dataset.warnings)
     _apply_broker_country_to_forex_trades(internal_trades, "exante")
+    enrich_trades_before_calculations(dataset, internal_trades, fx_provider)
     fifo_input_trades = [
         trade
         for trade in _apply_corporate_action_split_adjustments_to_fifo_trades(
@@ -368,6 +407,14 @@ def build_canonical_dataset(
         symbol_history=symbol_history,
         transfer_in_resolver=transfer_in_resolver,
     )
+    physical_option_trade_ids = {
+        _string_or_none(trade.get("trade_id"))
+        for trade in internal_trades
+        if trade.get("_physical_settlement_option")
+    }
+    fifo_rows = [
+        row for row in fifo_rows if _string_or_none(row.get("source_trade_id")) not in physical_option_trade_ids
+    ]
     fifo_rows.extend(_build_fx_fifo_rows(internal_trades, fx_provider, dataset.warnings))
     dataset.tables["Fifo"] = fifo_rows
     dataset.tables["Unprocessed"] = [
@@ -490,7 +537,7 @@ def _decimal(value: Any) -> Decimal:
 
 def _build_instruments(reports: Sequence[ParsedExanteReport], account_id: str) -> list[dict[str, Any]]:
     instruments: list[dict[str, Any]] = []
-    seen: set[tuple[str | None, str | None, int | None]] = set()
+    seen: set[tuple[str | None, str | None, str | None, int | None]] = set()
 
     for report in reports:
         report_year = _year_for_report(report)
@@ -564,13 +611,19 @@ def _build_instruments(reports: Sequence[ParsedExanteReport], account_id: str) -
 
 def _append_instrument(
     instruments: list[dict[str, Any]],
-    seen: set[tuple[str | None, str | None, int | None]],
+    seen: set[tuple[str | None, str | None, str | None, int | None]],
     record: dict[str, Any],
 ) -> None:
-    key = (_string_or_none(record.get("symbol")), _string_or_none(record.get("isin")), _int_or_none(record.get("year")))
+    isin = _string_or_none(record.get("isin"))
+    key = (
+        _string_or_none(record.get("symbol")),
+        isin,
+        None if isin else _string_or_none(record.get("_exante_symbol_id")),
+        _int_or_none(record.get("year")),
+    )
     if key[1] is None and any(
         _string_or_none(existing.get("symbol")) == key[0]
-        and _int_or_none(existing.get("year")) == key[2]
+        and _int_or_none(existing.get("year")) == key[3]
         and _string_or_none(existing.get("isin")) is not None
         for existing in instruments
     ):
@@ -719,12 +772,7 @@ def _build_trades(
 ) -> list[dict[str, Any]]:
     trades: list[dict[str, Any]] = []
     for report in reports:
-        expiration_keys = {
-            key
-            for row in report.rows.get(EXANTE_SECTION_TRANSACTIONS, [])
-            if (key := _option_expiration_transaction_key(row)) is not None
-        }
-        seen_expiration_keys: set[tuple[str, datetime, Decimal]] = set()
+        settlement_index = _exante_option_settlement_index(report)
         for idx, row in enumerate(report.rows.get(EXANTE_SECTION_TRADES, []), start=1):
             trade_dt = _parse_datetime(row.get("Time"))
             symbol_id = _string_or_none(row.get("Symbol ID"))
@@ -746,47 +794,94 @@ def _build_trades(
             currency = _string_or_none(row.get("Currency")) or _string_or_none(instrument.get("_currency"))
             country = _string_or_none(instrument.get("country")) or _country_from_isin_or_exchange(isin, exchange)
             broker_realized_pl = _decimal(row.get("P&L")) if row.get("P&L") not in (None, "", "0", "0.0") else None
-            expiration_key = _option_expiration_key(symbol_id, trade_dt, quantity)
-            is_option_expiration = expiration_key in expiration_keys
-            if is_option_expiration and expiration_key is not None:
-                seen_expiration_keys.add(expiration_key)
+            settlement = _exante_option_settlement_for_trade(
+                settlement_index,
+                symbol_id=symbol_id,
+                event_dt=trade_dt,
+                quantity=quantity,
+                trade_type=_string_or_none(row.get("Trade type")),
+            )
+            is_option_expiration = settlement is not None and settlement["kind"] == "expiration"
+            is_physical_settlement_option = settlement is not None and settlement["kind"] == "physical"
+            underlying_settlement = _exante_underlying_settlement_for_trade(
+                settlement_index,
+                symbol_id=symbol_id,
+                event_dt=trade_dt,
+                quantity=quantity,
+                trade_type=_string_or_none(row.get("Trade type")),
+            )
+            identity_symbol = symbol if isin else symbol_id or symbol
             trades.append(
                 {
                     "date_time": trade_dt.isoformat(sep=" ") if trade_dt else None,
                     "trade_id": _exante_trade_id(report, idx, row),
-                    "trade_type": "option_expiration" if is_option_expiration else "trade",
+                    "trade_type": (
+                        "option_expiration"
+                        if is_option_expiration
+                        else "physical_settlement"
+                        if underlying_settlement is not None
+                        else "trade"
+                    ),
                     "symbol": symbol,
                     "isin": isin or _string_or_none(instrument.get("isin")),
                     "asset_type": _string_or_none(instrument.get("asset_type")) or _asset_type(row.get("Type"), symbol_id),
                     "quantity": str(quantity),
                     "calculation_quantity": str(quantity),
-                    "price": str(price),
-                    "calculation_price": str(price),
+                    "price": "0" if is_option_expiration else str(price),
+                    "calculation_price": "0" if is_option_expiration else str(price),
                     "multiplier": _multiplier_text(multiplier),
                     "_calculation_multiplier": str(multiplier),
-                    "amount": str(amount),
+                    "amount": "0" if is_option_expiration else str(amount),
                     "commission": str(commission),
-                    "amount_with_commission": str(amount + commission),
+                    "amount_with_commission": "0" if is_option_expiration else str(amount + commission),
                     "currency": currency,
                     "exchange": exchange or _string_or_none(instrument.get("listing_exchange")),
                     "country": country,
                     "source_report": f"option_expiration:{report.path}" if is_option_expiration else str(report.path),
                     "_instrument_identity_key": _instrument_identity_key_from_values(
                         isin=isin or _string_or_none(instrument.get("isin")),
-                        symbol=symbol,
+                        symbol=identity_symbol,
                     ),
-                    "_broker_realized_pl": str(broker_realized_pl) if broker_realized_pl is not None else None,
+                    "_broker_realized_pl": (
+                        None
+                        if is_physical_settlement_option
+                        else str(broker_realized_pl)
+                        if broker_realized_pl is not None
+                        else None
+                    ),
                     "_broker_realized_pl_includes_commissions": False,
-                    "_broker_code": "C" if is_option_expiration else None,
+                    "_broker_code": (
+                        "C"
+                        if is_option_expiration or is_physical_settlement_option
+                        else "O"
+                        if _has_year_end_position_snapshot(report)
+                        else None
+                    ),
+                    "_physical_settlement_option": is_physical_settlement_option,
+                    "_physical_settlement_underlying": underlying_settlement is not None,
+                    "_physical_settlement_id": (
+                        settlement.get("settlement_id")
+                        if settlement is not None
+                        else underlying_settlement.get("settlement_id")
+                        if underlying_settlement is not None
+                        else None
+                    ),
+                    "_physical_settlement_option_symbol": (
+                        settlement.get("option_symbol")
+                        if settlement is not None
+                        else underlying_settlement.get("option_symbol")
+                        if underlying_settlement is not None
+                        else None
+                    ),
+                    "_physical_settlement_option_quantity": (
+                        str(settlement.get("option_quantity"))
+                        if settlement is not None
+                        else str(underlying_settlement.get("option_quantity"))
+                        if underlying_settlement is not None
+                        else None
+                    ),
                 }
             )
-        for row in report.rows.get(EXANTE_SECTION_TRANSACTIONS, []):
-            expiration_key = _option_expiration_transaction_key(row)
-            if expiration_key is not None and expiration_key in seen_expiration_keys:
-                continue
-            expiration_trade = _option_expiration_trade_row(report, row, instrument_lookup)
-            if expiration_trade is not None:
-                trades.append(expiration_trade)
     return trades
 
 
@@ -797,6 +892,194 @@ def _trade_side_sign(row: Mapping[str, Any]) -> Decimal | None:
     if side == "sell":
         return Decimal("-1")
     return None
+
+
+def _exante_option_settlement_index(report: ParsedExanteReport) -> dict[str, dict[tuple[str, datetime, Decimal], list[dict[str, Any]]]]:
+    """Index the three accounting legs Exante emits for option exercise.
+
+    A delivered option has both an option-security leg and an underlying-security
+    leg.  An option-only exercise has no delivered underlying and is an expiry at
+    zero, even when Exante labels its comment ``physical settlement``.
+    """
+
+    grouped: dict[tuple[datetime, str], list[Mapping[str, Any]]] = defaultdict(list)
+    for row in report.rows.get(EXANTE_SECTION_TRANSACTIONS, []):
+        if _string_or_none(row.get("Operation type")) != "EXERCISE":
+            continue
+        event_dt = _parse_datetime(row.get("When"))
+        if event_dt is None:
+            continue
+        grouped[(event_dt.replace(microsecond=0), _none_text(row.get("Comment")) or "")].append(row)
+
+    index: dict[str, dict[tuple[str, datetime, Decimal], list[dict[str, Any]]]] = {
+        "option": defaultdict(list),
+        "underlying": defaultdict(list),
+    }
+    for (_event_dt, _comment), rows in grouped.items():
+        option_rows = [
+            row
+            for row in rows
+            if _is_option_symbol_id(_string_or_none(row.get("Symbol ID")))
+            and _string_or_none(row.get("Asset")) == _string_or_none(row.get("Symbol ID"))
+            and _decimal(row.get("Sum")) != 0
+        ]
+        underlying_rows = [
+            row
+            for row in rows
+            if not _is_option_symbol_id(_string_or_none(row.get("Symbol ID")))
+            and _string_or_none(row.get("Asset")) == _string_or_none(row.get("Symbol ID"))
+            and _decimal(row.get("Sum")) != 0
+        ]
+        kind = "physical" if option_rows and underlying_rows else "expiration"
+        for option_row in option_rows:
+            option_symbol = _string_or_none(option_row.get("Symbol ID"))
+            option_quantity = _decimal(option_row.get("Sum"))
+            settlement = {
+                "kind": kind,
+                "settlement_id": f"{report.path.name}:exercise:{_string_or_none(option_row.get('Transaction ID')) or option_symbol}",
+                "option_symbol": option_symbol,
+                "option_quantity": option_quantity,
+            }
+            index["option"][(option_symbol or "", _event_dt, option_quantity)].append(settlement)
+            if kind != "physical":
+                continue
+            for underlying_row in underlying_rows:
+                underlying_symbol = _string_or_none(underlying_row.get("Symbol ID"))
+                underlying_quantity = _decimal(underlying_row.get("Sum"))
+                index["underlying"][(underlying_symbol or "", _event_dt, underlying_quantity)].append(settlement)
+    return index
+
+
+def _exante_option_settlement_for_trade(
+    index: Mapping[str, Mapping[tuple[str, datetime, Decimal], Sequence[Mapping[str, Any]]]],
+    *,
+    symbol_id: str | None,
+    event_dt: datetime | None,
+    quantity: Decimal,
+    trade_type: str | None,
+) -> Mapping[str, Any] | None:
+    if not _is_option_symbol_id(symbol_id) or event_dt is None or str(trade_type or "").strip().upper() != "EXERCISE":
+        return None
+    matches = index.get("option", {}).get((symbol_id or "", event_dt.replace(microsecond=0), quantity), ())
+    return matches[0] if matches else None
+
+
+def _exante_underlying_settlement_for_trade(
+    index: Mapping[str, Mapping[tuple[str, datetime, Decimal], Sequence[Mapping[str, Any]]]],
+    *,
+    symbol_id: str | None,
+    event_dt: datetime | None,
+    quantity: Decimal,
+    trade_type: str | None,
+) -> Mapping[str, Any] | None:
+    if _is_option_symbol_id(symbol_id) or event_dt is None or str(trade_type or "").strip().upper() != "EXERCISE":
+        return None
+    matches = index.get("underlying", {}).get((symbol_id or "", event_dt.replace(microsecond=0), quantity), ())
+    return matches[0] if matches else None
+
+
+def _capitalize_exante_physical_option_settlements(trades: list[dict[str, Any]], warnings: list[str]) -> None:
+    """Move option premium and entry commission into the delivered security."""
+
+    books: dict[str, dict[str, list[dict[str, Decimal]]]] = defaultdict(lambda: {"long": [], "short": []})
+    settlements: dict[str, dict[str, Decimal | str]] = {}
+    ordered = sorted(
+        trades,
+        key=lambda row: (_parse_datetime(row.get("date_time")) or datetime.max, str(row.get("trade_id") or "")),
+    )
+
+    def consume(side: str, identity: str, quantity: Decimal) -> tuple[Decimal, Decimal, Decimal]:
+        remaining = quantity
+        premium = Decimal("0")
+        commission = Decimal("0")
+        for lot in books[identity][side]:
+            if remaining == 0:
+                break
+            matched = min(remaining, lot["quantity"])
+            premium += lot["premium_per_unit"] * matched
+            commission += lot["commission_per_unit"] * matched
+            lot["quantity"] -= matched
+            remaining -= matched
+        books[identity][side] = [lot for lot in books[identity][side] if lot["quantity"] != 0]
+        return remaining, premium, commission
+
+    for trade in ordered:
+        if str(trade.get("asset_type") or "") != "Equity and Index Options":
+            continue
+        quantity = _decimal(trade.get("calculation_quantity") or trade.get("quantity"))
+        if quantity == 0:
+            continue
+        identity = _string_or_none(trade.get("_instrument_identity_key")) or _string_or_none(trade.get("symbol"))
+        if not identity:
+            continue
+        closing_side = "short" if quantity > 0 else "long"
+        opening_side = "long" if quantity > 0 else "short"
+        remaining, premium, commission = consume(closing_side, identity, abs(quantity))
+        if trade.get("_physical_settlement_option"):
+            settlement_id = _string_or_none(trade.get("_physical_settlement_id"))
+            if remaining:
+                warnings.append(
+                    f"Exante physical option settlement has no opening option lot: {trade.get('trade_id')}"
+                )
+            elif settlement_id:
+                settlements[settlement_id] = {
+                    "premium": premium,
+                    "commission": commission,
+                    "option_symbol": str(trade.get("_physical_settlement_option_symbol") or trade.get("symbol") or ""),
+                    "option_quantity": quantity,
+                }
+            continue
+        if remaining:
+            unit_quantity = abs(quantity)
+            books[identity][opening_side].append(
+                {
+                    "quantity": remaining,
+                    "premium_per_unit": abs(_decimal(trade.get("amount"))) / unit_quantity,
+                    "commission_per_unit": abs(_decimal(trade.get("commission"))) / unit_quantity,
+                }
+            )
+
+    for trade in trades:
+        if not trade.get("_physical_settlement_underlying"):
+            continue
+        settlement = settlements.get(_string_or_none(trade.get("_physical_settlement_id")) or "")
+        if settlement is None:
+            continue
+        option_symbol = str(settlement["option_symbol"])
+        option_quantity = Decimal(str(settlement["option_quantity"]))
+        option_kind_match = re.search(r"\.([CP])\d+(?:\.\d+)?$", option_symbol, re.IGNORECASE)
+        underlying_quantity = _decimal(trade.get("calculation_quantity") or trade.get("quantity"))
+        multiplier = _decimal(trade.get("_calculation_multiplier") or trade.get("multiplier") or "1")
+        if option_kind_match is None or underlying_quantity == 0 or multiplier == 0:
+            warnings.append(f"Exante physical option settlement cannot be capitalized: {trade.get('trade_id')}")
+            continue
+        option_is_long = option_quantity < 0
+        option_kind = option_kind_match.group(1).upper()
+        adjustment_sign = (
+            Decimal("1")
+            if (option_kind == "C" and ((option_is_long and underlying_quantity > 0) or (not option_is_long and underlying_quantity < 0)))
+            else Decimal("-1")
+            if (option_kind == "P" and ((not option_is_long and underlying_quantity > 0) or (option_is_long and underlying_quantity < 0)))
+            else Decimal("0")
+        )
+        if adjustment_sign == 0:
+            warnings.append(f"Exante physical option settlement has incompatible option and delivery legs: {trade.get('trade_id')}")
+            continue
+        gross = abs(_decimal(trade.get("calculation_price")) * underlying_quantity * multiplier)
+        adjusted_gross = gross + adjustment_sign * Decimal(str(settlement["premium"]))
+        if adjusted_gross < 0:
+            warnings.append(f"Exante physical option settlement has negative delivered value: {trade.get('trade_id')}")
+            continue
+        adjusted_price = adjusted_gross / (abs(underlying_quantity) * multiplier)
+        adjusted_commission = abs(_decimal(trade.get("commission"))) + Decimal(str(settlement["commission"]))
+        trade["trade_type"] = "physical_settlement"
+        trade["price"] = str(adjusted_price)
+        trade["calculation_price"] = str(adjusted_price)
+        trade["amount"] = str(adjusted_gross)
+        trade["commission"] = str(adjusted_commission)
+        trade["amount_with_commission"] = str(adjusted_gross + adjusted_commission)
+        trade["_broker_realized_pl"] = None
+        trade["_broker_code"] = "O"
 
 
 def _option_expiration_trade_row(
@@ -841,7 +1124,7 @@ def _option_expiration_trade_row(
         "source_report": f"option_expiration:{source_report}",
         "_instrument_identity_key": _instrument_identity_key_from_values(
             isin=isin or _string_or_none(instrument.get("isin")),
-            symbol=symbol,
+            symbol=symbol_id or symbol,
         ),
         "_broker_realized_pl": None,
         "_broker_code": "C",
@@ -886,6 +1169,17 @@ def _option_expiration_key(
     if not symbol_id or event_dt is None or quantity == 0:
         return None
     return symbol_id, event_dt.replace(microsecond=0), quantity
+
+
+def _has_year_end_position_snapshot(report: ParsedExanteReport) -> bool:
+    report_year = _year_for_report(report)
+    return any(
+        (snapshot_dt := _parse_datetime(row.get("snapshot_date"))) is not None
+        and snapshot_dt.month == 12
+        and snapshot_dt.day == 31
+        and (report_year is None or snapshot_dt.year == report_year)
+        for row in report.rows.get(EXANTE_SECTION_OPEN_POSITIONS, [])
+    )
 
 
 def _build_transfers(
@@ -1255,6 +1549,37 @@ def _build_corporate_actions(
     return rows
 
 
+def _apply_exante_corporate_action_renames_to_trades(
+    trades: Sequence[Mapping[str, Any]],
+    corporate_actions: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    aliases: list[tuple[str, str]] = []
+    for action in corporate_actions:
+        if action.get("action_type") != "corporate_action":
+            continue
+        match = re.search(
+            r"(?P<old>[A-Z0-9_.-]+)\s*->\s*(?P<new>[A-Z0-9_.-]+)",
+            str(action.get("description") or ""),
+            re.IGNORECASE,
+        )
+        if match:
+            aliases.append((match.group("old"), match.group("new")))
+
+    renamed: list[dict[str, Any]] = []
+    for source in trades:
+        trade = dict(source)
+        symbol = _string_or_none(trade.get("symbol"))
+        if symbol:
+            for old_prefix, new_prefix in aliases:
+                if symbol == old_prefix or symbol.startswith(f"{old_prefix}."):
+                    symbol = f"{new_prefix}{symbol[len(old_prefix):]}"
+            trade["symbol"] = symbol
+            if not _string_or_none(trade.get("isin")):
+                trade["_instrument_identity_key"] = _instrument_identity_key_from_values(symbol=symbol)
+        renamed.append(trade)
+    return renamed
+
+
 def _build_unprocessed_trade_rows(reports: Sequence[ParsedExanteReport]) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for report in reports:
@@ -1363,6 +1688,43 @@ def _populate_raw_totals(
         if not use_snapshot_positions:
             ending_positions[(year, position_instrument_key)] += _decimal(trade.get("quantity"))
 
+    for report in reports:
+        year = _year_for_report(report)
+        for row in report.rows.get(EXANTE_SECTION_SYMBOL_METRICS, []):
+            symbol_id = _string_or_none(row.get("Symbol"))
+            symbol, _exchange = _split_symbol_id(symbol_id)
+            instrument = _lookup_instrument(
+                instrument_lookup,
+                symbol=symbol,
+                symbol_id=symbol_id,
+                year=year,
+            ) or {}
+            instrument_key = (
+                _string_or_none(instrument.get("isin"))
+                or _string_or_none(instrument.get("symbol"))
+                or symbol_id
+            )
+            currency = (
+                _string_or_none(row.get("Currency"))
+                or _string_or_none(instrument.get("_currency"))
+                or report.base_currency
+            )
+            if not instrument_key:
+                continue
+            # Exante stores commissions as negative amounts.  Realised P&L
+            # plus Commission therefore matches canonical FIFO's
+            # pnl_after_all_commissions measure.
+            pnl_after_all_commissions = _decimal(row.get("Realised P&L")) + _decimal(row.get("Commission"))
+            key = _dimension_key(
+                metric=ReconciliationMetric.PNL_AFTER_ALL_COMMISSIONS_BY_INSTRUMENT.value,
+                year=year,
+                currency=currency,
+                instrument_key=instrument_key,
+            )
+            totals.totals_by_metric_currency[key] = (
+                totals.totals_by_metric_currency.get(key, Decimal("0")) + pnl_after_all_commissions
+            )
+
     if use_snapshot_positions:
         _populate_snapshot_positions(totals, reports, instrument_lookup)
     else:
@@ -1437,7 +1799,13 @@ def _populate_snapshot_positions(
             symbol_id = _string_or_none(row.get("Instrument"))
             symbol, _exchange = _split_symbol_id(symbol_id)
             instrument = _lookup_instrument(instrument_lookup, symbol=symbol, symbol_id=symbol_id, isin=_normalize_isin(row.get("ISIN")), year=snapshot_dt.year) or {}
-            instrument_key = _string_or_none(instrument.get("isin")) or _normalize_isin(row.get("ISIN")) or symbol
+            instrument_key = (
+                _string_or_none(instrument.get("isin"))
+                or _normalize_isin(row.get("ISIN"))
+                or _string_or_none(instrument.get("_exante_symbol_id"))
+                or symbol_id
+                or symbol
+            )
             if not instrument_key:
                 continue
             key = _dimension_key(
@@ -1535,6 +1903,10 @@ def _asset_type(value: Any, symbol_id: str | None = None) -> str | None:
         return "Forex"
     if normalized in {"BOND", "BONDS"}:
         return "Bonds"
+    if normalized == "FUND" and str(symbol_id or "").upper() in HISTORICAL_EXANTE_CFD_SYMBOLS:
+        # Historical exports label BTC.EXANTE as FUND, while newer exports use
+        # its economic type directly: CFD.
+        return "CFD"
     return text
 
 
@@ -1558,6 +1930,8 @@ def _country_from_isin_or_exchange(isin: str | None, exchange: str | None) -> st
         "AMEX": "US",
         "CBOE": "US",
         "CME": "US",
+        "COMEX": "US",
+        "NYMEX": "US",
         "MOEX": "RU",
         "SPB": "RU",
         "LSE": "GB",
@@ -1579,6 +1953,8 @@ def _currency_from_exchange(exchange: str | None) -> str | None:
         "AMEX": "USD",
         "CBOE": "USD",
         "CME": "USD",
+        "COMEX": "USD",
+        "NYMEX": "USD",
         "MOEX": "RUB",
         "SPB": "RUB",
         "LSE": "USD",

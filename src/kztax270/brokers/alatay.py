@@ -13,6 +13,7 @@ from typing import Any
 from openpyxl import load_workbook
 
 from kztax270.canonical.schema import AccountMetadata, CanonicalDataset
+from kztax270.canonical.trade_enrichment import enrich_trades_before_calculations
 from kztax270.reconciliation.models import ReconciliationMetric
 from kztax270.reference.fx import AnnualFxRateProvider
 
@@ -209,6 +210,7 @@ def build_canonical_dataset(
     instruments = _build_instruments(reports, account_id)
     dataset.tables["Instruments"] = instruments
     internal_trades = _sort_trades_by_datetime(_build_trades(reports, instruments))
+    enrich_trades_before_calculations(dataset, internal_trades, fx_provider)
     dataset.tables["Trades"] = _canonical_trade_rows(internal_trades)
     dataset.tables["_BrokerTradeRealizedPL"] = _build_broker_trade_realized_pl(internal_trades)
 

@@ -10,7 +10,6 @@ from kztax270.brokers.base import BrokerParser, BrokerReport
 from kztax270.brokers.registry import BrokerRegistry, default_registry
 from kztax270.calculations.tax_rules import TaxRuleEngine
 from kztax270.canonical.schema import CanonicalDataset
-from kztax270.canonical.trade_enrichment import enrich_trades_with_kzt
 from kztax270.canonical.validation import validate_dataset_for_tax_forms
 from kztax270.excel.audit_workbook import ExcelAuditWorkbookWriter
 from kztax270.form270.json_builder import Form270JsonBuilder
@@ -119,10 +118,6 @@ class AccountPipeline:
     ) -> AccountPipelineResult:
         parse_result = adapter.parse_reports(reports, account.account_id)
         dataset = parse_result.dataset
-        fx_provider = getattr(adapter, "fx_provider", None)
-        if not isinstance(fx_provider, AnnualFxRateProvider):
-            fx_provider = AnnualFxRateProvider.from_nbk_rates_xlsx(self.paths.nbk_rates)
-        enrich_trades_with_kzt(dataset.table("Trades"), fx_provider, dataset.warnings)
         validate_dataset_for_tax_forms(dataset)
 
         reconciliation_rows = [item.as_record() for item in self.reconciliation_engine.reconcile_dataset(dataset)]
