@@ -47,12 +47,6 @@ TRANSACTIONS_FIRST_WITH_MARGIN_TAIL_EXANTE_CSV = '''"Metrics per symbols"
 "EX2"\t"2/27/2024"\t"0"\t"0"\t"0"\t"0.00%"\t""\t""\t""\t""\t""\t""\t""\t""\t""\t""\t""\t""\t""\t""
 '''
 
-EXANTE_SYMBOL_METRICS = '''
-"Metrics per symbols"
-"Symbol"\t"Turnover"\t"Realised P&L"\t"Unrealised P&L"\t"P&L"\t"Commission"\t"Currency"
-"AAPL.NASDAQ"\t"15"\t"50"\t"25"\t"75"\t"-1.5"\t"USD"
-'''
-
 HISTORICAL_CRYPTO_FUND_EXANTE_CSV = '''"Costs and Charges Report: 2021-01-01 - 2021-12-31"
 "Account"\t"EXCFD"
 ""
@@ -165,30 +159,30 @@ class ExanteParserTests(unittest.TestCase):
         self.assertEqual(parsed.account_id, "EX1")
         self.assertEqual(len(parsed.rows["Trades"]), 2)
 
-    def test_metrics_per_symbols_feed_fifo_pnl_reconciliation(self) -> None:
+    def test_raw_trade_pnl_feeds_fifo_pnl_reconciliation_without_metrics_section(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             raw_root = Path(tmp) / "raw"
             broker_root = raw_root / "exante"
             broker_root.mkdir(parents=True)
             path = broker_root / "Custom_EX1.csv"
-            path.write_text(MINIMAL_EXANTE_CSV + EXANTE_SYMBOL_METRICS, encoding="utf-16")
+            raw_csv = MINIMAL_EXANTE_CSV.replace(
+                '"110"\t"USD"\t"5"\t"1"\t"USD"\t"50"\t"550"',
+                '"110"\t"USD"\t"10"\t"1"\t"USD"\t"100"\t"1100"',
+            )
+            path.write_text(raw_csv, encoding="utf-16")
 
             parser = ExanteParser(fx_provider=AnnualFxRateProvider({(2023, "USD"): Decimal("470")}))
             result = parser.parse_reports(parser.discover_reports(raw_root, "EX1"), "EX1")
-            parsed_metrics = parse_exante_csv_report(path).rows["SymbolMetricsRaw"]
 
         self.assertEqual(len(result.reports), 1)
-        self.assertEqual(len(parsed_metrics), 1)
-        self.assertEqual(parsed_metrics[0]["Realised P&L"], "50")
-        self.assertEqual(parsed_metrics[0]["Unrealised P&L"], "25")
         pnl_items = [
             item
             for item in ReconciliationEngine().reconcile_dataset(result.dataset)
             if item.metric.value == "pnl_after_all_commissions_by_instrument"
         ]
         self.assertEqual(len(pnl_items), 1)
-        self.assertEqual(pnl_items[0].broker_value, Decimal("48.5"))
-        self.assertEqual(pnl_items[0].canonical_value, Decimal("48.5"))
+        self.assertEqual(pnl_items[0].broker_value, Decimal("98"))
+        self.assertEqual(pnl_items[0].canonical_value, Decimal("98"))
         self.assertEqual(pnl_items[0].severity, ReconciliationSeverity.INFO)
 
     def test_historical_exante_crypto_fund_is_classified_as_cfd_before_fifo(self) -> None:

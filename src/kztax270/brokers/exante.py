@@ -55,7 +55,6 @@ EXANTE_SECTION_TRADES = "Trades"
 EXANTE_SECTION_TRANSACTIONS = "Transactions"
 EXANTE_SECTION_CASH_BALANCES = "CashBalancesRaw"
 EXANTE_SECTION_OPEN_POSITIONS = "OpenPositionsRaw"
-EXANTE_SECTION_SYMBOL_METRICS = "SymbolMetricsRaw"
 
 TRADE_REQUIRED_COLUMNS = {
     "Time",
@@ -213,23 +212,6 @@ def parse_exante_csv_report(path: Path) -> ParsedExanteReport:
                 parsed.account_id = account_id
 
     _parse_snapshot_sections(parsed, rows, path)
-
-    metrics_header_idx = _find_header(
-        rows,
-        "Symbol",
-        required_columns={"Symbol", "Realised P&L", "Unrealised P&L"},
-    )
-    if metrics_header_idx is not None:
-        metrics_header = _canonicalize_header(rows[metrics_header_idx])
-        for row in rows[metrics_header_idx + 1 :]:
-            if not row or not any(row):
-                break
-            if len(row) < len(metrics_header):
-                continue
-            record = _row_to_record(metrics_header, row, path)
-            if not _string_or_none(record.get("Symbol")):
-                continue
-            parsed.rows[EXANTE_SECTION_SYMBOL_METRICS].append(record)
 
     trade_header_idx = _find_header(rows, "Time", required_columns=TRADE_REQUIRED_COLUMNS)
     if trade_header_idx is not None:
@@ -434,6 +416,7 @@ def build_canonical_dataset(
         dataset.raw_totals,
         reports,
         internal_trades,
+        fifo_rows,
         dataset.tables["Dividends"],
         transfer_totals_by_currency,
         instrument_lookup,
@@ -1650,6 +1633,7 @@ def _populate_raw_totals(
     totals: RawReportTotals,
     reports: Sequence[ParsedExanteReport],
     trades: Sequence[Mapping[str, Any]],
+    fifo_rows: Sequence[Mapping[str, Any]],
     dividends: Sequence[Mapping[str, Any]],
     transfer_totals_by_currency: Mapping[str, Decimal],
     instrument_lookup: Mapping[tuple[str, int | None], dict[str, Any]],
@@ -1688,42 +1672,12 @@ def _populate_raw_totals(
         if not use_snapshot_positions:
             ending_positions[(year, position_instrument_key)] += _decimal(trade.get("quantity"))
 
-    for report in reports:
-        year = _year_for_report(report)
-        for row in report.rows.get(EXANTE_SECTION_SYMBOL_METRICS, []):
-            symbol_id = _string_or_none(row.get("Symbol"))
-            symbol, _exchange = _split_symbol_id(symbol_id)
-            instrument = _lookup_instrument(
-                instrument_lookup,
-                symbol=symbol,
-                symbol_id=symbol_id,
-                year=year,
-            ) or {}
-            instrument_key = (
-                _string_or_none(instrument.get("isin"))
-                or _string_or_none(instrument.get("symbol"))
-                or symbol_id
-            )
-            currency = (
-                _string_or_none(row.get("Currency"))
-                or _string_or_none(instrument.get("_currency"))
-                or report.base_currency
-            )
-            if not instrument_key:
-                continue
-            # Exante stores commissions as negative amounts.  Realised P&L
-            # plus Commission therefore matches canonical FIFO's
-            # pnl_after_all_commissions measure.
-            pnl_after_all_commissions = _decimal(row.get("Realised P&L")) + _decimal(row.get("Commission"))
-            key = _dimension_key(
-                metric=ReconciliationMetric.PNL_AFTER_ALL_COMMISSIONS_BY_INSTRUMENT.value,
-                year=year,
-                currency=currency,
-                instrument_key=instrument_key,
-            )
-            totals.totals_by_metric_currency[key] = (
-                totals.totals_by_metric_currency.get(key, Decimal("0")) + pnl_after_all_commissions
-            )
+    trades_by_id = {
+        trade_id: trade
+        for trade in trades
+        if (trade_id := _string_or_none(trade.get("trade_id")))
+    }
+    _populate_fifo_raw_pnl_totals(totals, trades_by_id, fifo_rows)
 
     if use_snapshot_positions:
         _populate_snapshot_positions(totals, reports, instrument_lookup)
@@ -1778,6 +1732,56 @@ def _populate_raw_totals(
         totals.totals_by_metric_currency[
             _dimension_key(metric=ReconciliationMetric.TOTAL_DEPOSITS_WITHDRAWALS_TRANSFERS.value, currency=currency)
         ] = amount
+
+
+def _populate_fifo_raw_pnl_totals(
+    totals: RawReportTotals,
+    trades_by_id: Mapping[str, Mapping[str, Any]],
+    fifo_rows: Sequence[Mapping[str, Any]],
+) -> None:
+    """Allocate raw Trade-table P&L and commissions to the FIFO closing rows.
+
+    Exante's mandatory ``Trades`` section gives realized P&L per execution,
+    while a single execution can close several acquisition lots.  Applying the
+    FIFO exit commissions here makes the raw side use the same
+    ``P&L after all commissions`` definition as the canonical side, without
+    relying on the optional ``Metrics per symbols`` section.
+    """
+
+    for fifo_row in fifo_rows:
+        source_trade_id = _string_or_none(fifo_row.get("source_trade_id"))
+        if source_trade_id is None or source_trade_id.startswith("CA:"):
+            continue
+        trade = trades_by_id.get(source_trade_id)
+        if trade is None:
+            continue
+        broker_pl_value = trade.get("_broker_realized_pl")
+        if broker_pl_value in (None, ""):
+            continue
+
+        trade_quantity = abs(_decimal(trade.get("quantity")))
+        exit_quantity = abs(_decimal(fifo_row.get("exit_quantity")))
+        allocated_pl = _decimal(broker_pl_value)
+        if trade_quantity and exit_quantity != trade_quantity:
+            allocated_pl *= exit_quantity / trade_quantity
+        if trade.get("_broker_realized_pl_includes_commissions") is False:
+            allocated_pl -= abs(_decimal(fifo_row.get("enter_commission")))
+            allocated_pl -= abs(_decimal(fifo_row.get("exit_commission")))
+
+        exit_dt = _parse_datetime(fifo_row.get("exit_date"))
+        instrument_key = _string_or_none(fifo_row.get("isin") or fifo_row.get("symbol"))
+        currency = _string_or_none(fifo_row.get("currency"))
+        if exit_dt is None or instrument_key is None or currency is None:
+            continue
+        key = _dimension_key(
+            metric=ReconciliationMetric.PNL_AFTER_ALL_COMMISSIONS_BY_INSTRUMENT.value,
+            year=exit_dt.year,
+            currency=currency,
+            instrument_key=instrument_key,
+        )
+        totals.totals_by_metric_currency[key] = (
+            totals.totals_by_metric_currency.get(key, Decimal("0")) + allocated_pl
+        )
 
 
 def _has_position_snapshots(reports: Sequence[ParsedExanteReport]) -> bool:
