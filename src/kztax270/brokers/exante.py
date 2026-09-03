@@ -1783,7 +1783,6 @@ def _populate_fifo_raw_pnl_totals(
             totals.totals_by_metric_currency.get(key, Decimal("0")) + allocated_pl
         )
 
-
 def _has_position_snapshots(reports: Sequence[ParsedExanteReport]) -> bool:
     return any(report.rows.get(EXANTE_SECTION_OPEN_POSITIONS) for report in reports)
 
