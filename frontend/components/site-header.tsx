@@ -1,7 +1,8 @@
 'use client'
 
 import Link from 'next/link'
-import { Menu } from 'lucide-react'
+import { useState } from 'react'
+import { Menu, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
@@ -12,6 +13,10 @@ interface SiteHeaderProps {
 }
 
 export function SiteHeader({ onPrivacy, onStart, privacyActive }: SiteHeaderProps) {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+
+  const closeMobileMenu = () => setMobileMenuOpen(false)
+
   return (
     <header className="border-b bg-card">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
@@ -31,8 +36,39 @@ export function SiteHeader({ onPrivacy, onStart, privacyActive }: SiteHeaderProp
           <Link className="text-muted-foreground hover:text-foreground" href="/faq">FAQ</Link>
           <button className={cn('border-b-2 py-5', privacyActive ? 'border-primary font-semibold text-primary' : 'border-transparent text-muted-foreground hover:text-foreground')} onClick={onPrivacy} aria-current={privacyActive ? 'page' : undefined}>Конфиденциальность</button>
         </nav>
-        <Button variant="ghost" size="icon" className="md:hidden" aria-label="Открыть меню"><Menu /></Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="md:hidden"
+          aria-label={mobileMenuOpen ? 'Закрыть меню' : 'Открыть меню'}
+          aria-expanded={mobileMenuOpen}
+          aria-controls="mobile-navigation"
+          onClick={() => setMobileMenuOpen((open) => !open)}
+        >
+          {mobileMenuOpen ? <X /> : <Menu />}
+        </Button>
       </div>
+      {mobileMenuOpen && (
+        <nav id="mobile-navigation" className="border-t px-4 py-2 md:hidden" aria-label="Основная навигация">
+          <div className="mx-auto flex max-w-7xl flex-col">
+            <button
+              className={cn('rounded-md px-3 py-2 text-left text-sm', privacyActive ? 'text-muted-foreground hover:bg-muted hover:text-foreground' : 'bg-muted font-semibold text-primary')}
+              onClick={() => { closeMobileMenu(); onStart() }}
+              aria-current={privacyActive ? undefined : 'page'}
+            >
+              Расчёт
+            </button>
+            <Link className="rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground" href="/faq" onClick={closeMobileMenu}>FAQ</Link>
+            <button
+              className={cn('rounded-md px-3 py-2 text-left text-sm', privacyActive ? 'bg-muted font-semibold text-primary' : 'text-muted-foreground hover:bg-muted hover:text-foreground')}
+              onClick={() => { closeMobileMenu(); onPrivacy() }}
+              aria-current={privacyActive ? 'page' : undefined}
+            >
+              Конфиденциальность
+            </button>
+          </div>
+        </nav>
+      )}
     </header>
   )
 }
