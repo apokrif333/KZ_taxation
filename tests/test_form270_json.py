@@ -30,6 +30,38 @@ from kztax270.form270.split import split_form270_json
 
 
 class Form270JsonTests(unittest.TestCase):
+    def test_builder_clears_personal_data_embedded_in_template(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            template_path = Path(tmp) / "template.json"
+            template_path.write_text(
+                """{
+                    "taxpayerCode": "legacy-iin",
+                    "taxpayerNameRu": "LEGACY OWNER",
+                    "creatorCode": "legacy-iin",
+                    "creatorNameRu": "LEGACY OWNER",
+                    "headTaxpayerCode": "legacy-iin",
+                    "taxpayerRnn": "legacy-rnn",
+                    "ogdCodeByResidence": "legacy-ogd",
+                    "fnoContent": {
+                        "commonInfo": {"_4": "+7 700 000 00 00", "_4_1": "legacy@example.com"},
+                        "taxpayerResponsibility": {"fullNameOfHead": "LEGACY OWNER"}
+                    }
+                }""",
+                encoding="utf-8",
+            )
+
+            form = Form270JsonBuilder(template_path).build_account_draft(
+                CanonicalDataset.empty("ib", "UTEST"),
+                tax_year=2025,
+                taxpayer={"fio1": "New", "fio2": "Owner", "iin": "000000000000"},
+            )
+
+        self.assertEqual(form["taxpayerCode"], "000000000000")
+        self.assertEqual(form["taxpayerNameRu"], "NEW OWNER")
+        self.assertEqual(form["fnoContent"]["commonInfo"]["_4"], "")
+        self.assertEqual(form["fnoContent"]["commonInfo"]["_4_1"], "")
+        self.assertEqual(form["taxpayerRnn"], "")
+
     def test_form_reference_codes_have_safe_defaults_without_reference_files(self) -> None:
         missing_templates_dir = ROOT / "does-not-exist"
         try:

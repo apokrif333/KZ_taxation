@@ -267,6 +267,7 @@ class Form270JsonBuilder:
         bank_infos: Mapping[str, BrokerBankInfo] | None,
     ) -> dict[str, Any]:
         draft = copy.deepcopy(self.load_template())
+        _clear_template_identity(draft)
         draft["fnoYear"] = tax_year
         _apply_taxpayer(draft, taxpayer)
 
@@ -871,6 +872,49 @@ def _apply_taxpayer(draft: dict[str, Any], taxpayer: Mapping[str, Any] | Form270
     for key, value in taxpayer_map.items():
         if value is not None and key in draft:
             draft[key] = value
+
+
+def _clear_template_identity(draft: dict[str, Any]) -> None:
+    """Prevent a sample template's personal data from leaking into a new draft."""
+
+    for key in (
+        "taxpayerCode",
+        "taxpayerNameRu",
+        "taxpayerNameKk",
+        "taxpayerNameEn",
+        "taxpayerNameQq",
+        "creatorCode",
+        "creatorNameRu",
+        "creatorNameKk",
+        "creatorNameEn",
+        "creatorNameQq",
+        "headTaxpayerCode",
+        "taxpayerRnn",
+        "ogdCodeByLocation",
+        "ogdCodeByResidence",
+    ):
+        if key in draft:
+            draft[key] = ""
+
+    content = draft.get("fnoContent")
+    if not isinstance(content, dict):
+        return
+
+    common_info = content.get("commonInfo")
+    if isinstance(common_info, dict):
+        # The KGD schema stores the contact phone and email under these field IDs.
+        common_info["_4"] = ""
+        common_info["_4_1"] = ""
+
+    responsibility = content.get("taxpayerResponsibility")
+    if isinstance(responsibility, dict):
+        for key in (
+            "fullNameOfHead",
+            "fullNameOfAuthorizedPerson",
+            "fullNameOfEmployeeWhoAcceptedDeclaration",
+        ):
+            if key in responsibility:
+                responsibility[key] = ""
 
 
 def _deep_update(target: dict[str, Any], values: Mapping[str, Any]) -> None:

@@ -1,7 +1,7 @@
 {
-    "taxpayerCode": "930113399037",
-    "taxpayerNameRu": "АШИХМИН АЛЕКСЕЙ МИХАЙЛОВИЧ",
-    "taxpayerNameKk": "АШИХМИН АЛЕКСЕЙ МИХАЙЛОВИЧ",
+    "taxpayerCode": "",
+    "taxpayerNameRu": "",
+    "taxpayerNameKk": "",
     "taxpayerCategories": [],
     "declarationTypes": [
         "NEXT_PRIORITY"
@@ -10,20 +10,20 @@
     "periodValue": null,
     "fnoYear": 2025,
     "ogdCodeByLocation": "",
-    "ogdCodeByResidence": "6004",
+    "ogdCodeByResidence": "",
     "taxpayerType": "FL",
     "revisionUid": "d5b18e94-3f27-4a65-9c88-2f6d4b9e1a73",
     "currencyCode": "KZT",
-    "creatorCode": "930113399037",
+    "creatorCode": "",
     "creatorType": "FL",
-    "creatorNameRu": "АШИХМИН АЛЕКСЕЙ МИХАЙЛОВИЧ",
-    "creatorNameKk": "АШИХМИН АЛЕКСЕЙ МИХАЙЛОВИЧ",
+    "creatorNameRu": "",
+    "creatorNameKk": "",
     "noticeNumber": "",
     "noticeDate": null,
     "fnoContent": {
         "commonInfo": {
-            "_4": "+7 (707) 878-71-33",
-            "_4_1": "alex.ah@list.ru",
+            "_4": "",
+            "_4_1": "",
             "_5": "",
             "_6": "",
             "selectedApplications": [
@@ -513,7 +513,7 @@
         "taxpayerResponsibility": {
             "DisclosureOfInformation": false,
             "isResponsible": false,
-            "fullNameOfHead": "АШИХМИН АЛЕКСЕЙ МИХАЙЛОВИЧ",
+            "fullNameOfHead": "",
             "declarationDate": "06.08.2026",
             "fullNameOfAuthorizedPerson": "",
             "fullNameOfEmployeeWhoAcceptedDeclaration": "",
@@ -523,10 +523,10 @@
         },
         "type": "fno270"
     },
-    "headTaxpayerCode": "930113399037",
-    "taxpayerRnn": "600820510575",
-    "taxpayerNameEn": "АШИХМИН АЛЕКСЕЙ МИХАЙЛОВИЧ",
-    "taxpayerNameQq": "АШИХМИН АЛЕКСЕЙ МИХАЙЛОВИЧ",
-    "creatorNameEn": "АШИХМИН АЛЕКСЕЙ МИХАЙЛОВИЧ",
-    "creatorNameQq": "АШИХМИН АЛЕКСЕЙ МИХАЙЛОВИЧ"
+    "headTaxpayerCode": "",
+    "taxpayerRnn": "",
+    "taxpayerNameEn": "",
+    "taxpayerNameQq": "",
+    "creatorNameEn": "",
+    "creatorNameQq": ""
 }
