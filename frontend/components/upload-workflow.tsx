@@ -59,6 +59,14 @@ export function UploadWorkflow({
         <CardContent className="flex flex-col gap-5">
           {hasJob && <Alert className="border-primary/25 bg-accent/35"><Info /><AlertDescription>Ранее принятые файлы уже находятся в этом расчёте. Добавьте только новые отчёты — повторно они не отправятся.</AlertDescription></Alert>}
 
+          <Alert className="border-amber-300/80 bg-amber-50 text-amber-950 dark:border-amber-500/40 dark:bg-amber-950/35 dark:text-amber-100">
+            <Info />
+            <AlertDescription>
+              <p className="font-semibold">Для корректного расчёта по методу FIFO загрузите отчёты за все годы существования счёта.</p>
+              <p className="mt-1">Продажа в 2025 году может относиться к активу, купленному несколькими годами ранее. Если ранних отчётов нет, себестоимость и налог могут быть рассчитаны некорректно.</p>
+            </AlertDescription>
+          </Alert>
+
           {brokers.map((broker) => broker.account_id_mode === 'auto'
             ? <BrokerReportCard key={broker.code} broker={broker} reports={autoFiles[broker.code] || []} busy={busy} onFiles={(files) => onAddAutoFiles(broker, files)} onRemove={(reportId) => onRemoveAutoFile(broker.code, reportId)} />
             : <ManualBrokerReportCard key={broker.code} broker={broker} groups={manualGroups.filter((group) => group.broker === broker.code)} busy={busy} onAddGroup={() => onAddManualGroup(broker.code)} onRemoveGroup={onRemoveManualGroup} onAccountChange={onManualAccountChange} onFiles={onAddManualFiles} onRemoveFile={onRemoveManualFile} />,
@@ -145,6 +153,7 @@ function FilePicker({ broker, onFiles, className }: { broker: BrokerConfig; onFi
     <UploadCloud className="size-5 text-primary" aria-hidden="true" />
     <span className="text-center text-sm text-muted-foreground">Перетащите файлы сюда</span>
     <Button type="button" variant="outline" size="sm" onClick={() => inputRef.current?.click()}>Добавить файлы</Button>
+    <p className="w-full text-center text-xs leading-relaxed text-muted-foreground">Загружайте отчёты за весь период существования этого счёта, а не только за 2025 год.</p>
   </div>
 }
 
