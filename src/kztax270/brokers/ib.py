@@ -806,6 +806,8 @@ def _infer_corporate_action_type(description: str | None) -> str | None:
     if not description:
         return None
     lowered = description.lower()
+    if "tendered to" in lowered:
+        return "tender"
     for token in ("spinoff", "split", "merger", "merged", "maturity", "full call", "redemption", "buyback"):
         if token in lowered:
             return token.replace(" ", "_")
@@ -818,7 +820,7 @@ def _build_corporate_action_identity_changes(
     changes: list[CorporateActionIdentityChange] = []
     for action in corporate_actions:
         action_type = _string_or_none(action.get("action_type"))
-        if action_type not in {"merger", "merged", "split", "symbol_change"}:
+        if action_type not in {"merger", "merged", "split", "symbol_change", "tender"}:
             continue
         if action_type == "symbol_change" and not action.get("_apply_identity_change"):
             # Stable ISIN/Conid renames are already grouped by their immutable
@@ -2108,10 +2110,21 @@ def _split_ratio(description: str | None) -> Decimal | None:
     if not description:
         return None
     match = re.search(
-        r"(\d+(?:\.\d+)?)\s*(?:-?\s*for\s*-?|:|/)\s*(\d+(?:\.\d+)?)",
+        r"(\d+(?:\.\d+)?)\s*(?:-?\s*for\s*-?|:)\s*(\d+(?:\.\d+)?)",
         description,
         flags=re.IGNORECASE,
     )
+    if not match:
+        # A bare ``1/0.752`` is a supported IB ratio notation, but bonds
+        # routinely contain dates and coupons such as ``04/15/34`` and
+        # ``5 3/8``.  Only accept slash notation when it is labelled as a
+        # ratio, coefficient, or conversion factor.
+        match = re.search(
+            r"(?:ratio|coefficient|conversion\s+factor)\s*[:=]?\s*"
+            r"(\d+(?:\.\d+)?)\s*/\s*(\d+(?:\.\d+)?)",
+            description,
+            flags=re.IGNORECASE,
+        )
     if not match:
         return None
     from_qty = Decimal(match.group(1))

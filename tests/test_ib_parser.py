@@ -2008,6 +2008,57 @@ Cash Report,Data,Ending Cash,USD,0,0,0,
         self.assertEqual([row["_opening_lot_status"] for row in fifo], ["matched", "matched", "matched"])
         self.assertEqual(positions, [])
 
+    def test_tendered_bond_chain_rewrites_old_isins_without_parsing_maturity_dates_as_ratios(self) -> None:
+        report = ib_module.ParsedIbReport(path=Path("U5157275_2025_2025.csv"))
+        report.rows[ib_module.IB_SECTION_CA] = [
+            {
+                "Asset Category": "Bonds", "Currency": "USD", "Date/Time": "2025-10-17, 17:05:00",
+                "Description": "AVGO 3.469 04/15/34 MAV8(USU1109MAV82) Tendered to USU1199AEK52 1 FOR 1 "
+                "(AVGO 3.469 04/15/34 - TENDER, AVGO 3.469 04/15/34 - TENDER, USU1199AEK52)",
+                "Quantity": "7000", "Proceeds": "0", "Value": "0", "Realized P/L": "0",
+            },
+            {
+                "Asset Category": "Bonds", "Currency": "USD", "Date/Time": "2025-10-20, 20:25:00",
+                "Description": "AVGO 3.469 04/15/34 - TENDER(USU1199AEK52) Merged(Voluntary Offer Allocation) "
+                "WITH US11135FCT66 1 for 1 (AVGO 3.469 04/15/34 FCT6, AVGO 3.469 04/15/34, US11135FCT66)",
+                "Quantity": "7000", "Proceeds": "0", "Value": "6468.14", "Realized P/L": "0",
+            },
+            {
+                "Asset Category": "Bonds", "Currency": "USD", "Date/Time": "2025-10-31, 17:05:00",
+                "Description": "IPG 5 3/8 06/15/33(US460690BU38) Tendered to US460NUSAH13 1 FOR 1 "
+                "(IPG 5 3/8 06/15/33 - TENDER, IPG 5 3/8 06/15/33 - TENDER, US460NUSAH13)",
+                "Quantity": "7000", "Proceeds": "0", "Value": "0", "Realized P/L": "0",
+            },
+            {
+                "Asset Category": "Bonds", "Currency": "USD", "Date/Time": "2025-12-01, 20:25:00",
+                "Description": "IPG 5 3/8 06/15/33 - TENDER(US460NUSAH13) Merged(Voluntary Offer Allocation) "
+                "WITH 836141077 1 for 1 (OMC 5 3/8 06/15/33, OMC 5 3/8 06/15/33, USU68191AK88)",
+                "Quantity": "7000", "Proceeds": "0", "Value": "7134.365", "Realized P/L": "0",
+            },
+        ]
+
+        changes = ib_module._build_corporate_action_identity_changes(ib_module._build_corporate_actions([report]))
+        self.assertEqual([(change.old_isin, change.new_isin, change.ratio) for change in changes], [
+            ("USU1109MAV82", "USU1199AEK52", Decimal("1")),
+            ("USU1199AEK52", "US11135FCT66", Decimal("1")),
+            ("US460690BU38", "US460NUSAH13", Decimal("1")),
+            ("US460NUSAH13", "USU68191AK88", Decimal("1")),
+        ])
+
+        trades = ib_module._apply_corporate_action_identity_changes_to_records(
+            [
+                {"date_time": "2024-02-12 14:51:22", "symbol": "AVGO 3.469 04/15/34 MAV8", "isin": "USU1109MAV82"},
+                {"date_time": "2024-02-12 14:51:22", "symbol": "IPG 5 3/8 06/15/33", "isin": "US460690BU38"},
+            ],
+            changes,
+            {},
+            date_fields=("date_time",),
+        )
+        self.assertEqual([(trade["symbol"], trade["isin"]) for trade in trades], [
+            ("AVGO 3.469 04/15/34 FCT6", "US11135FCT66"),
+            ("OMC 5 3/8 06/15/33", "USU68191AK88"),
+        ])
+
 
 if __name__ == "__main__":
     unittest.main()

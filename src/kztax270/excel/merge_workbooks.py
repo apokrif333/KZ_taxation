@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -26,6 +26,10 @@ YEAR_RESULT_VALUES = (
     "tax_kzt_withhold",
 )
 WITHHOLDING_POOL_TABLES = frozenset({"Yearly Trades", "Yearly Dividends", "Yearly Coupons"})
+TAX_RATE = Decimal("0.10")
+MONEY_QUANTUM = Decimal("0.01")
+NON_PREFERENTIAL_TRADE_FLAGS = frozenset({"non-preferential", "offshore"})
+KZ_COUNTRY_CODES = frozenset({"kz", "kaz", "kazakhstan", "казахстан"})
 
 
 def merge_audit_workbooks(input_paths: Sequence[Path], output_path: Path) -> Path:
@@ -95,8 +99,66 @@ def aggregate_years_results(records: Sequence[Mapping[str, Any]]) -> list[dict[s
             if field in present_values[key]:
                 row[field] = _decimal_text(groups[key][field])
         result.append(row)
-    _recalculate_withholding_after_merge(result)
+    _recalculate_tax_after_merge(result)
     return result
+
+
+def _recalculate_tax_after_merge(rows: Sequence[dict[str, Any]]) -> None:
+    """Rebuild derived tax fields from the merged annual bases.
+
+    Account workbooks contain taxes calculated before the accounts are pooled.
+    Adding those taxes preserves tax on a profitable account even when another
+    account has an offsetting loss.  The merged workbook must instead expose
+    the same bases that application 270.00 consumes.
+    """
+
+    trade_groups: dict[tuple[Any, ...], list[dict[str, Any]]] = {}
+    for row in rows:
+        table = row.get("table")
+        if table == "Yearly Trades":
+            row["tax_kzt"] = "0.00"
+            if _is_preferential_income(row):
+                continue
+            flag = str(row.get("flag") or "").strip().casefold()
+            if flag in NON_PREFERENTIAL_TRADE_FLAGS:
+                key = (row.get("year"), _trade_country_bucket(row))
+                trade_groups.setdefault(key, []).append(row)
+                continue
+        row["tax_kzt"] = _money_text(_row_tax_before_withholding(row))
+
+    for group_rows in trade_groups.values():
+        bases = [max(_decimal(row.get("pnl_kzt")), Decimal("0")) for row in group_rows]
+        pooled_base = max(
+            sum((_decimal(row.get("pnl_kzt")) for row in group_rows), Decimal("0")),
+            Decimal("0"),
+        )
+        _allocate_amount(group_rows, bases, _money(pooled_base * TAX_RATE), field="tax_kzt")
+
+    _recalculate_withholding_after_merge(rows)
+
+
+def _row_tax_before_withholding(row: Mapping[str, Any]) -> Decimal:
+    table = str(row.get("table") or "")
+    if table in {"Yearly Bonds Redemption", "Yearly FX Trades", "Yearly Coupons"}:
+        return Decimal("0")
+    if table in {"Yearly Trades", "Yearly Dividends"} and _is_preferential_income(row):
+        return Decimal("0")
+    if table in {"Yearly Derivatives", "Yearly Interest"}:
+        base = _decimal(row.get("only_profit_kzt"))
+    elif table == "Yearly Dividends":
+        base = _decimal(row.get("amount_kzt"))
+    elif not _missing(row.get("pnl_kzt")):
+        base = _decimal(row.get("pnl_kzt"))
+    elif not _missing(row.get("amount_kzt")):
+        base = _decimal(row.get("amount_kzt"))
+    else:
+        base = Decimal("0")
+    return _money(max(base, Decimal("0")) * TAX_RATE)
+
+
+def _trade_country_bucket(row: Mapping[str, Any]) -> str:
+    country = str(row.get("country") or "").strip().casefold()
+    return "kz" if country in KZ_COUNTRY_CODES else "foreign"
 
 
 def _recalculate_withholding_after_merge(rows: Sequence[dict[str, Any]]) -> None:
@@ -111,8 +173,8 @@ def _recalculate_withholding_after_merge(rows: Sequence[dict[str, Any]]) -> None
     for row in rows:
         if row.get("table") not in WITHHOLDING_POOL_TABLES:
             continue
-        if row.get("table") in {"Yearly Dividends", "Yearly Coupons"} and _is_preferential_income(row):
-            row["tax_kzt_withhold"] = "0"
+        if _is_preferential_income(row):
+            row["tax_kzt_withhold"] = "0.00"
             continue
         key = (row.get("table"), row.get("year"), row.get("country"))
         groups.setdefault(key, []).append(row)
@@ -123,7 +185,7 @@ def _recalculate_withholding_after_merge(rows: Sequence[dict[str, Any]]) -> None
             -sum((_decimal(row.get("withhold_kzt")) for row in group_rows), Decimal("0")),
             Decimal("0"),
         )
-        tax_after_withholding = max(total_tax - foreign_withholding, Decimal("0"))
+        tax_after_withholding = _money(max(total_tax - foreign_withholding, Decimal("0")))
         _allocate_tax_after_withholding(group_rows, total_tax, tax_after_withholding)
 
 
@@ -134,19 +196,33 @@ def _allocate_tax_after_withholding(
 
     if total_tax <= 0:
         for row in rows:
-            row["tax_kzt_withhold"] = "0"
+            row["tax_kzt_withhold"] = "0.00"
         return
 
-    remaining = tax_after_withholding
-    taxable_rows = [row for row in rows if max(_decimal(row.get("tax_kzt")), Decimal("0")) > 0]
-    for index, row in enumerate(taxable_rows):
-        tax = max(_decimal(row.get("tax_kzt")), Decimal("0"))
-        value = remaining if index == len(taxable_rows) - 1 else tax_after_withholding * tax / total_tax
-        remaining -= value
-        row["tax_kzt_withhold"] = _decimal_text(value)
+    taxes = [max(_decimal(row.get("tax_kzt")), Decimal("0")) for row in rows]
+    _allocate_amount(rows, taxes, tax_after_withholding, field="tax_kzt_withhold")
+
+
+def _allocate_amount(
+    rows: Sequence[dict[str, Any]],
+    weights: Sequence[Decimal],
+    total: Decimal,
+    *,
+    field: str,
+) -> None:
+    positive_indexes = [index for index, weight in enumerate(weights) if weight > 0]
+    positive_total = sum((weights[index] for index in positive_indexes), Decimal("0"))
+    remaining = _money(total)
     for row in rows:
-        if row not in taxable_rows:
-            row["tax_kzt_withhold"] = "0"
+        row[field] = "0.00"
+    for offset, index in enumerate(positive_indexes):
+        value = (
+            remaining
+            if offset == len(positive_indexes) - 1
+            else _money(total * weights[index] / positive_total)
+        )
+        remaining -= value
+        rows[index][field] = _money_text(value)
 
 
 def _is_preferential_income(row: Mapping[str, Any]) -> bool:
@@ -197,6 +273,14 @@ def _decimal_text(value: Decimal) -> str:
     if "." in text:
         text = text.rstrip("0").rstrip(".")
     return text or "0"
+
+
+def _money(value: Decimal) -> Decimal:
+    return value.quantize(MONEY_QUANTUM, rounding=ROUND_HALF_UP)
+
+
+def _money_text(value: Decimal) -> str:
+    return format(_money(value), "f")
 
 
 def _missing(value: Any) -> bool:

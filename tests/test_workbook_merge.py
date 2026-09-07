@@ -42,6 +42,14 @@ class WorkbookMergeTests(unittest.TestCase):
                     },
                 ]
             )
+        for row in rows:
+            base = "1000" if row["currency"] == "USD" else "500"
+            if row["table"] == "Yearly Trades":
+                row["pnl_kzt"] = base
+            elif row["table"] == "Yearly Dividends":
+                row["amount_kzt"] = base
+            else:
+                row["only_profit_kzt"] = base
 
         merged = aggregate_years_results(rows)
 
@@ -57,6 +65,7 @@ class WorkbookMergeTests(unittest.TestCase):
                 "flag": "non-preferential",
                 "country": "US",
                 "currency": "USD",
+                "amount_kzt": "1000",
                 "tax_kzt": "100",
                 "withhold_kzt": "-10",
             },
@@ -66,6 +75,7 @@ class WorkbookMergeTests(unittest.TestCase):
                 "flag": "preferential_kase",
                 "country": "US",
                 "currency": "USD",
+                "amount_kzt": "10000",
                 "tax_kzt": "0",
                 "withhold_kzt": "-1000",
             },
@@ -78,7 +88,7 @@ class WorkbookMergeTests(unittest.TestCase):
         self.assertEqual(Decimal(taxable["tax_kzt_withhold"]), Decimal("90"))
         self.assertEqual(Decimal(preferential["tax_kzt_withhold"]), Decimal("0"))
 
-    def test_preferential_coupon_withholding_does_not_cover_taxable_coupons_after_merge(self) -> None:
+    def test_coupons_remain_exempt_after_merge(self) -> None:
         rows = [
             {
                 "table": "Yearly Coupons",
@@ -86,6 +96,7 @@ class WorkbookMergeTests(unittest.TestCase):
                 "flag": "non-preferential",
                 "country": "US",
                 "currency": "USD",
+                "only_profit_kzt": "1000",
                 "tax_kzt": "100",
                 "withhold_kzt": "-10",
             },
@@ -95,6 +106,7 @@ class WorkbookMergeTests(unittest.TestCase):
                 "flag": "preferential",
                 "country": "US",
                 "currency": "EUR",
+                "only_profit_kzt": "10000",
                 "tax_kzt": "0",
                 "withhold_kzt": "-1000",
             },
@@ -104,8 +116,75 @@ class WorkbookMergeTests(unittest.TestCase):
 
         taxable = next(row for row in merged if row["flag"] == "non-preferential")
         preferential = next(row for row in merged if row["flag"] == "preferential")
-        self.assertEqual(Decimal(taxable["tax_kzt_withhold"]), Decimal("90"))
+        self.assertEqual(Decimal(taxable["tax_kzt"]), Decimal("0"))
+        self.assertEqual(Decimal(taxable["tax_kzt_withhold"]), Decimal("0"))
         self.assertEqual(Decimal(preferential["tax_kzt_withhold"]), Decimal("0"))
+
+    def test_merge_recalculates_trade_tax_after_account_losses_offset_profits(self) -> None:
+        dimensions = {
+            "table": "Yearly Trades",
+            "year": 2025,
+            "flag": "non-preferential",
+            "country": "US",
+            "tax_exchange": "outofKZ",
+            "currency": "USD",
+        }
+
+        merged = aggregate_years_results(
+            [
+                {**dimensions, "pnl": "-8797.44", "pnl_kzt": "-4588657.77", "tax_kzt": "0"},
+                {**dimensions, "pnl": "3537.23", "pnl_kzt": "1844984.84", "tax_kzt": "184498.48"},
+            ]
+        )
+
+        self.assertEqual(len(merged), 1)
+        self.assertEqual(Decimal(merged[0]["pnl_kzt"]), Decimal("-2743672.93"))
+        self.assertEqual(Decimal(merged[0]["tax_kzt"]), Decimal("0"))
+        self.assertEqual(Decimal(merged[0]["tax_kzt_withhold"]), Decimal("0"))
+
+    def test_trade_losses_reduce_profitable_rows_in_the_same_form270_bucket(self) -> None:
+        common = {
+            "table": "Yearly Trades",
+            "year": 2025,
+            "flag": "non-preferential",
+            "tax_exchange": "outofKZ",
+            "currency": "USD",
+            "withhold_kzt": "0",
+        }
+
+        merged = aggregate_years_results(
+            [
+                {**common, "country": "US", "pnl_kzt": "-1000", "tax_kzt": "0"},
+                {**common, "country": "CA", "pnl_kzt": "1600", "tax_kzt": "160"},
+            ]
+        )
+        by_country = {row["country"]: row for row in merged}
+
+        self.assertEqual(Decimal(by_country["US"]["tax_kzt"]), Decimal("0"))
+        self.assertEqual(Decimal(by_country["CA"]["tax_kzt"]), Decimal("60"))
+        self.assertEqual(sum(Decimal(row["tax_kzt"]) for row in merged), Decimal("60"))
+
+    def test_dividend_withholding_is_recalculated_after_pooling_accounts_by_country(self) -> None:
+        common = {
+            "table": "Yearly Dividends",
+            "year": 2025,
+            "flag": "non-preferential",
+            "currency": "USD",
+        }
+
+        merged = aggregate_years_results(
+            [
+                {**common, "country": "US", "amount_kzt": "1000", "withhold_kzt": "-150"},
+                {**common, "country": "US", "amount_kzt": "500", "withhold_kzt": "-75"},
+                {**common, "country": "CA", "amount_kzt": "1000", "withhold_kzt": "-50"},
+            ]
+        )
+        by_country = {row["country"]: row for row in merged}
+
+        self.assertEqual(Decimal(by_country["US"]["tax_kzt"]), Decimal("150"))
+        self.assertEqual(Decimal(by_country["US"]["tax_kzt_withhold"]), Decimal("0"))
+        self.assertEqual(Decimal(by_country["CA"]["tax_kzt"]), Decimal("100"))
+        self.assertEqual(Decimal(by_country["CA"]["tax_kzt_withhold"]), Decimal("50"))
 
     def test_merge_concatenates_detail_sheets_and_aggregates_years_results(self) -> None:
         first = CanonicalDataset.empty("freedom", "A1")
