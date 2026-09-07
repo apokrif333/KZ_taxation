@@ -7,7 +7,7 @@ import re
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
 from datetime import date, datetime
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal, ROUND_HALF_UP, localcontext
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
@@ -359,11 +359,27 @@ def _decimal(value: Any) -> Decimal:
 
 
 def _decimal_text(value: Decimal) -> str:
-    return format(value.normalize(), "f")
+    text = format(value, "f")
+    if "." in text:
+        text = text.rstrip("0").rstrip(".")
+    return text or "0"
 
 
 def _price_text(value: Decimal) -> str:
-    return _decimal_text(value.quantize(Decimal("0.00000001"), rounding=ROUND_HALF_UP))
+    """Format a price to eight decimal places without the global precision cap.
+
+    A broker-supplied realised P/L can imply an acquisition price with more
+    than the default 28 significant digits.  It is still a valid diagnostic
+    value for an unresolved opening lot, so quantize it in a context wide
+    enough for the formatted result instead of raising ``InvalidOperation``.
+    """
+
+    quantum = Decimal("0.00000001")
+    required_precision = max(1, value.adjusted() - quantum.as_tuple().exponent + 1)
+    with localcontext() as context:
+        context.prec = max(context.prec, required_precision)
+        rounded = value.quantize(quantum, rounding=ROUND_HALF_UP)
+    return _decimal_text(rounded)
 
 
 def _money_text(value: Decimal) -> str:

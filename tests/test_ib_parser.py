@@ -538,6 +538,12 @@ Open Positions,Header,DataDiscriminator,Asset Category,Currency,Symbol,Quantity,
 
 
 class InteractiveBrokersParserTests(unittest.TestCase):
+    def test_price_text_formats_large_implied_opening_price(self) -> None:
+        self.assertEqual(
+            ib_module._price_text(Decimal("123456789012345678901234567890.123456789")),
+            "123456789012345678901234567890.12345679",
+        )
+
     def test_parse_minimal_ib_report_and_reconcile(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             raw_root = Path(tmp) / "raw"
