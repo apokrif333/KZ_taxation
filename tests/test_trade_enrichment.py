@@ -57,6 +57,25 @@ class TradeEnrichmentTests(unittest.TestCase):
         self.assertEqual(by_symbol["FX-SPOT"]["source_of_expense"], "11")
         self.assertIsNone(by_symbol["FOREX"]["source_of_expense"])
 
+    def test_source_pool_counts_purchase_commission_but_not_sale_commission(self) -> None:
+        trades = [
+            {
+                **_trade("2025-01-01", "SALE", "-1", "100"),
+                "amount_with_commission": "95",
+            },
+            {
+                **_trade("2025-01-02", "BUY", "1", "100"),
+                "amount_with_commission": "101",
+            },
+        ]
+
+        classified = classify_form270_05_sources(trades)
+        by_symbol = {row["symbol"]: row for row in classified}
+
+        self.assertEqual(by_symbol["SALE"]["cumulative_source_of_expense"], "100")
+        self.assertEqual(by_symbol["BUY"]["source_of_expense"], "11")
+        self.assertEqual(by_symbol["BUY"]["cumulative_source_of_expense"], "100")
+
     def test_paid_corporate_action_disposal_adds_to_sale_pool(self) -> None:
         trades = [
             _trade("2022-01-13", "PRIOR-BUY", "1", "100"),
@@ -88,7 +107,10 @@ class TradeEnrichmentTests(unittest.TestCase):
     def test_workbook_preparation_adds_columns_and_sorts_trades(self) -> None:
         dataset = CanonicalDataset.empty("ib", "U1")
         dataset.tables["Trades"] = [
-            _trade("2025-01-02", "BUY", "1", "100", currency="USD"),
+            {
+                **_trade("2025-01-02", "BUY", "1", "100", currency="USD"),
+                "amount_with_commission": "101",
+            },
             _trade("2024-01-01", "SALE", "-1", "100", currency="USD"),
             _trade(
                 "2024-06-01",
@@ -120,10 +142,10 @@ class TradeEnrichmentTests(unittest.TestCase):
         self.assertEqual(Decimal(str(rows[0]["amount_kzt"])), Decimal("40000"))
         self.assertEqual(Decimal(str(rows[1]["amount"])), Decimal("0"))
         self.assertIsNone(rows[1]["source_of_expense"])
-        self.assertEqual(str(rows[2]["source_of_expense"]), "12")
+        self.assertEqual(str(rows[2]["source_of_expense"]), "11")
 
         self.assertEqual(headers[source_index + 1], "Cumulative_Source_Of_Expense")
-        self.assertEqual(cumulative_values, [40000, 40000, 0])
+        self.assertEqual(cumulative_values, [40000, 40000, 40000])
 
     def test_missing_rate_warning_uses_validation_contract(self) -> None:
         dataset = CanonicalDataset.empty("test", "NO-RATE")

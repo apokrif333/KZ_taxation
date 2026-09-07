@@ -18,6 +18,8 @@ from kztax270.canonical.trade_enrichment import (
     SOURCE_ASSET_SALE_CODE,
     SOURCE_OWN_FUNDS_CODE,
     classify_form270_05_sources,
+    amount_with_purchase_commission,
+    form270_05_amount_kzt,
     is_forex_trade,
     is_real_form270_05_trade,
 )
@@ -587,8 +589,8 @@ def _build_application_04_b(
     tax_year: int,
     split: bool,
 ) -> list[dict[str, Any]]:
-    grouped: dict[tuple[Any, ...], dict[str, Decimal]] = {}
-    for row in tables.get("Trades", []):
+    current_trades: list[tuple[Mapping[str, Any], datetime, int]] = []
+    for sequence, row in enumerate(tables.get("Trades", [])):
         parsed_date = _parse_date(row.get("date_time"))
         if parsed_date is None or parsed_date.year != tax_year:
             continue
@@ -601,57 +603,36 @@ def _build_application_04_b(
         quantity = _decimal(row.get("quantity"))
         if quantity == ZERO:
             continue
-        operation, operation_other = _application_04_operation(row, quantity)
         identifier = _instrument_identifier(row)
         if identifier is None:
             continue
-        asset_code = _asset_kind_code(row)
-        country_code = _country_code_for_form(country)
-        currency_code = _currency_code_for_form(_str_or_none(row.get("currency")))
-        registration_date = _format_date(parsed_date)
-        key = (
-            parsed_date.date().isoformat(),
-            identifier.casefold(),
-            registration_date,
-            operation,
-            operation_other,
-            asset_code,
-            identifier,
-            country_code,
-            currency_code,
-        )
-        values = grouped.setdefault(key, {"quantity": ZERO, "amount": ZERO})
-        values["quantity"] += abs(quantity)
-        values["amount"] += abs(_decimal(row.get("amount")))
+        current_trades.append((row, parsed_date, sequence))
 
     rows: list[dict[str, Any]] = []
-    for index, (key, values) in enumerate(sorted(grouped.items(), key=lambda item: item[0]), start=1):
-        (
-            _sort_date,
-            _sort_identifier,
-            registration_date,
-            operation,
-            operation_other,
-            asset_code,
-            identifier,
-            country_code,
-            currency_code,
-        ) = key
-        quantity = values["quantity"] * HALF if split else values["quantity"]
-        amount = values["amount"] * HALF if split else values["amount"]
+    for index, (row, parsed_date, _sequence) in enumerate(
+        sorted(current_trades, key=lambda item: (item[1], item[2])),
+        start=1,
+    ):
+        quantity_value = _decimal(row.get("quantity"))
+        quantity = abs(quantity_value)
+        amount = amount_with_purchase_commission(row)
+        if split:
+            quantity *= HALF
+            amount *= HALF
+        operation, operation_other = _application_04_operation(row, quantity_value)
         rows.append(
             {
                 "A": _row_no(index),
                 "B": operation,
                 "_01": operation_other,
-                "C": asset_code,
+                "C": _asset_kind_code(row),
                 "_02": None,
                 "D": _decimal_json(quantity, places=4),
-                "E": identifier,
-                "F": registration_date,
+                "E": _instrument_identifier(row),
+                "F": _format_date(parsed_date),
                 "G": "-",
-                "H": country_code,
-                "I": currency_code,
+                "H": _country_code_for_form(_country_from_row(row)),
+                "I": _currency_code_for_form(_str_or_none(row.get("currency"))),
                 "val_J": {"value": _decimal_json(amount, places=2), "manual": True},
                 "index": index - 1,
             }
@@ -789,8 +770,8 @@ def _build_application_05(
         country = _country_code_for_form(_country_from_row(row))
         country_name = COUNTRY_NAME_RU_BY_CODE.get(country, country)
         currency = _currency_code_for_form(_str_or_none(row.get("currency")))
-        amount = abs(_decimal(row.get("amount")))
-        amount_kzt = abs(_decimal(row.get("amount_kzt")))
+        amount = amount_with_purchase_commission(row)
+        amount_kzt = form270_05_amount_kzt(row)
         if split:
             amount *= HALF
             amount_kzt *= HALF

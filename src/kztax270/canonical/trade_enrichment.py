@@ -91,7 +91,7 @@ def classify_form270_05_sources(
     for row in ordered:
         row["source_of_expense"] = None
         if is_real_form270_05_trade(row):
-            amount_kzt = abs(decimal_value(row.get("amount_kzt")))
+            amount_kzt = form270_05_amount_kzt(row)
             quantity = decimal_value(row.get("quantity"))
             if amount_kzt > ZERO:
                 if quantity < ZERO:
@@ -103,6 +103,43 @@ def classify_form270_05_sources(
                     row["source_of_expense"] = SOURCE_OWN_FUNDS_CODE
         row["cumulative_source_of_expense"] = decimal_text(sale_pool)
     return ordered
+
+
+def amount_with_purchase_commission(row: Mapping[str, Any]) -> Decimal:
+    """Return purchase cost including commission or a gross disposal amount.
+
+    A purchase reports its acquisition cost, including its commission. A
+    disposal reports its gross sale value and deliberately excludes its
+    commission.
+    """
+
+    amount = abs(decimal_value(row.get("amount")))
+    if decimal_value(row.get("quantity")) <= ZERO:
+        return amount
+
+    value_with_commission = row.get("amount_with_commission")
+    if value_with_commission is None or not str(value_with_commission).strip():
+        return amount
+    return abs(decimal_value(value_with_commission))
+
+
+def form270_05_amount_kzt(row: Mapping[str, Any]) -> Decimal:
+    """Return the Form 270.05 value in KZT using the trade's annual FX rate.
+
+    ``amount_kzt`` remains the canonical gross-trade audit value. This helper
+    derives the form-specific acquisition cost so the audit source-pool logic
+    and the JSON form use the same commission treatment.
+    """
+
+    gross_amount = abs(decimal_value(row.get("amount")))
+    gross_amount_kzt = abs(decimal_value(row.get("amount_kzt")))
+    rate = decimal_value(row.get("kzt_rate"))
+    amount = amount_with_purchase_commission(row)
+    if rate > ZERO:
+        return amount * rate
+    if gross_amount > ZERO and gross_amount_kzt > ZERO:
+        return amount * gross_amount_kzt / gross_amount
+    return gross_amount_kzt
 
 
 def is_real_form270_05_trade(row: Mapping[str, Any]) -> bool:

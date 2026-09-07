@@ -317,22 +317,26 @@ class Form270JsonTests(unittest.TestCase):
         self.assertEqual(form["fnoContent"]["commonInfo"]["selectedApplications"], ["application_04"])
         self.assertEqual(
             [row["F"] for row in app["B"]],
-            ["02.01.2024", "05.01.2024", "06.01.2024", "07.01.2024", "08.01.2024", "09.01.2024", "10.01.2024", "11.01.2024"],
+            ["02.01.2024", "02.01.2024", "05.01.2024", "06.01.2024", "07.01.2024", "08.01.2024", "09.01.2024", "10.01.2024", "11.01.2024"],
+        )
+        aaa_rows = [row for row in app["B"] if row["E"] == "US0000000001"]
+        self.assertEqual(
+            [(row["D"], row["val_J"]) for row in aaa_rows],
+            [(10, {"value": 101, "manual": True}), (2, {"value": 20, "manual": True})],
         )
         trades_by_identifier = {row["E"]: row for row in app["B"]}
-        self.assertEqual(trades_by_identifier["US0000000001"]["B"], "1")
-        self.assertEqual(trades_by_identifier["US0000000001"]["C"], "3")
-        self.assertEqual(trades_by_identifier["US0000000001"]["D"], 12)
-        self.assertEqual(trades_by_identifier["US0000000001"]["F"], "02.01.2024")
-        self.assertEqual(trades_by_identifier["US0000000001"]["G"], "-")
-        self.assertEqual(trades_by_identifier["US0000000001"]["H"], "USA")
-        self.assertEqual(trades_by_identifier["US0000000001"]["I"], "USD")
-        self.assertIn(trades_by_identifier["US0000000001"]["H"], _reference_codes(COUNTRY_CODES_FILE))
-        self.assertIn(trades_by_identifier["US0000000001"]["I"], _reference_codes(CURRENCY_CODES_FILE))
-        self.assertEqual(trades_by_identifier["US0000000001"]["val_J"], {"value": 120, "manual": True})
+        self.assertEqual(aaa_rows[0]["B"], "1")
+        self.assertEqual(aaa_rows[0]["C"], "3")
+        self.assertEqual(aaa_rows[0]["F"], "02.01.2024")
+        self.assertEqual(aaa_rows[0]["G"], "-")
+        self.assertEqual(aaa_rows[0]["H"], "USA")
+        self.assertEqual(aaa_rows[0]["I"], "USD")
+        self.assertIn(aaa_rows[0]["H"], _reference_codes(COUNTRY_CODES_FILE))
+        self.assertIn(aaa_rows[0]["I"], _reference_codes(CURRENCY_CODES_FILE))
         self.assertNotIn("EUR.USD", trades_by_identifier)
         self.assertEqual(trades_by_identifier["SPY 19JAN24 100 C"]["B"], "4")
         self.assertEqual(trades_by_identifier["SPY 19JAN24 100 C"]["C"], "4")
+        self.assertEqual(trades_by_identifier["SPY 19JAN24 100 C"]["val_J"], {"value": 30, "manual": True})
         self.assertEqual(trades_by_identifier["EUR/AUD"]["B"], "4")
         self.assertEqual(trades_by_identifier["EUR/AUD"]["C"], "4")
         self.assertEqual(trades_by_identifier["EUR/AUD"]["H"], "CYP")
@@ -378,18 +382,18 @@ class Form270JsonTests(unittest.TestCase):
         self.assertEqual(rows[0]["B"], "1")
         self.assertEqual(rows[0]["C"], "3")
 
-    def test_application_04_b_is_sorted_by_date_then_isin(self) -> None:
+    def test_application_04_b_is_sorted_chronologically_without_aggregation(self) -> None:
         dataset = CanonicalDataset.empty("ib", "USORT04")
         dataset.tables["Trades"] = [
             _sorting_trade("2025-02-02 09:00:00", "US0000000003", "1"),
-            _sorting_trade("2025-02-01 12:00:00", "US0000000002", "1"),
-            _sorting_trade("2025-02-01 09:00:00", "US0000000001", "1"),
+            _sorting_trade("2025-02-01 12:00:00", "US0000000001", "1"),
+            _sorting_trade("2025-02-01 09:00:00", "US0000000002", "1"),
         ]
 
         form = _builder().build_account_draft(dataset, tax_year=2025)
 
         rows = form["fnoContent"]["application_04"]["B"]
-        self.assertEqual([row["E"] for row in rows], ["US0000000001", "US0000000002", "US0000000003"])
+        self.assertEqual([row["E"] for row in rows], ["US0000000002", "US0000000001", "US0000000003"])
         self.assertEqual([row["F"] for row in rows], ["01.02.2025", "01.02.2025", "02.02.2025"])
 
     def test_builder_marks_stock_award_grant_as_gratuitous(self) -> None:
@@ -496,8 +500,8 @@ class Form270JsonTests(unittest.TestCase):
                 "isin": "US0000000002",
                 "asset_type": "Stocks",
                 "quantity": "1",
-                "amount": "150",
-                "amount_with_commission": "999",
+                "amount": "100",
+                "amount_with_commission": "101",
                 "kzt_rate": "1",
                 "currency": "KZT",
                 "country": "US",
@@ -589,11 +593,11 @@ class Form270JsonTests(unittest.TestCase):
         sells = content["application_05"]["C"]
         self.assertEqual([row["C"] for row in buys], ["US0000000002", "KZ0000000001", "EUR/USD.FX"])
         self.assertEqual([row["I"] for row in buys], ["11", "12", "12"])
-        self.assertEqual(buys[0]["H"], 150)
+        self.assertEqual(buys[0]["H"], 101)
         self.assertEqual(buys[0]["J"], "-")
         self.assertEqual(buys[0]["K"], "-")
         self.assertEqual(buys[0]["L"], "KZT")
-        self.assertEqual(buys[0]["val_M"], {"value": 150, "manual": True})
+        self.assertEqual(buys[0]["val_M"], {"value": 101, "manual": True})
         self.assertEqual(buys[1]["E"], "KAZ")
         self.assertEqual(buys[2]["B"], "4")
         self.assertEqual([row["C"] for row in sells], ["US0000000004", "US0000000003"])
@@ -836,9 +840,15 @@ class Form270JsonTests(unittest.TestCase):
         self.assertEqual(form["fnoContent"]["commonInfo"]["_6"], "000000000012")
         self.assertEqual(form["fnoContent"]["application_01"]["_D"], 500)
         self.assertEqual(form["fnoContent"]["application_01"]["_I"], 50)
-        split_trades = {row["E"]: row for row in form["fnoContent"]["application_04"]["B"]}
-        self.assertEqual(split_trades["US0000000001"]["D"], 6)
-        self.assertEqual(split_trades["US0000000001"]["val_J"], {"value": 60, "manual": True})
+        split_trades = [
+            row
+            for row in form["fnoContent"]["application_04"]["B"]
+            if row["E"] == "US0000000001"
+        ]
+        self.assertEqual(
+            [(row["D"], row["val_J"]) for row in split_trades],
+            [(5, {"value": 50.5, "manual": True}), (1, {"value": 10, "manual": True})],
+        )
         self.assertEqual(form["fnoContent"]["application_04"]["C"][0]["F"], 62)
 
     def test_form270_run_config_loads_forms_and_banks(self) -> None:
@@ -1043,7 +1053,7 @@ def _dataset_with_application_04_rows() -> CanonicalDataset:
             "asset_type": "Equity and Index Options",
             "quantity": "-3",
             "amount": "30",
-            "amount_with_commission": "30",
+            "amount_with_commission": "31",
             "currency": "USD",
             "country": "US",
         },
