@@ -18,13 +18,21 @@ export class ApiClientError extends Error {
   readonly code: string
   readonly status: number
   readonly reports: InvalidReportPeriod[]
+  readonly diagnosticId?: string
 
-  constructor(message: string, code = 'network_error', status = 0, reports: InvalidReportPeriod[] = []) {
+  constructor(
+    message: string,
+    code = 'network_error',
+    status = 0,
+    reports: InvalidReportPeriod[] = [],
+    diagnosticId?: string,
+  ) {
     super(message)
     this.name = 'ApiClientError'
     this.code = code
     this.status = status
     this.reports = reports
+    this.diagnosticId = diagnosticId
   }
 }
 
@@ -43,11 +51,14 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
     } catch {
       // Infrastructure errors do not necessarily use the FastAPI error schema.
     }
+    const diagnosticId = error?.detail?.diagnostic_id
+    const message = error?.detail?.message || 'Сервер не смог выполнить запрос.'
     throw new ApiClientError(
-      error?.detail?.message || 'Сервер не смог выполнить запрос.',
+      diagnosticId ? `${message} Код диагностики: ${diagnosticId}.` : message,
       error?.detail?.code || 'request_failed',
       response.status,
       error?.detail?.reports || [],
+      diagnosticId,
     )
   }
 

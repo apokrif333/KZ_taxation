@@ -137,14 +137,22 @@ def create_app(
         )
 
     @application.exception_handler(Exception)
-    async def unexpected_error_handler(_request: Request, exc: Exception) -> JSONResponse:
-        LOGGER.error("Unexpected API error class=%s", type(exc).__name__)
+    async def unexpected_error_handler(request: Request, exc: Exception) -> JSONResponse:
+        diagnostic_id = _diagnostic_id()
+        LOGGER.exception(
+            "Unexpected API error diagnostic_id=%s method=%s path=%s error_class=%s",
+            diagnostic_id,
+            request.method,
+            request.url.path,
+            type(exc).__name__,
+        )
         return JSONResponse(
             status_code=500,
             content={
                 "detail": {
                     "code": "processing_error",
                     "message": "Не удалось обработать запрос.",
+                    "diagnostic_id": diagnostic_id,
                 }
             },
         )
@@ -297,8 +305,20 @@ def create_app(
             LOGGER.info("Discovery validation failed job_id=%s error=%s", job_id, str(exc))
             raise ApiError(422, "validation_error", message) from exc
         except Exception as exc:
-            LOGGER.info("Report discovery failed job_id=%s error_class=%s", job_id, type(exc).__name__)
-            raise ApiError(422, "report_parse_error", "Не удалось прочитать загруженные отчёты.") from exc
+            diagnostic_id = _diagnostic_id()
+            LOGGER.exception(
+                "Report discovery failed diagnostic_id=%s job_id=%s report_count=%s error_class=%s",
+                diagnostic_id,
+                job_id,
+                len(record.uploads),
+                type(exc).__name__,
+            )
+            raise ApiError(
+                422,
+                "report_parse_error",
+                "Не удалось прочитать загруженные отчёты.",
+                extra={"diagnostic_id": diagnostic_id},
+            ) from exc
         try:
             store.mark_discovered(job_id)
         except InvalidJobStateError as exc:
@@ -342,8 +362,23 @@ def create_app(
             raise ApiError(422, "validation_error", "Параметры расчёта или отчёты не прошли проверку.") from exc
         except Exception as exc:
             store.processing_failed(job_id, previous_status)
-            LOGGER.error("Job processing failed job_id=%s error_class=%s", job_id, type(exc).__name__)
-            raise ApiError(500, "processing_error", "Не удалось обработать брокерские отчёты.") from exc
+            diagnostic_id = _diagnostic_id()
+            LOGGER.exception(
+                "Job processing failed diagnostic_id=%s job_id=%s tax_year=%s report_count=%s "
+                "form270_05=%s error_class=%s",
+                diagnostic_id,
+                job_id,
+                request.tax_year,
+                len(record.uploads),
+                request.form270_05,
+                type(exc).__name__,
+            )
+            raise ApiError(
+                500,
+                "processing_error",
+                "Не удалось обработать брокерские отчёты.",
+                extra={"diagnostic_id": diagnostic_id},
+            ) from exc
 
         if not result.completed:
             store.needs_additional_reports(job_id)
@@ -361,8 +396,20 @@ def create_app(
             store.complete(job_id, artifacts)
         except Exception as exc:
             store.processing_failed(job_id, previous_status)
-            LOGGER.error("Artifact registration failed job_id=%s error_class=%s", job_id, type(exc).__name__)
-            raise ApiError(500, "processing_error", "Не удалось подготовить результаты расчёта.") from exc
+            diagnostic_id = _diagnostic_id()
+            LOGGER.exception(
+                "Artifact registration failed diagnostic_id=%s job_id=%s tax_year=%s error_class=%s",
+                diagnostic_id,
+                job_id,
+                request.tax_year,
+                type(exc).__name__,
+            )
+            raise ApiError(
+                500,
+                "processing_error",
+                "Не удалось подготовить результаты расчёта.",
+                extra={"diagnostic_id": diagnostic_id},
+            ) from exc
         LOGGER.info("Job completed job_id=%s elapsed_seconds=%.3f", job_id, time.monotonic() - started_at)
         return ProcessJobResponse(
             job_id=job_id,
@@ -429,6 +476,12 @@ def _discovery_validation_message(exc: ValueError) -> str:
         filename = unsupported_encoding.group("filename")
         return f"Отчёт {_broker_display_name(broker)} «{filename}» имеет неподдерживаемую кодировку."
     return f"Не удалось проверить загруженные отчёты: {detail or 'неизвестная ошибка проверки.'}"
+
+
+def _diagnostic_id() -> str:
+    """Create a short identifier that links a browser error to server logs."""
+
+    return f"ERR-{uuid.uuid4().hex[:12].upper()}"
 
 
 def _broker_display_name(value: str) -> str:

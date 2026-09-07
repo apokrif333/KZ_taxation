@@ -264,6 +264,14 @@ expire after 15 minutes. A restart or redeploy invalidates jobs. Do not create a
 Railway Volume, and **do not scale this service above one replica** while
 `JobStore` remains process-local.
 
+### Диагностика ошибок расчёта
+
+Если расчёт завершается серверной ошибкой, интерфейс покажет код вида
+`ERR-XXXXXXXXXXXX`. Попросите пользователя прислать этот код и найдите в логах
+Railway строку `diagnostic_id=ERR-XXXXXXXXXXXX`: она содержит `job_id`, параметры
+расчёта и полный traceback исходного исключения. В лог намеренно не записываются
+ФИО, ИИН и содержимое отчётов.
+
 ### Local Next.js frontend
 
 The browser talks directly to FastAPI. Copy the public local setting and start

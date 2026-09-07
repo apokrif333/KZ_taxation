@@ -118,6 +118,7 @@ export interface ApiErrorDetail {
   code: string
   message: string
   reports?: InvalidReportPeriod[]
+  diagnostic_id?: string
 }
 
 export interface ApiErrorResponse {

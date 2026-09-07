@@ -30,6 +30,7 @@ class _FakeFrontPipelineFactory:
         self.discover_calls: list[tuple[ProjectPaths, str]] = []
         self.run_calls: list[dict[str, object]] = []
         self.discover_error: Exception | None = None
+        self.run_error: Exception | None = None
         self.behaviors: list[str] = []
 
     def __call__(self, paths: ProjectPaths) -> _FakeFrontPipeline:
@@ -74,6 +75,8 @@ class _FakeFrontPipeline:
 
     def run(self, **kwargs: object) -> FrontPipelineResult:
         self.factory.run_calls.append(dict(kwargs))
+        if self.factory.run_error is not None:
+            raise self.factory.run_error
         client_id = str(kwargs["client_id"])
         tax_year = int(kwargs["tax_year"])
         accounts = self.discover_accounts(client_id)
@@ -401,6 +404,22 @@ class WebApiTests(unittest.TestCase):
             "В отчёте Exante «Custom_IEO1069.001 2023.csv» не удалось определить номер счёта.",
         )
 
+    def test_discovery_failure_returns_diagnostic_id_and_logs_traceback(self) -> None:
+        job_id = str(self._create()["job_id"])
+        self._upload(job_id, uploads=[("u1.csv", b"report")])
+        self.factory.discover_error = RuntimeError("synthetic discovery fault")
+
+        with self.assertLogs("kztax270.webapi", level="ERROR") as logs:
+            response = self._discover(job_id)
+
+        self.assertEqual(response.status_code, 422)
+        detail = response.json()["detail"]
+        self.assertEqual(detail["code"], "report_parse_error")
+        self.assertRegex(detail["diagnostic_id"], r"^ERR-[0-9A-F]{12}$")
+        self.assertIn(f"diagnostic_id={detail['diagnostic_id']}", "\n".join(logs.output))
+        self.assertIn(f"job_id={job_id}", "\n".join(logs.output))
+        self.assertIn("RuntimeError: synthetic discovery fault", "\n".join(logs.output))
+
     def test_process_passes_options_directly_to_front_pipeline(self) -> None:
         job_id = self._ready_job()
         response = self._process(
@@ -431,6 +450,21 @@ class WebApiTests(unittest.TestCase):
             response = self._process(job_id)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(calls, ["run"])
+
+    def test_processing_failure_returns_diagnostic_id_and_logs_traceback(self) -> None:
+        job_id = self._ready_job()
+        self.factory.run_error = RuntimeError("synthetic pipeline fault")
+
+        with self.assertLogs("kztax270.webapi", level="ERROR") as logs:
+            response = self._process(job_id)
+
+        self.assertEqual(response.status_code, 500)
+        detail = response.json()["detail"]
+        self.assertEqual(detail["code"], "processing_error")
+        self.assertRegex(detail["diagnostic_id"], r"^ERR-[0-9A-F]{12}$")
+        self.assertIn(f"diagnostic_id={detail['diagnostic_id']}", "\n".join(logs.output))
+        self.assertIn(f"job_id={job_id}", "\n".join(logs.output))
+        self.assertIn("RuntimeError: synthetic pipeline fault", "\n".join(logs.output))
 
     def test_missing_basis_keeps_raw_and_accepts_more_reports_then_completes(self) -> None:
         job_id = self._ready_job()
