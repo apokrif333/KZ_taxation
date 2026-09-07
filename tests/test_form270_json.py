@@ -382,6 +382,48 @@ class Form270JsonTests(unittest.TestCase):
         self.assertEqual(rows[0]["B"], "1")
         self.assertEqual(rows[0]["C"], "3")
 
+    def test_builder_includes_cfd_trades_as_derivatives_in_applications_04_and_05(self) -> None:
+        dataset = CanonicalDataset.empty("exante", "IEO1069.001")
+        dataset.tables["Trades"] = [
+            {
+                "date_time": "2024-01-10 10:00:00",
+                "trade_type": "trade",
+                "symbol": "BTC.EXANTE",
+                "asset_type": "CFD",
+                "quantity": "0.01",
+                "amount": "500",
+                "commission": "10",
+                "amount_with_commission": "510",
+                "kzt_rate": "500",
+                "currency": "USD",
+                "country": "CY",
+            },
+            {
+                "date_time": "2024-01-11 10:00:00",
+                "trade_type": "trade",
+                "symbol": "BTC.EXANTE",
+                "asset_type": "CFD",
+                "quantity": "-0.01",
+                "amount": "600",
+                "commission": "20",
+                "amount_with_commission": "620",
+                "kzt_rate": "500",
+                "currency": "USD",
+                "country": "CY",
+            },
+        ]
+
+        app_04 = _builder().build_account_draft(dataset, tax_year=2024)["fnoContent"]["application_04"]["B"]
+        app_05 = _builder().build_account_draft(dataset, tax_year=2024, form270_05=True)["fnoContent"]["application_05"]
+
+        self.assertEqual([row["C"] for row in app_04], ["4", "4"])
+        self.assertEqual([row["val_J"] for row in app_04], [{"value": 500, "manual": True}, {"value": 600, "manual": True}])
+        self.assertEqual(app_05["B"][0]["B"], "4")
+        self.assertEqual(app_05["B"][0]["H"], 500)
+        self.assertEqual(app_05["B"][0]["val_M"], {"value": 250000, "manual": True})
+        self.assertEqual(app_05["C"][0]["B"], "4")
+        self.assertEqual(app_05["C"][0]["I"], 300000)
+
     def test_application_04_b_is_sorted_chronologically_without_aggregation(self) -> None:
         dataset = CanonicalDataset.empty("ib", "USORT04")
         dataset.tables["Trades"] = [

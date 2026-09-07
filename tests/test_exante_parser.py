@@ -517,7 +517,9 @@ class ExanteParserTests(unittest.TestCase):
         self.assertEqual(delivered_stock["trade_type"], "physical_settlement")
         self.assertEqual(delivered_stock["quantity"], "100")
         self.assertEqual(delivered_stock["price"], "343")
-        self.assertEqual(delivered_stock["commission"], "4")
+        self.assertEqual(delivered_stock["amount"], "34300")
+        self.assertEqual(delivered_stock["commission"], "2")
+        self.assertEqual(delivered_stock["amount_with_commission"], "34302")
         self.assertEqual(dataset.tables["Unprocessed"], [])
 
     def test_capitalized_operation_type_parses_transfers_in_and_requests_fifo_source(self) -> None:

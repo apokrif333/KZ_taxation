@@ -1100,6 +1100,8 @@ def _is_derivative_asset(row: Mapping[str, Any]) -> bool:
     symbol = str(row.get("symbol") or row.get("Symbol") or "").upper()
     if asset_type.strip() == "forex":
         return False
+    if "cfd" in asset_type or "contract for difference" in asset_type:
+        return True
     return (
         any(token in asset_type for token in ("option", "future", "futures", "derivative", "fx spot", "fx_spot", "currency", "опцион", "фьюч"))
         or ".FX" in symbol

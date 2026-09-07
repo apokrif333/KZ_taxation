@@ -962,7 +962,7 @@ def _exante_underlying_settlement_for_trade(
 
 
 def _capitalize_exante_physical_option_settlements(trades: list[dict[str, Any]], warnings: list[str]) -> None:
-    """Move option premium and entry commission into the delivered security."""
+    """Move option premium, but not option commission, into the delivered security."""
 
     books: dict[str, dict[str, list[dict[str, Decimal]]]] = defaultdict(lambda: {"long": [], "short": []})
     settlements: dict[str, dict[str, Decimal | str]] = {}
@@ -971,20 +971,18 @@ def _capitalize_exante_physical_option_settlements(trades: list[dict[str, Any]],
         key=lambda row: (_parse_datetime(row.get("date_time")) or datetime.max, str(row.get("trade_id") or "")),
     )
 
-    def consume(side: str, identity: str, quantity: Decimal) -> tuple[Decimal, Decimal, Decimal]:
+    def consume(side: str, identity: str, quantity: Decimal) -> tuple[Decimal, Decimal]:
         remaining = quantity
         premium = Decimal("0")
-        commission = Decimal("0")
         for lot in books[identity][side]:
             if remaining == 0:
                 break
             matched = min(remaining, lot["quantity"])
             premium += lot["premium_per_unit"] * matched
-            commission += lot["commission_per_unit"] * matched
             lot["quantity"] -= matched
             remaining -= matched
         books[identity][side] = [lot for lot in books[identity][side] if lot["quantity"] != 0]
-        return remaining, premium, commission
+        return remaining, premium
 
     for trade in ordered:
         if str(trade.get("asset_type") or "") != "Equity and Index Options":
@@ -997,7 +995,7 @@ def _capitalize_exante_physical_option_settlements(trades: list[dict[str, Any]],
             continue
         closing_side = "short" if quantity > 0 else "long"
         opening_side = "long" if quantity > 0 else "short"
-        remaining, premium, commission = consume(closing_side, identity, abs(quantity))
+        remaining, premium = consume(closing_side, identity, abs(quantity))
         if trade.get("_physical_settlement_option"):
             settlement_id = _string_or_none(trade.get("_physical_settlement_id"))
             if remaining:
@@ -1007,7 +1005,6 @@ def _capitalize_exante_physical_option_settlements(trades: list[dict[str, Any]],
             elif settlement_id:
                 settlements[settlement_id] = {
                     "premium": premium,
-                    "commission": commission,
                     "option_symbol": str(trade.get("_physical_settlement_option_symbol") or trade.get("symbol") or ""),
                     "option_quantity": quantity,
                 }
@@ -1018,7 +1015,6 @@ def _capitalize_exante_physical_option_settlements(trades: list[dict[str, Any]],
                 {
                     "quantity": remaining,
                     "premium_per_unit": abs(_decimal(trade.get("amount"))) / unit_quantity,
-                    "commission_per_unit": abs(_decimal(trade.get("commission"))) / unit_quantity,
                 }
             )
 
@@ -1054,7 +1050,7 @@ def _capitalize_exante_physical_option_settlements(trades: list[dict[str, Any]],
             warnings.append(f"Exante physical option settlement has negative delivered value: {trade.get('trade_id')}")
             continue
         adjusted_price = adjusted_gross / (abs(underlying_quantity) * multiplier)
-        adjusted_commission = abs(_decimal(trade.get("commission"))) + Decimal(str(settlement["commission"]))
+        adjusted_commission = abs(_decimal(trade.get("commission")))
         trade["trade_type"] = "physical_settlement"
         trade["price"] = str(adjusted_price)
         trade["calculation_price"] = str(adjusted_price)

@@ -106,21 +106,47 @@ def classify_form270_05_sources(
 
 
 def amount_with_purchase_commission(row: Mapping[str, Any]) -> Decimal:
-    """Return purchase cost including commission or a gross disposal amount.
+    """Return the form value following the FIFO commission treatment.
 
-    A purchase reports its acquisition cost, including its commission. A
-    disposal reports its gross sale value and deliberately excludes its
-    commission.
+    Only a purchase of securities reports its acquisition cost including
+    commission. Disposals and all derivative trades use their gross amount.
     """
 
     amount = abs(decimal_value(row.get("amount")))
-    if decimal_value(row.get("quantity")) <= ZERO:
+    if decimal_value(row.get("quantity")) <= ZERO or is_derivative_trade(row):
         return amount
 
     value_with_commission = row.get("amount_with_commission")
     if value_with_commission is None or not str(value_with_commission).strip():
         return amount
     return abs(decimal_value(value_with_commission))
+
+
+def is_derivative_trade(row: Mapping[str, Any]) -> bool:
+    """Return whether a trade follows the FIFO derivative tax treatment."""
+
+    asset_type = str(row.get("asset_type") or row.get("Asset_Type") or "").strip().casefold()
+    symbol = str(row.get("symbol") or row.get("Symbol") or "").upper()
+    if asset_type == "forex":
+        return False
+    return (
+        any(
+            token in asset_type
+            for token in (
+                "option",
+                "future",
+                "futures",
+                "derivative",
+                "cfd",
+                "contract for difference",
+                "fx spot",
+                "fx_spot",
+                "currency",
+                "swap",
+            )
+        )
+        or ".FX" in symbol
+    )
 
 
 def form270_05_amount_kzt(row: Mapping[str, Any]) -> Decimal:

@@ -76,6 +76,21 @@ class TradeEnrichmentTests(unittest.TestCase):
         self.assertEqual(by_symbol["BUY"]["source_of_expense"], "11")
         self.assertEqual(by_symbol["BUY"]["cumulative_source_of_expense"], "100")
 
+    def test_source_pool_excludes_commission_for_derivative_purchases(self) -> None:
+        trades = [
+            _trade("2025-01-01", "SALE", "-1", "100"),
+            {
+                **_trade("2025-01-02", "CFD-BUY", "1", "100", asset_type="CFD"),
+                "amount_with_commission": "101",
+            },
+        ]
+
+        classified = classify_form270_05_sources(trades)
+        by_symbol = {row["symbol"]: row for row in classified}
+
+        self.assertEqual(by_symbol["CFD-BUY"]["source_of_expense"], "12")
+        self.assertEqual(by_symbol["CFD-BUY"]["cumulative_source_of_expense"], "0")
+
     def test_paid_corporate_action_disposal_adds_to_sale_pool(self) -> None:
         trades = [
             _trade("2022-01-13", "PRIOR-BUY", "1", "100"),
