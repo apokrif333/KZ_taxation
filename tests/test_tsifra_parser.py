@@ -44,6 +44,18 @@ MINIMAL_TSIFRA_XML = """<?xml version="1.0" encoding="utf-8"?>
 
 
 class TsifraParserTests(unittest.TestCase):
+    def test_tsifra_account_detection_supports_acc_number(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "Tsifra 1432280 2024-1q.xml"
+            path.write_text(
+                '<?xml version="1.0" encoding="UTF-8"?><report date="07/04/2024" period="01/01/2024-31/03/2024"><account acc_number="1432280" /></report>',
+                encoding="utf-8",
+            )
+
+            parsed = tsifra_module.parse_tsifra_xml_report(path)
+
+        self.assertEqual(parsed.account_id, "1432280")
+
     def test_tsifra_transfer_in_trades_income_and_reconciliation(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             raw_root = Path(tmp) / "raw"

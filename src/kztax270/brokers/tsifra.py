@@ -87,7 +87,14 @@ def parse_tsifra_xml_report(path: Path, *, account_id: str | None = None) -> Par
     account = root.find("account")
     if account is not None:
         parsed.fields.update(account.attrib)
-        parsed.account_id = account.attrib.get("id") or account.attrib.get("account") or parsed.account_id
+        parsed.account_id = (
+            account.attrib.get("id")
+            or account.attrib.get("account")
+            or account.attrib.get("acc_number")
+            or account.attrib.get("dogNumber")
+            or account.attrib.get("portal")
+            or parsed.account_id
+        )
 
     money = root.find("money")
     if money is not None:

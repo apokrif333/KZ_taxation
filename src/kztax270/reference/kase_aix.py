@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import datetime
 import json
+import os
 import re
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
@@ -76,10 +78,7 @@ def update_aix_pref_data(
         date_start += pd.DateOffset(months=1)
 
     total_df, fetched = update_aix_isin(total_df, instruments_path=instruments_path, session=session)
-    try:
-        total_df.to_excel(path, index=False)
-    except PermissionError as exc:
-        raise PermissionError(f"Cannot write {path}; close the workbook in Excel and retry.") from exc
+    _write_excel_atomic(total_df, path)
     summary = {"added": added, "isin_fetched": fetched}
     print(summary)
     return summary
@@ -480,7 +479,7 @@ def ensure_kase_aix_preferential_current(
     if not (aix_stale or instruments_updated):
         aix_data = pd.read_excel(paths["aix"])
         aix_data, _ = update_aix_isin(aix_data, instruments_path=paths["instruments"])
-        aix_data.to_excel(paths["aix"], index=False)
+        _write_excel_atomic(aix_data, paths["aix"])
     create_kase_aix_checks(paths["kase"], paths["aix"], paths["monthly"], paths["yearly"])
     return True
 
@@ -536,6 +535,22 @@ def _paths(data_dir: Path) -> dict[str, Path]:
         "monthly": data_dir / "kase_aix_pref.xlsx",
         "yearly": data_dir / "kase_aix_pref_yearly.xlsx",
     }
+
+
+def _write_excel_atomic(frame: pd.DataFrame, path: Path) -> None:
+    """Replace an Excel workbook only after its complete successor was written."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    handle = tempfile.NamedTemporaryFile(dir=path.parent, prefix=f".{path.stem}-", suffix=".xlsx", delete=False)
+    temporary_path = Path(handle.name)
+    handle.close()
+    try:
+        frame.to_excel(temporary_path, index=False)
+        os.replace(temporary_path, path)
+    except PermissionError as exc:
+        raise PermissionError(f"Cannot write {path}; close the workbook in Excel and retry.") from exc
+    finally:
+        if temporary_path.exists():
+            temporary_path.unlink()
 
 
 def _previous_month(value: datetime.date) -> datetime.date:
@@ -829,4 +844,3 @@ def create_yearly_check(
             f"Cannot write {yearly_destination}; close the workbook in Excel and retry."
         ) from exc
     return total_df
-
