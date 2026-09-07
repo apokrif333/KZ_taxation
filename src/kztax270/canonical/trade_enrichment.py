@@ -13,6 +13,13 @@ from kztax270.reference.fx import AnnualFxRateProvider
 ZERO = Decimal("0")
 SOURCE_OWN_FUNDS_CODE = "11"
 SOURCE_ASSET_SALE_CODE = "12"
+FORM270_05_ZERO_VALUE_TRADE_TYPES = frozenset(
+    {
+        "option_expiration",
+        "stock_award_grant",
+        "stock_award_withholding",
+    }
+)
 
 
 def enrich_trades_before_calculations(
@@ -169,16 +176,22 @@ def form270_05_amount_kzt(row: Mapping[str, Any]) -> Decimal:
 
 
 def is_real_form270_05_trade(row: Mapping[str, Any]) -> bool:
-    """Return whether a row is a non-zero purchase or disposal for 270.05.
+    """Return whether a row is a reportable purchase or disposal for 270.05.
 
     Paid corporate actions (cash mergers, redemptions, buybacks, and similar
     events) are purchases or disposals too. Eligibility therefore follows the
-    economic values, not the broker-specific event name.
+    economic values, except zero-value events that still create or dispose of
+    an asset: option expiration, stock-award grant, and stock-award
+    withholding.
     """
 
     if is_swap_or_repo(row) or is_forex_trade(row):
         return False
-    return decimal_value(row.get("quantity")) != ZERO and abs(decimal_value(row.get("amount"))) > ZERO
+    if decimal_value(row.get("quantity")) == ZERO:
+        return False
+    if abs(decimal_value(row.get("amount"))) > ZERO:
+        return True
+    return str(row.get("trade_type") or "").strip().casefold() in FORM270_05_ZERO_VALUE_TRADE_TYPES
 
 
 def is_swap_or_repo(row: Mapping[str, Any]) -> bool:

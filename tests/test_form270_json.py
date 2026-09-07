@@ -633,8 +633,8 @@ class Form270JsonTests(unittest.TestCase):
         self.assertEqual(content["application_04"]["B"], [])
         buys = content["application_05"]["B"]
         sells = content["application_05"]["C"]
-        self.assertEqual([row["C"] for row in buys], ["US0000000002", "KZ0000000001", "EUR/USD.FX"])
-        self.assertEqual([row["I"] for row in buys], ["11", "12", "12"])
+        self.assertEqual([row["C"] for row in buys], ["US0000000002", "KZ0000000001", "EUR/USD.FX", "GRANT"])
+        self.assertEqual([row["I"] for row in buys], ["11", "12", "12", "11"])
         self.assertEqual(buys[0]["H"], 101)
         self.assertEqual(buys[0]["J"], "-")
         self.assertEqual(buys[0]["K"], "-")
@@ -642,8 +642,73 @@ class Form270JsonTests(unittest.TestCase):
         self.assertEqual(buys[0]["val_M"], {"value": 101, "manual": True})
         self.assertEqual(buys[1]["E"], "KAZ")
         self.assertEqual(buys[2]["B"], "4")
+        self.assertEqual(buys[3]["H"], 0)
+        self.assertEqual(buys[3]["val_M"], {"value": 0, "manual": True})
         self.assertEqual([row["C"] for row in sells], ["US0000000004", "US0000000003"])
         self.assertEqual([row["I"] for row in sells], [200, 20])
+
+    def test_application_05_reports_stock_award_withholding_as_zero_value_disposal(self) -> None:
+        dataset = CanonicalDataset.empty("ib", "U9871844")
+        dataset.tables["Trades"] = [
+            {
+                "date_time": "2025-07-18 00:00:00",
+                "trade_type": "stock_award_withholding",
+                "symbol": "IBKR",
+                "isin": "US45841N1072",
+                "asset_type": "Stocks",
+                "quantity": "-7.5356",
+                "amount": "0",
+                "amount_with_commission": "0",
+                "kzt_rate": "521.59",
+                "currency": "USD",
+                "country": "US",
+            }
+        ]
+
+        app = _builder().build_account_draft(dataset, tax_year=2025, form270_05=True)["fnoContent"]["application_05"]
+
+        self.assertEqual(app["B"], [])
+        self.assertEqual(app["C"][0]["C"], "US45841N1072")
+        self.assertEqual(app["C"][0]["B"], "3")
+        self.assertEqual(app["C"][0]["I"], 0)
+
+    def test_application_05_reports_zero_value_option_expiration_in_its_closing_direction(self) -> None:
+        dataset = CanonicalDataset.empty("exante", "IEO1069.001")
+        dataset.tables["Trades"] = [
+            {
+                "date_time": "2025-06-01 10:00:00",
+                "trade_type": "trade",
+                "symbol": "TQQQ.CBOE.17J2025.C69",
+                "asset_type": "Equity and Index Options",
+                "quantity": "-1",
+                "amount": "200",
+                "amount_with_commission": "200",
+                "kzt_rate": "500",
+                "currency": "USD",
+                "country": "US",
+            },
+            {
+                "date_time": "2025-06-17 10:00:00",
+                "trade_type": "option_expiration",
+                "symbol": "TQQQ.CBOE.17J2025.C69",
+                "asset_type": "Equity and Index Options",
+                "quantity": "1",
+                "amount": "0",
+                "amount_with_commission": "0",
+                "kzt_rate": "500",
+                "currency": "USD",
+                "country": "US",
+            },
+        ]
+
+        app = _builder().build_account_draft(dataset, tax_year=2025, form270_05=True)["fnoContent"]["application_05"]
+
+        self.assertEqual(app["B"][0]["C"], "TQQQ.CBOE.17J2025.C69")
+        self.assertEqual(app["B"][0]["B"], "4")
+        self.assertEqual(app["B"][0]["H"], 0)
+        self.assertEqual(app["B"][0]["I"], "11")
+        self.assertEqual(app["B"][0]["val_M"], {"value": 0, "manual": True})
+        self.assertEqual(app["C"][0]["I"], 100000)
 
     def test_application_05_b_and_c_are_sorted_by_date_then_isin(self) -> None:
         dataset = CanonicalDataset.empty("ib", "USORT05")
