@@ -1959,6 +1959,55 @@ Cash Report,Data,Ending Cash,USD,0,0,0,
             Decimal("0.25"),
         )
 
+    def test_freedom_fifo_preserves_security_cost_when_settlement_currency_changes(self) -> None:
+        def trade(date_time: str, quantity: str, price: str, currency: str, trade_id: str) -> dict[str, str | bool]:
+            return {
+                "date_time": date_time, "trade_id": trade_id, "symbol": "AIRA.U.AIX.KZ", "isin": "KZ1C00004050",
+                "asset_type": "Stocks", "quantity": quantity, "calculation_quantity": quantity,
+                "price": price, "calculation_price": price, "multiplier": "1", "_calculation_multiplier": "1",
+                "commission": "0", "currency": currency, "_instrument_identity_key": "isin:KZ1C00004050",
+                "_broker_realized_pl": "0", "_matched_remainder_opens_position": True,
+            }
+
+        fifo, positions, _ = ib_module._build_fifo_and_positions(
+            [trade("2024-02-09 10:00:00", "10", "1000", "KZT", "buy-kzt"), trade("2025-06-04 10:00:00", "-10", "3", "USD", "sell-usd")],
+            transfers=[], initial_lots=[], max_year=2025,
+            fx_provider=AnnualFxRateProvider({(2024, "KZT"): Decimal("1"), (2025, "USD"): Decimal("500")} ),
+            warnings=[], symbol_history={}, broker_cost_basis_method="average",
+        )
+
+        self.assertEqual(len(fifo), 1)
+        self.assertEqual(fifo[0]["_opening_lot_status"], "matched")
+        self.assertEqual(Decimal(fifo[0]["acquisition_cost_with_commission_kzt"]), Decimal("10000"))
+        self.assertEqual(Decimal(fifo[0]["pnl_kzt"]), Decimal("5000"))
+        self.assertEqual([(row["year"], row["currency"], row["quantity"]) for row in positions], [(2024, "KZT", "10")])
+
+    def test_freedom_fifo_discards_conversion_rounding_dust_and_keeps_reversal_remainder(self) -> None:
+        def trade(date_time: str, quantity: str, price: str, trade_id: str, broker_pl: str = "0") -> dict[str, str | bool]:
+            return {
+                "date_time": date_time, "trade_id": trade_id, "symbol": "PTEN.US", "isin": "US7034811015",
+                "asset_type": "Stocks", "quantity": quantity, "calculation_quantity": quantity,
+                "price": price, "calculation_price": price, "multiplier": "1", "_calculation_multiplier": "1",
+                "commission": "0", "currency": "USD", "_instrument_identity_key": "isin:US7034811015",
+                "_broker_realized_pl": broker_pl, "_matched_remainder_opens_position": True,
+            }
+
+        fifo, positions, _ = ib_module._build_fifo_and_positions(
+            [
+                trade("2022-11-01 10:00:00", "75.20000000000000000000000001", "10", "buy"),
+                trade("2022-11-02 10:00:00", "-75.2", "11", "sell"),
+                trade("2022-11-03 10:00:00", "-2", "12", "short"),
+                trade("2022-11-04 10:00:00", "3", "11", "cover-and-buy", "2"),
+                trade("2022-11-05 10:00:00", "-1", "12", "sell-remainder", "1"),
+            ],
+            transfers=[], initial_lots=[], max_year=2022,
+            fx_provider=AnnualFxRateProvider({(2022, "USD"): Decimal("460")} ),
+            warnings=[], symbol_history={}, broker_cost_basis_method="average",
+        )
+
+        self.assertEqual([row["_opening_lot_status"] for row in fifo], ["matched", "matched", "matched"])
+        self.assertEqual(positions, [])
+
 
 if __name__ == "__main__":
     unittest.main()

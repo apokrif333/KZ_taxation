@@ -28,6 +28,28 @@ class FreedomParserTests(unittest.TestCase):
         )
         self.assertEqual(fe._conversion_ratio(description), Decimal("3.5"))
 
+    def test_conversion_opens_rounded_successor_short_at_implied_price(self) -> None:
+        description = "Conversion of securities NEX.US (US65290C1053) -> PTEN.US (US7034811015). ratio: 1/0.752."
+        trade = fe._synthetic_conversion_opening_trade(
+            {
+                "date_time": "2023-09-08 00:00:00",
+                "symbol": "PTEN.US",
+                "isin": "US7034811015",
+                "quantity": "-226",
+                "_amount_per_one": "10.61",
+                "description": description,
+                "currency": "USD",
+                "source_report": "freedom.xlsx",
+            },
+            {},
+        )
+
+        self.assertIsNotNone(trade)
+        assert trade is not None
+        self.assertEqual(Decimal(trade["quantity"]), Decimal("-226"))
+        self.assertEqual(Decimal(trade["price"]), Decimal("10.61") / Decimal("0.752"))
+        self.assertEqual(Decimal(trade["amount"]), Decimal("226") * Decimal("10.61") / Decimal("0.752"))
+
     def test_financing_operations_are_interest_not_trades_or_fifo(self) -> None:
         import pandas as pd  # type: ignore
 

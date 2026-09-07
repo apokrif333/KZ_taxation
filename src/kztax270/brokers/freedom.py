@@ -215,7 +215,7 @@ def build_canonical_dataset(
     enrich_trades_before_calculations(dataset, internal_trades, fx_provider)
     dataset.tables["Trades"] = _canonical_trade_rows([trade for trade in internal_trades if trade.get("_event_type") != "split"])
 
-    transfers, transfer_totals_by_currency = _build_transfers(reports, instrument_lookup, internal_trades)
+    transfers, transfer_totals_by_currency = _build_transfers(reports, instrument_lookup, internal_trades, corporate_actions)
     fifo_transfers = [row for row in transfers if not row.get("_exclude_from_fifo")]
     fifo_input_trades = [trade for trade in internal_trades if not _is_fx_trade(trade)]
     fifo_rows, fifo_positions, transfer_rows = _build_fifo_and_positions(
@@ -608,6 +608,11 @@ def _new_trade_row(
         "_instrument_identity_key": identity_key,
         "_broker_realized_pl": str(_decimal(_cell(row, COL_REALIZED_PL))),
         "_broker_realized_pl_includes_commissions": False,
+        # Freedom's report does not mark each execution as opening or closing.
+        # A single execution can nevertheless close the opposite side and open
+        # a remainder (a normal position reversal).  The common FIFO engine
+        # uses this marker to keep that remainder as a new lot.
+        "_matched_remainder_opens_position": True,
     }
 
 
@@ -1008,8 +1013,13 @@ def _build_corporate_action_trades(
             trade = _synthetic_exit_trade(action, instrument_lookup, action_type)
         elif action_type in {"spinoff", "rights"}:
             trade = _synthetic_zero_cost_trade(action, instrument_lookup, action_type)
+        elif action_type == "conversion":
+            trade = _synthetic_conversion_opening_trade(action, instrument_lookup)
         elif action_type in {"conversion_compensation", "spinoff_compensation", "split_compensation"}:
-            trade = _synthetic_compensation_trade(action, instrument_lookup, action_type)
+            # Cash paid for fractional conversion shares is cash compensation;
+            # it must not create an additional security lot beside the rounded
+            # successor position.
+            trade = None if _is_conversion_cash_compensation(action, actions) else _synthetic_compensation_trade(action, instrument_lookup, action_type)
         elif action_type == "split":
             trade = _synthetic_split_event(action)
         else:
@@ -1119,6 +1129,52 @@ def _synthetic_zero_cost_trade(action: Mapping[str, Any], instrument_lookup: Map
     instrument = _lookup_instrument(instrument_lookup, symbol=_none_text(action.get("symbol")), isin=isin, year=action_dt.year) or {}
     symbol = _none_text(instrument.get("symbol")) or _none_text(action.get("symbol")) or isin
     return _synthetic_trade_dict(action, action_dt, symbol, isin, quantity, Decimal("0"), Decimal("0"), instrument, action_type)
+
+
+def _synthetic_conversion_opening_trade(
+    action: Mapping[str, Any],
+    instrument_lookup: Mapping[tuple[str, int | None], dict[str, Any]],
+) -> dict[str, Any] | None:
+    """Open the rounded successor lot at the conversion-implied price."""
+    quantity = _decimal(action.get("quantity"))
+    action_dt = _parse_datetime(action.get("date_time") or action.get("date"))
+    isin = _normalize_isin(action.get("isin"))
+    if quantity >= 0 or action_dt is None or not isin:
+        return None
+    description = str(action.get("description") or "")
+    _, _, _, new_isin = _conversion_identities(description)
+    if new_isin != isin:
+        return None
+    old_price = _decimal(action.get("_amount_per_one"))
+    ratio = _conversion_ratio(description)
+    if old_price <= 0 or ratio <= 0:
+        return None
+    price = old_price * ratio
+    amount = abs(quantity * price)
+    instrument = _lookup_instrument(instrument_lookup, symbol=_none_text(action.get("symbol")), isin=isin, year=action_dt.year) or {}
+    symbol = _none_text(instrument.get("symbol")) or _none_text(action.get("symbol")) or isin
+    return _synthetic_trade_dict(action, action_dt, symbol, isin, quantity, price, amount, instrument, "conversion")
+
+
+def _is_conversion_cash_compensation(
+    action: Mapping[str, Any],
+    actions: Sequence[Mapping[str, Any]],
+) -> bool:
+    if _conversion_identities(str(action.get("description") or ""))[1]:
+        return True
+    action_dt = _parse_datetime(action.get("date_time") or action.get("date"))
+    action_symbol = _none_text(action.get("symbol"))
+    action_isin = _none_text(action.get("isin"))
+    for candidate in actions:
+        if candidate.get("action_type") != "conversion":
+            continue
+        candidate_dt = _parse_datetime(candidate.get("date_time") or candidate.get("date"))
+        if action_dt is None or candidate_dt is None or candidate_dt.date() != action_dt.date():
+            continue
+        old_symbol, old_isin, _, _ = _conversion_identities(str(candidate.get("description") or ""))
+        if (old_symbol and old_symbol == action_symbol) or (old_isin and old_isin == action_isin):
+            return True
+    return False
 
 
 def _synthetic_compensation_trade(action: Mapping[str, Any], instrument_lookup: Mapping[tuple[str, int | None], dict[str, Any]], action_type: str) -> dict[str, Any] | None:
@@ -1244,6 +1300,12 @@ def _apply_identity_changes_to_trades(
         ratio = _conversion_ratio(description)
         if action_dt is None or not old_isin or not new_isin:
             continue
+        # Do not rewrite the old security's whole history if the new security
+        # was traded before the conversion date.  Both instruments then existed
+        # concurrently; collapsing them into one pre-conversion FIFO book makes
+        # ordinary PTEN trades consume NEX lots and creates false missing lots.
+        if _conversion_target_traded_before(result, old_isin, new_symbol, new_isin, action_dt):
+            continue
         instrument = _lookup_instrument(instrument_lookup, symbol=new_symbol, isin=new_isin, year=action_dt.year) or {}
         canonical_symbol = new_symbol or _none_text(instrument.get("symbol")) or new_isin
         for trade in result:
@@ -1265,6 +1327,25 @@ def _apply_identity_changes_to_trades(
             trade["corporate_action_adjustment"] = description
     _apply_split_isin_changes_to_trades(result, actions)
     return result
+
+
+def _conversion_target_traded_before(
+    trades: Sequence[Mapping[str, Any]],
+    old_isin: str | None,
+    new_symbol: str | None,
+    new_isin: str | None,
+    conversion_dt: datetime,
+) -> bool:
+    """Whether the successor security already had independent trading history."""
+    for trade in trades:
+        trade_dt = _parse_datetime(trade.get("date_time"))
+        if trade_dt is None or trade_dt >= conversion_dt:
+            continue
+        if new_symbol and trade.get("symbol") == new_symbol:
+            return True
+        if new_isin and new_isin != old_isin and trade.get("isin") == new_isin:
+            return True
+    return False
 
 
 def _apply_split_isin_changes_to_trades(
@@ -1398,6 +1479,7 @@ def _build_transfers(
     reports: Sequence[ParsedFreedomReport],
     instrument_lookup: Mapping[tuple[str, int | None], dict[str, Any]],
     internal_trades: Sequence[Mapping[str, Any]],
+    corporate_actions: Sequence[Mapping[str, Any]],
 ) -> tuple[list[dict[str, Any]], dict[str, Decimal]]:
     transfers: list[dict[str, Any]] = _starting_position_transfer_rows(reports, instrument_lookup)
     cash_totals_by_currency: dict[str, Decimal] = defaultdict(Decimal)
@@ -1413,7 +1495,7 @@ def _build_transfers(
             if transfer is not None:
                 transfers.append(transfer)
     transfers = _collapse_retry_security_transfers(transfers)
-    _annotate_transfer_in_identity_changes(transfers, instrument_lookup)
+    _annotate_transfer_in_identity_changes(transfers, instrument_lookup, internal_trades, corporate_actions)
     return transfers, dict(cash_totals_by_currency)
 
 
@@ -1679,17 +1761,75 @@ def _normalized_comment_key(value: str | None) -> str:
 def _annotate_transfer_in_identity_changes(
     transfers: list[dict[str, Any]],
     instrument_lookup: Mapping[tuple[str, int | None], dict[str, Any]],
+    internal_trades: Sequence[Mapping[str, Any]],
+    corporate_actions: Sequence[Mapping[str, Any]],
 ) -> None:
-    conversions: list[tuple[datetime, str | None, str | None, str | None, str | None, Decimal]] = []
-    for transfer in transfers:
-        description = _none_text(transfer.get("broker_comment")) or ""
+    conversions: list[tuple[datetime, str | None, str | None, str | None, str | None, Decimal, bool]] = []
+    for action in corporate_actions:
+        if action.get("action_type") != "conversion":
+            continue
+        description = _none_text(action.get("description")) or ""
         old_symbol, old_isin, new_symbol, new_isin = _conversion_identities(description)
         if not old_isin or not new_isin:
             continue
-        event_dt = _parse_datetime(transfer.get("date"))
+        event_dt = _parse_datetime(action.get("date_time") or action.get("date"))
         if event_dt is None:
             continue
-        conversions.append((event_dt, old_symbol, old_isin, new_symbol, new_isin, _conversion_ratio(description)))
+        conversions.append(
+            (
+                event_dt,
+                old_symbol,
+                old_isin,
+                new_symbol,
+                new_isin,
+                _conversion_ratio(description),
+                not _conversion_target_traded_before(internal_trades, old_isin, new_symbol, new_isin, event_dt),
+            )
+        )
+
+    # Some Freedom reports describe the conversion only in Sec In Out and do
+    # not provide a matching CorporateActions row.  Keep those legacy rows
+    # available for the normal transfer-in conversion path.
+    for transfer in transfers:
+        description = _none_text(transfer.get("broker_comment")) or ""
+        old_symbol, old_isin, new_symbol, new_isin = _conversion_identities(description)
+        event_dt = _parse_datetime(transfer.get("date"))
+        if not old_isin or not new_isin or event_dt is None:
+            continue
+        candidate = (event_dt, old_symbol, old_isin, new_symbol, new_isin)
+        if any(item[:5] == candidate for item in conversions):
+            continue
+        conversions.append(
+            (
+                event_dt,
+                old_symbol,
+                old_isin,
+                new_symbol,
+                new_isin,
+                _conversion_ratio(description),
+                not _conversion_target_traded_before(internal_trades, old_isin, new_symbol, new_isin, event_dt),
+            )
+        )
+
+    for transfer in transfers:
+        transfer_dt = _parse_datetime(transfer.get("date"))
+        raw_quantity = _decimal(transfer.get("_raw_quantity") or transfer.get("quantity"))
+        conversion = next(
+            (
+                item
+                for item in conversions
+                if transfer_dt is not None
+                and item[0].date() == transfer_dt.date()
+                and item[4] == _none_text(transfer.get("isin"))
+            ),
+            None,
+        )
+        if conversion is not None and raw_quantity < 0:
+            # The matching synthetic conversion trade carries this rounded
+            # successor lot and its known price into FIFO. Keep the raw leg in
+            # Transfers for audit, but do not open it a second time.
+            transfer["direction"] = "out"
+            transfer["_exclude_from_fifo"] = True
 
     for transfer in transfers:
         if transfer.get("transfer_type") != "security" or str(transfer.get("direction") or "").lower() != "in":
@@ -1702,12 +1842,13 @@ def _annotate_transfer_in_identity_changes(
         candidates = [
             conversion
             for conversion in conversions
-            if conversion[0] > transfer_dt
+            if conversion[6]
+            and conversion[0] > transfer_dt
             and ((conversion[2] and conversion[2] == transfer_isin) or (conversion[1] and conversion[1] == transfer_symbol))
         ]
         if not candidates:
             continue
-        conversion_dt, _, _, new_symbol, new_isin, ratio = min(candidates, key=lambda item: item[0])
+        conversion_dt, _, _, new_symbol, new_isin, ratio, _ = min(candidates, key=lambda item: item[0])
         if not new_isin or ratio == 0:
             continue
         instrument = _lookup_instrument(instrument_lookup, symbol=new_symbol, isin=new_isin, year=conversion_dt.year) or {}

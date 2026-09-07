@@ -56,6 +56,7 @@ FLAG_OFFSHORE = "offshore"
 EXCHANGE_OUTOFKZ = "outofKZ"
 EXCHANGE_AIX = "AIX"
 EXCHANGE_KASE = "KASE"
+FIFO_QUANTITY_EPSILON = Decimal("1E-18")
 US_LISTING_EXCHANGES = {
     "AMEX",
     "ARCA",
@@ -2302,7 +2303,7 @@ def _build_fifo_and_positions(
     inventory: dict[tuple[str, str | None, str], dict[str, deque[FifoOpenLot]]] = defaultdict(lambda: {"long": deque(), "short": deque()})
     grouped_events: dict[tuple[str, str | None, str], list[tuple[datetime, int, str, Mapping[str, Any]]]] = defaultdict(list)
     for key, side, lot in initial_lots:
-        inventory[key][side].append(lot)
+        inventory[_fifo_inventory_key(key[0], key[1], lot.currency, lot.asset_type, lot.symbol, broker_cost_basis_method)][side].append(lot)
     for trade in trades:
         isin = _string_or_none(trade.get("isin"))
         instrument_key = _string_or_none(trade.get("_instrument_identity_key")) or _instrument_identity_key_from_values(
@@ -2313,7 +2314,16 @@ def _build_fifo_and_positions(
         trade_dt = _parse_datetime(trade.get("date_time"))
         if trade_dt is None or not instrument_key:
             continue
-        grouped_events[(instrument_key, isin, str(trade.get("currency") or ""))].append((trade_dt, 0, "trade", trade))
+        grouped_events[
+            _fifo_inventory_key(
+                instrument_key,
+                isin,
+                str(trade.get("currency") or ""),
+                _string_or_none(trade.get("asset_type")),
+                _string_or_none(trade.get("symbol")),
+                broker_cost_basis_method,
+            )
+        ].append((trade_dt, 0, "trade", trade))
 
     for transfer in transfers:
         is_outgoing_transfer = _is_outgoing_security_transfer(transfer)
@@ -2335,13 +2345,21 @@ def _build_fifo_and_positions(
                 conid=_string_or_none(transfer.get("_conid")),
                 symbol=_string_or_none(transfer.get("symbol")),
             )
-        currency = str(transfer.get("currency") or "")
         if transfer_dt is None or not instrument_key:
             transfer_rows.append(dict(transfer))
             continue
         event_type = "transfer_out" if is_outgoing_transfer else "transfer_in"
         event_order = 1 if event_type == "transfer_out" else -1
-        grouped_events[(instrument_key, isin, currency)].append((transfer_dt, event_order, event_type, transfer))
+        grouped_events[
+            _fifo_inventory_key(
+                instrument_key,
+                isin,
+                str(transfer.get("currency") or ""),
+                _string_or_none(transfer.get("asset_type")),
+                _string_or_none(transfer.get("symbol")),
+                broker_cost_basis_method,
+            )
+        ].append((transfer_dt, event_order, event_type, transfer))
 
     for key, key_events in grouped_events.items():
         books = inventory[key]
@@ -2416,6 +2434,7 @@ def _build_fifo_and_positions(
                 while remaining > 0 and books["short"]:
                     opening = books["short"][0]
                     matched = min(remaining, opening.quantity)
+                    _align_opening_lot_currency(opening, trade, trade_dt, fx_provider, warnings)
                     opening_broker_matched = _matched_broker_quantity(opening, matched)
                     exit_broker_matched = matched * broker_quantity_per_calculation_unit
                     if _is_costed_opening_lot(opening):
@@ -2465,9 +2484,9 @@ def _build_fifo_and_positions(
                             ),
                         )
                     )
-                    opening.quantity -= matched
-                    opening.broker_quantity -= opening_broker_matched
-                    remaining -= matched
+                    opening.quantity = _normalize_fifo_quantity(opening.quantity - matched)
+                    opening.broker_quantity = _normalize_fifo_quantity(opening.broker_quantity - opening_broker_matched)
+                    remaining = _normalize_fifo_quantity(remaining - matched)
                     matched_any = True
                     if opening.quantity == 0:
                         books["short"].popleft()
@@ -2520,6 +2539,7 @@ def _build_fifo_and_positions(
                 while remaining > 0 and books["long"]:
                     opening = books["long"][0]
                     matched = min(remaining, opening.quantity)
+                    _align_opening_lot_currency(opening, trade, trade_dt, fx_provider, warnings)
                     opening_broker_matched = _matched_broker_quantity(opening, matched)
                     exit_broker_matched = matched * broker_quantity_per_calculation_unit
                     if _is_costed_opening_lot(opening):
@@ -2569,9 +2589,9 @@ def _build_fifo_and_positions(
                             ),
                         )
                     )
-                    opening.quantity -= matched
-                    opening.broker_quantity -= opening_broker_matched
-                    remaining -= matched
+                    opening.quantity = _normalize_fifo_quantity(opening.quantity - matched)
+                    opening.broker_quantity = _normalize_fifo_quantity(opening.broker_quantity - opening_broker_matched)
+                    remaining = _normalize_fifo_quantity(remaining - matched)
                     matched_any = True
                     if opening.quantity == 0:
                         books["long"].popleft()
@@ -2734,7 +2754,7 @@ def _open_incoming_transfer_lot(
     )
     base_trade_id = _string_or_none(transfer.get("_transfer_id"))
     trade_id_suffix = f":fifo_source:{source_lot.source_row}" if source_lot and source_lot.source_row is not None else ""
-    enter_dt = source_lot.enter_date if source_lot is not None else None
+    enter_dt = source_lot.enter_date if source_lot is not None else _parse_datetime(transfer.get("_fifo_enter_date"))
     lot = FifoOpenLot(
         asset_type=str(transfer.get("asset_type") or ""),
         symbol=str(transfer.get("_converted_symbol") or transfer.get("symbol") or ""),
@@ -3062,6 +3082,8 @@ def _closes_position(trade: Mapping[str, Any]) -> bool:
 def _should_close_unknown_prior_lot(trade: Mapping[str, Any], matched_any: bool) -> bool:
     if _broker_realized_pl(trade) == 0:
         return False
+    if matched_any and trade.get("_matched_remainder_opens_position") is True:
+        return False
     # Exante executions from a report with a year-end position snapshot are
     # explicitly marked ``O``.  When such an execution exhausts the opposite
     # book, its remainder is the newly opened side of a reversal.  Keep the
@@ -3072,6 +3094,65 @@ def _should_close_unknown_prior_lot(trade: Mapping[str, Any], matched_any: bool)
     if _opens_position(trade):
         return False
     return _closes_position(trade)
+
+
+def _fifo_inventory_key(
+    instrument_key: str,
+    isin: str | None,
+    currency: str,
+    asset_type: str | None,
+    symbol: str | None,
+    broker_cost_basis_method: str,
+) -> tuple[str, str | None, str]:
+    """Return the FIFO book key, joining Freedom securities across currencies.
+
+    Freedom can change the settlement currency of the same security while the
+    position remains open (for example AIRA from KZT to USD).  Its average-cost
+    report still treats this as one position.  Other parsers retain their
+    currency-specific books, and derivatives are never joined across
+    currencies.
+    """
+    if broker_cost_basis_method == "average" and not _is_derivative_record({"asset_type": asset_type, "symbol": symbol}):
+        return instrument_key, isin, ""
+    return instrument_key, isin, currency
+
+
+def _normalize_fifo_quantity(value: Decimal) -> Decimal:
+    """Discard arithmetic dust created by repeating corporate-action ratios."""
+    return Decimal("0") if abs(value) <= FIFO_QUANTITY_EPSILON else value
+
+
+def _align_opening_lot_currency(
+    opening: FifoOpenLot,
+    exit_trade: Mapping[str, Any],
+    exit_dt: datetime,
+    fx_provider: AnnualFxRateProvider,
+    warnings: list[str],
+) -> None:
+    """Express a Freedom security lot in the closing trade's currency.
+
+    Annual FX rates make the converted entry cost exactly preserve its KZT
+    basis: ``entry amount * entry-year rate`` remains unchanged.  This is only
+    used after `_fifo_inventory_key` joined a Freedom security position across
+    a settlement-currency change.
+    """
+    exit_currency = _string_or_none(exit_trade.get("currency"))
+    if not exit_currency or opening.currency == exit_currency:
+        return
+    if _is_derivative_record({"asset_type": opening.asset_type, "symbol": opening.symbol}):
+        return
+    entry_year = opening.date_time.year if opening.date_time is not None else exit_dt.year
+    entry_rate = _annual_rate(fx_provider, entry_year, opening.currency, warnings)
+    exit_rate = _annual_rate(fx_provider, exit_dt.year, exit_currency, warnings)
+    if entry_rate is None or exit_rate is None or exit_rate == 0:
+        return
+    conversion_rate = entry_rate / exit_rate
+    opening.price *= conversion_rate
+    opening.calculation_price *= conversion_rate
+    opening.commission_per_unit *= conversion_rate
+    opening.raw_amount *= conversion_rate
+    opening.raw_commission *= conversion_rate
+    opening.currency = exit_currency
 
 
 def _append_position_snapshots(
