@@ -623,6 +623,26 @@ class InteractiveBrokersParserTests(unittest.TestCase):
             {"RUB"},
         )
 
+    def test_cash_base_currency_summary_uses_account_currency(self) -> None:
+        report_with_base_currency_summary = MINIMAL_IB_CSV.replace(
+            "Cash Report,Data,Ending Cash,USD,108,108,0",
+            "Cash Report,Data,Ending Cash,Base Currency Summary,108,108,0",
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            raw_root = Path(tmp) / "raw"
+            ib_root = raw_root / "ib"
+            ib_root.mkdir(parents=True)
+            (ib_root / "UBASE_2024_2024.csv").write_text(report_with_base_currency_summary, encoding="utf-8")
+
+            parser = InteractiveBrokersParser(AnnualFxRateProvider({(2024, "USD"): Decimal("470")}))
+            result = parser.parse_reports(parser.discover_reports(raw_root, "UBASE"), "UBASE")
+
+        cash_balance = result.dataset.tables["CashBalances"]
+        self.assertEqual(len(cash_balance), 1)
+        self.assertEqual(cash_balance[0]["currency"], "USD")
+        self.assertEqual(cash_balance[0]["ending_cash"], "108")
+        self.assertEqual(cash_balance[0]["ending_cash_kzt"], "50760")
+
     def test_dividend_cusip_description_resolves_to_isin_from_instruments(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             raw_root = Path(tmp) / "raw"

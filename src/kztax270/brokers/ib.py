@@ -58,6 +58,7 @@ EXCHANGE_AIX = "AIX"
 EXCHANGE_KASE = "KASE"
 FIFO_QUANTITY_EPSILON = Decimal("1E-18")
 IB_CURRENCY_ALIASES = {"RUS": "RUB"}
+IB_BASE_CURRENCY_SUMMARY = "Base Currency Summary"
 US_LISTING_EXCHANGES = {
     "AMEX",
     "ARCA",
@@ -191,6 +192,7 @@ def parse_ib_csv_report(path: Path) -> ParsedIbReport:
                     parsed.base_currency = _normalise_ib_currency(record.get("Field Value"))
             elif section == IB_SECTION_NAV and record.get("Field Name"):
                 parsed.fields[str(record.get("Field Name"))] = str(record.get("Field Value") or "")
+    _resolve_ib_base_currency_summary(parsed)
     return parsed
 
 
@@ -412,6 +414,16 @@ def _normalise_ib_currency(value: Any) -> str | None:
     if currency is None:
         return None
     return IB_CURRENCY_ALIASES.get(currency.strip().upper(), currency)
+
+
+def _resolve_ib_base_currency_summary(report: ParsedIbReport) -> None:
+    """Replace IB's Cash Report marker with the account's actual base currency."""
+
+    if not report.base_currency:
+        return
+    for row in (*report.rows.get(IB_SECTION_CASH, []), *report.totals.get(IB_SECTION_CASH, [])):
+        if row.get("Currency") == IB_BASE_CURRENCY_SUMMARY:
+            row["Currency"] = report.base_currency
 
 
 def _date_to_iso(value: date | datetime | None) -> str | None:
