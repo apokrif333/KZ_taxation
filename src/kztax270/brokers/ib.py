@@ -57,6 +57,7 @@ EXCHANGE_OUTOFKZ = "outofKZ"
 EXCHANGE_AIX = "AIX"
 EXCHANGE_KASE = "KASE"
 FIFO_QUANTITY_EPSILON = Decimal("1E-18")
+IB_CURRENCY_ALIASES = {"RUS": "RUB"}
 US_LISTING_EXCHANGES = {
     "AMEX",
     "ARCA",
@@ -173,6 +174,8 @@ def parse_ib_csv_report(path: Path) -> ParsedIbReport:
 
             header = current_headers.get(section)
             record = _row_to_record(header, row)
+            if "Currency" in record:
+                record["Currency"] = _normalise_ib_currency(record["Currency"])
             record["source_report"] = str(path)
             if row_type == "Data":
                 parsed.rows[section].append(record)
@@ -185,7 +188,7 @@ def parse_ib_csv_report(path: Path) -> ParsedIbReport:
                 if record.get("Field Name") == "Account":
                     parsed.account_id = str(record.get("Field Value") or "")
                 elif record.get("Field Name") == "Base Currency":
-                    parsed.base_currency = str(record.get("Field Value") or "")
+                    parsed.base_currency = _normalise_ib_currency(record.get("Field Value"))
             elif section == IB_SECTION_NAV and record.get("Field Name"):
                 parsed.fields[str(record.get("Field Name"))] = str(record.get("Field Value") or "")
     return parsed
@@ -198,7 +201,9 @@ def build_canonical_dataset(
     *,
     transfer_in_resolver: TransferInFifoResolver | None = None,
 ) -> CanonicalDataset:
-    base_currency = next((report.base_currency for report in reports if report.base_currency), "USD") or "USD"
+    base_currency = _normalise_ib_currency(
+        next((report.base_currency for report in reports if report.base_currency), "USD")
+    ) or "USD"
     dataset = CanonicalDataset(metadata=AccountMetadata(broker="ib", account_id=account_id, base_currency=base_currency))
 
     instruments = _build_instruments(reports, account_id)
@@ -398,6 +403,15 @@ def _string_or_none(value: Any) -> str | None:
     if value in (None, ""):
         return None
     return str(value)
+
+
+def _normalise_ib_currency(value: Any) -> str | None:
+    """Map IB's restricted-ruble marker to the actual ISO currency code."""
+
+    currency = _string_or_none(value)
+    if currency is None:
+        return None
+    return IB_CURRENCY_ALIASES.get(currency.strip().upper(), currency)
 
 
 def _date_to_iso(value: date | datetime | None) -> str | None:

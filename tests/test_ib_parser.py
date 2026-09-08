@@ -598,6 +598,31 @@ class InteractiveBrokersParserTests(unittest.TestCase):
         self.assertEqual(by_instrument_pnl[0].broker_value, Decimal("98"))
         self.assertEqual(by_instrument_pnl[0].canonical_value, Decimal("98.0"))
 
+    def test_restricted_ib_rubles_are_normalized_before_all_calculations(self) -> None:
+        restricted_ruble_report = (
+            MINIMAL_IB_CSV.replace("Base Currency,USD", "Base Currency,RUS")
+            .replace(",USD,", ",RUS,")
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            raw_root = Path(tmp) / "raw"
+            ib_root = raw_root / "ib"
+            ib_root.mkdir(parents=True)
+            (ib_root / "URUS_2024_2024.csv").write_text(restricted_ruble_report, encoding="utf-8")
+
+            parser = InteractiveBrokersParser(AnnualFxRateProvider({(2024, "RUB"): Decimal("5")}))
+            result = parser.parse_reports(parser.discover_reports(raw_root, "URUS"), "URUS")
+
+        dataset = result.dataset
+        self.assertEqual(dataset.metadata.base_currency, "RUB")
+        self.assertEqual({row["currency"] for row in dataset.tables["Trades"]}, {"RUB"})
+        self.assertEqual(dataset.tables["Dividends"][0]["currency"], "RUB")
+        self.assertEqual(dataset.tables["Dividends"][0]["gross_amount_kzt"], "50")
+        self.assertEqual(dataset.tables["Interest"][0]["currency"], "RUB")
+        self.assertEqual(
+            {row["currency"] for row in dataset.tables["Years_Results"]},
+            {"RUB"},
+        )
+
     def test_dividend_cusip_description_resolves_to_isin_from_instruments(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             raw_root = Path(tmp) / "raw"
