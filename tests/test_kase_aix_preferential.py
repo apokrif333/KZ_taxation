@@ -10,12 +10,69 @@ import pandas as pd
 
 from kztax270.reference.kase_aix import (
     KaseAixDividendProvider,
+    _recover_source_workbook,
     create_kase_aix_checks,
     ensure_kase_aix_preferential_current,
+)
+from kztax270.reference.workbook_cache import (
+    is_valid_excel_workbook,
+    read_excel_checked,
+    restore_last_good_workbook,
+    write_excel_atomic,
 )
 
 
 class KaseAixPreferentialTests(unittest.TestCase):
+    def test_atomic_workbook_write_keeps_a_recoverable_copy(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "kase_pref.xlsx"
+            write_excel_atomic(pd.DataFrame({"month": ["5_2026"]}), path)
+            write_excel_atomic(pd.DataFrame({"month": ["6_2026"]}), path)
+            path.write_bytes(b"interrupted workbook write")
+
+            self.assertFalse(is_valid_excel_workbook(path))
+            self.assertTrue(restore_last_good_workbook(path))
+            self.assertTrue(is_valid_excel_workbook(path))
+            self.assertEqual(read_excel_checked(path)["month"].tolist(), ["5_2026"])
+
+    def test_invalid_source_is_restored_before_freshness_check(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            kase_path = root / "kase_pref.xlsx"
+            write_excel_atomic(pd.DataFrame({"month": ["6_2026"]}), kase_path)
+            kase_path.write_bytes(b"not a zip archive")
+            write_excel_atomic(pd.DataFrame({"period": ["2026-06"]}), root / "aix_pref.xlsx")
+            write_excel_atomic(pd.DataFrame({"ready": [1]}), root / "kase_aix_pref.xlsx")
+            write_excel_atomic(pd.DataFrame({"ready": [1]}), root / "kase_aix_pref_yearly.xlsx")
+
+            with (
+                patch("kztax270.reference.kase_aix.ensure_aix_instruments_current", return_value=False),
+                patch("kztax270.reference.kase_aix.update_isin"),
+                patch(
+                    "kztax270.reference.kase_aix.update_aix_isin",
+                    side_effect=lambda frame, **_: (frame, 0),
+                ),
+                patch("kztax270.reference.kase_aix.create_kase_aix_checks") as create_checks,
+            ):
+                updated = ensure_kase_aix_preferential_current(root, today=date(2026, 7, 15))
+
+            self.assertTrue(updated)
+            self.assertTrue(is_valid_excel_workbook(kase_path))
+            create_checks.assert_called_once()
+
+    def test_invalid_source_without_backup_is_rebuilt(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "aix_pref.xlsx"
+            path.write_bytes(b"not a zip archive")
+
+            rebuilt = _recover_source_workbook(
+                path,
+                lambda: write_excel_atomic(pd.DataFrame({"period": ["2026-06"]}), path),
+            )
+
+            self.assertTrue(rebuilt)
+            self.assertEqual(read_excel_checked(path)["period"].tolist(), ["2026-06"])
+
     def test_fresh_sources_do_not_trigger_download_or_rebuild(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

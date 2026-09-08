@@ -8,6 +8,14 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
+from kztax270.reference.workbook_cache import (
+    is_valid_excel_workbook,
+    read_excel_checked,
+    reference_update_lock,
+    restore_last_good_workbook,
+    write_excel_atomic,
+)
+
 AIX_API_URL = "https://market-backend.aixkz.com/api/table/mw-main-records?&is_etf_etn=true"
 AIX_PROFILE_API_URL = "https://market-backend.aixkz.com/api/profile/{ticker}"
 AIX_PROFILE_PAGE_URL = "https://market.aixkz.com/details/{ticker}/profile"
@@ -44,23 +52,25 @@ def ensure_aix_instruments_current(path: Path = DEFAULT_AIX_INSTRUMENTS_PATH, to
 
     check_date = today or date.today()
     required_year = check_date.year - 1
-    current = read_aix_instruments_dataframe(path) if path.exists() else _empty_aix_dataframe()
-    existing_years = set(_existing_years(current))
-    is_full_snapshot = current["snapshot_type"].eq("full").all()
-    if existing_years == {required_year} and is_full_snapshot:
-        return False
+    with reference_update_lock(path.parent):
+        if not is_valid_excel_workbook(path):
+            restore_last_good_workbook(path)
+        current = read_aix_instruments_dataframe(path) if is_valid_excel_workbook(path) else _empty_aix_dataframe()
+        existing_years = set(_existing_years(current))
+        is_full_snapshot = current["snapshot_type"].eq("full").all()
+        if existing_years == {required_year} and is_full_snapshot:
+            return False
 
-    updated = fetch_aix_instruments(required_year)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    updated.to_excel(path, index=False)
-    if not _contains_year(updated, required_year):
-        raise RuntimeError(f"AIX instrument snapshot for {required_year} is missing after update attempt.")
-    return True
+        updated = fetch_aix_instruments(required_year)
+        write_excel_atomic(updated, path)
+        if not _contains_year(updated, required_year):
+            raise RuntimeError(f"AIX instrument snapshot for {required_year} is missing after update attempt.")
+        return True
 
 
 def read_aix_instruments_dataframe(path: Path) -> Any:
     pd = _pandas()
-    df = pd.read_excel(path, engine="openpyxl")
+    df = read_excel_checked(path, engine="openpyxl")
     required_columns = {"year", "isin", "listingDate"}
     missing_columns = required_columns - set(df.columns)
     if missing_columns:
@@ -77,7 +87,7 @@ def read_tabys_instruments_dataframe(path: Path) -> Any:
     """
 
     pd = _pandas()
-    return _normalize_tabys_instruments_dataframe(pd.read_excel(path, engine="openpyxl"))
+    return _normalize_tabys_instruments_dataframe(read_excel_checked(path, engine="openpyxl"))
 
 
 def fetch_aix_instruments(snapshot_year: int) -> Any:
@@ -164,8 +174,7 @@ class AixInstrumentResolver:
         row["year"] = snapshot_year or date.today().year
         row["snapshot_type"] = "profile"
         updated = _normalize_tabys_instruments_dataframe(pd.concat([current, pd.DataFrame([row])], ignore_index=True))
-        self.profile_cache_path.parent.mkdir(parents=True, exist_ok=True)
-        updated.to_excel(self.profile_cache_path, index=False)
+        write_excel_atomic(updated, self.profile_cache_path)
 
 
 def fetch_aix_instrument_profile(ticker: str, *, timeout: float = 30) -> dict[str, Any]:

@@ -2,9 +2,7 @@ from __future__ import annotations
 
 import datetime
 import json
-import os
 import re
-import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
@@ -12,6 +10,13 @@ from typing import Any, Iterable
 import pandas as pd
 import requests
 from kztax270.reference.securities import ensure_aix_instruments_current
+from kztax270.reference.workbook_cache import (
+    is_valid_excel_workbook,
+    read_excel_checked,
+    reference_update_lock,
+    restore_last_good_workbook,
+    write_excel_atomic,
+)
 
 try:
     from tqdm import tqdm
@@ -38,6 +43,7 @@ SECTOR_ENDPOINTS = {
     "ценные бумаги инвестиционных фондов": "mifs",
 }
 ALL_ENDPOINTS = ("shares", "depts", "mifs")
+REFERENCE_HISTORY_START = datetime.date(2022, 1, 1)
 
 
 def update_aix_pref_data(
@@ -48,7 +54,7 @@ def update_aix_pref_data(
 ) -> dict[str, int]:
     """Append missing AIX monthly tax-statistics rows and fill their ISINs."""
 
-    total_df = pd.read_excel(path)
+    total_df = read_excel_checked(path)
     if "period" not in total_df.columns:
         raise ValueError(f"{path} is missing required column: period")
 
@@ -99,7 +105,7 @@ def update_aix_isin(
     total_df["isin"] = total_df["isin"].map(_normalise_isin)
 
     if instruments_path.exists():
-        instruments = pd.read_excel(instruments_path)
+        instruments = read_excel_checked(instruments_path)
         if {"secCode", "isin"}.issubset(instruments.columns):
             isin_by_code: dict[str, str] = {}
             for row in instruments[["secCode", "isin"]].to_dict(orient="records"):
@@ -139,7 +145,7 @@ def update_kase_pref_data(
     *,
     today: datetime.date | None = None,
 ) -> int:
-    total_df = pd.read_excel(path)
+    total_df = read_excel_checked(path)
 
     cur_date = today or datetime.date.today()
     months = pd.to_datetime(total_df["month"], format="%m_%Y", errors="coerce")
@@ -161,7 +167,7 @@ def update_kase_pref_data(
 
         date_start += pd.DateOffset(months=1)
 
-    total_df.to_excel(path, index=False)
+    _write_excel_atomic(total_df, path)
     return added
 
 
@@ -175,7 +181,7 @@ def update_isin(path: Path = KASE_PREF_PATH) -> dict[str, int]:
     are retried on subsequent runs.
     """
 
-    total_df = pd.read_excel(path)
+    total_df = read_excel_checked(path)
     required_columns = {"Код", "Сектор"}
     missing_columns = required_columns - set(total_df.columns)
     if missing_columns:
@@ -260,10 +266,7 @@ def update_isin(path: Path = KASE_PREF_PATH) -> dict[str, int]:
     columns[isin_index:isin_index] = ["isin2", "isin3"]
     total_df = total_df[columns]
 
-    try:
-        total_df.to_excel(path, index=False)
-    except PermissionError as exc:
-        raise PermissionError(f"Cannot write {path}; close the workbook in Excel and retry.") from exc
+    _write_excel_atomic(total_df, path)
     unresolved = sum(
         1
         for ticker in total_df["Код"].dropna().unique()
@@ -413,18 +416,10 @@ def create_kase_aix_checks(
         "vol_check", "trades_check", "ipo_ff_check", "month_check", "year_check",
     ]
     combined = combined[monthly_columns].sort_values(["year", "month", "ISIN"], kind="stable")
-    try:
-        combined.to_excel(output_path, index=False)
-    except PermissionError as exc:
-        raise PermissionError(f"Cannot write {output_path}; close the workbook in Excel and retry.") from exc
+    _write_excel_atomic(combined, output_path)
 
     yearly = _yearly_kase_aix_export(combined)
-    try:
-        yearly.to_excel(yearly_output_path, index=False)
-    except PermissionError as exc:
-        raise PermissionError(
-            f"Cannot write {yearly_output_path}; close the workbook in Excel and retry."
-        ) from exc
+    _write_excel_atomic(yearly, yearly_output_path)
     return combined
 
 
@@ -435,12 +430,13 @@ def build_kase_aix_preferential(
 ) -> pd.DataFrame:
     """Update both exchanges' source data, enrich ISINs, and write combined checks."""
 
-    paths = _paths(data_dir)
-    update_kase_pref_data(paths["kase"], today=today)
-    update_isin(paths["kase"])
-    ensure_aix_instruments_current(paths["instruments"], today=today)
-    update_aix_pref_data(paths["aix"], paths["instruments"], today=today)
-    return create_kase_aix_checks(paths["kase"], paths["aix"], paths["monthly"], paths["yearly"])
+    with reference_update_lock(data_dir):
+        paths = _paths(data_dir)
+        update_kase_pref_data(paths["kase"], today=today)
+        update_isin(paths["kase"])
+        ensure_aix_instruments_current(paths["instruments"], today=today)
+        update_aix_pref_data(paths["aix"], paths["instruments"], today=today)
+        return create_kase_aix_checks(paths["kase"], paths["aix"], paths["monthly"], paths["yearly"])
 
 
 def ensure_kase_aix_preferential_current(
@@ -456,32 +452,37 @@ def ensure_kase_aix_preferential_current(
     """
 
     check_date = today or datetime.date.today()
-    paths = _paths(data_dir)
-    for source in (paths["kase"], paths["aix"]):
-        if not source.exists():
-            raise FileNotFoundError(f"Required exchange statistics workbook is missing: {source}")
+    with reference_update_lock(data_dir):
+        paths = _paths(data_dir)
+        instruments_updated = ensure_aix_instruments_current(paths["instruments"], today=check_date)
+        kase_recovered = _recover_source_workbook(
+            paths["kase"], lambda: _rebuild_kase_pref_data(paths["kase"], today=check_date)
+        )
+        aix_recovered = _recover_source_workbook(
+            paths["aix"],
+            lambda: _rebuild_aix_pref_data(paths["aix"], paths["instruments"], today=check_date),
+        )
 
-    required_month = _previous_month(check_date)
-    kase_stale = _latest_source_month(paths["kase"], "month", "%m_%Y") < required_month
-    aix_stale = _latest_source_month(paths["aix"], "period", "%Y-%m") < required_month
-    instruments_updated = ensure_aix_instruments_current(paths["instruments"], today=check_date)
+        required_month = _previous_month(check_date)
+        kase_stale = _latest_source_month(paths["kase"], "month", "%m_%Y") < required_month
+        aix_stale = _latest_source_month(paths["aix"], "period", "%Y-%m") < required_month
 
-    if kase_stale:
-        update_kase_pref_data(paths["kase"], today=check_date)
-    if aix_stale or instruments_updated:
-        update_aix_pref_data(paths["aix"], paths["instruments"], today=check_date)
+        if kase_stale:
+            update_kase_pref_data(paths["kase"], today=check_date)
+        if aix_stale or instruments_updated:
+            update_aix_pref_data(paths["aix"], paths["instruments"], today=check_date)
 
-    derived_stale = _derived_workbooks_stale(paths)
-    if not (kase_stale or aix_stale or instruments_updated or derived_stale):
-        return False
+        derived_stale = _derived_workbooks_stale(paths)
+        if not (kase_recovered or aix_recovered or kase_stale or aix_stale or instruments_updated or derived_stale):
+            return False
 
-    update_isin(paths["kase"])
-    if not (aix_stale or instruments_updated):
-        aix_data = pd.read_excel(paths["aix"])
-        aix_data, _ = update_aix_isin(aix_data, instruments_path=paths["instruments"])
-        _write_excel_atomic(aix_data, paths["aix"])
-    create_kase_aix_checks(paths["kase"], paths["aix"], paths["monthly"], paths["yearly"])
-    return True
+        update_isin(paths["kase"])
+        if not (aix_stale or instruments_updated):
+            aix_data = read_excel_checked(paths["aix"])
+            aix_data, _ = update_aix_isin(aix_data, instruments_path=paths["instruments"])
+            _write_excel_atomic(aix_data, paths["aix"])
+        create_kase_aix_checks(paths["kase"], paths["aix"], paths["monthly"], paths["yearly"])
+        return True
 
 
 @dataclass(frozen=True, slots=True)
@@ -494,7 +495,7 @@ class KaseAixDividendProvider:
     def from_xlsx(cls, path: Path = KASE_AIX_YEARLY_PATH) -> "KaseAixDividendProvider":
         if not path.exists():
             return cls({})
-        frame = pd.read_excel(path)
+        frame = read_excel_checked(path)
         year_column = "Год" if "Год" in frame.columns else "year"
         required = {year_column, "exchange", "year_check"}
         if not required.issubset(frame.columns):
@@ -537,20 +538,73 @@ def _paths(data_dir: Path) -> dict[str, Path]:
     }
 
 
+def _recover_source_workbook(path: Path, rebuild: Any) -> bool:
+    """Return whether an invalid source was restored or rebuilt successfully."""
+
+    if is_valid_excel_workbook(path):
+        return False
+    if restore_last_good_workbook(path):
+        return True
+    rebuild()
+    if not is_valid_excel_workbook(path):
+        raise RuntimeError(f"Could not rebuild exchange statistics workbook: {path}")
+    return True
+
+
+def _rebuild_kase_pref_data(path: Path, *, today: datetime.date) -> None:
+    """Recreate KASE history when neither the live file nor its backup is usable."""
+
+    frames: list[pd.DataFrame] = []
+    for period in _completed_months(today):
+        base_url = "https://kase.kz/ru/app-gateway/shares-taxes-stats-file"
+        query = (
+            f"?start_month={period.month}&start_year={period.year}"
+            f"&end_month={period.month}&end_year={period.year}"
+        )
+        frame = pd.read_excel(base_url + query, header=1)
+        frame["month"] = f"{period.month}_{period.year}"
+        frames.append(frame)
+    if not frames:
+        raise RuntimeError("KASE returned no completed monthly statistics to rebuild the reference workbook.")
+    _write_excel_atomic(pd.concat(frames, ignore_index=True), path)
+
+
+def _rebuild_aix_pref_data(path: Path, instruments_path: Path, *, today: datetime.date) -> None:
+    """Recreate AIX history when neither the live file nor its backup is usable."""
+
+    url = "https://market-backend.aixkz.com/api/aix/income-tax"
+    headers = {"User-Agent": "Mozilla/5.0"}
+    session = requests.Session()
+    rows: list[dict[str, Any]] = []
+    for period in _completed_months(today):
+        payload = {"asset": "EQTY", "period": f"{period.year}-{period.month:02d}"}
+        response = session.get(
+            url,
+            params={"incomeTaxFilter": json.dumps(payload)},
+            headers=headers,
+            timeout=30,
+        )
+        response.raise_for_status()
+        month_rows = response.json()
+        if isinstance(month_rows, list):
+            rows.extend(row for row in month_rows if isinstance(row, dict))
+    if not rows:
+        raise RuntimeError("AIX returned no completed monthly statistics to rebuild the reference workbook.")
+    frame, _ = update_aix_isin(pd.DataFrame(rows), instruments_path=instruments_path, session=session)
+    _write_excel_atomic(frame, path)
+
+
+def _completed_months(today: datetime.date) -> Iterable[datetime.date]:
+    period = REFERENCE_HISTORY_START.replace(day=1)
+    limit = today.replace(day=1)
+    while period < limit:
+        yield period
+        period = (period + datetime.timedelta(days=32)).replace(day=1)
+
+
 def _write_excel_atomic(frame: pd.DataFrame, path: Path) -> None:
     """Replace an Excel workbook only after its complete successor was written."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    handle = tempfile.NamedTemporaryFile(dir=path.parent, prefix=f".{path.stem}-", suffix=".xlsx", delete=False)
-    temporary_path = Path(handle.name)
-    handle.close()
-    try:
-        frame.to_excel(temporary_path, index=False)
-        os.replace(temporary_path, path)
-    except PermissionError as exc:
-        raise PermissionError(f"Cannot write {path}; close the workbook in Excel and retry.") from exc
-    finally:
-        if temporary_path.exists():
-            temporary_path.unlink()
+    write_excel_atomic(frame, path)
 
 
 def _previous_month(value: datetime.date) -> datetime.date:
@@ -559,7 +613,7 @@ def _previous_month(value: datetime.date) -> datetime.date:
 
 
 def _latest_source_month(path: Path, column: str, date_format: str) -> datetime.date:
-    frame = pd.read_excel(path, usecols=[column])
+    frame = read_excel_checked(path, usecols=[column])
     parsed = pd.to_datetime(frame[column], format=date_format, errors="coerce").dropna()
     if parsed.empty:
         raise ValueError(f"{path} has no valid {column} values")
@@ -569,7 +623,7 @@ def _latest_source_month(path: Path, column: str, date_format: str) -> datetime.
 
 def _derived_workbooks_stale(paths: dict[str, Path]) -> bool:
     outputs = (paths["monthly"], paths["yearly"])
-    if any(not output.exists() for output in outputs):
+    if any(not is_valid_excel_workbook(output) for output in outputs):
         return True
     newest_source = max(paths["kase"].stat().st_mtime, paths["aix"].stat().st_mtime)
     return any(output.stat().st_mtime < newest_source for output in outputs)
@@ -581,19 +635,11 @@ def refresh_kase_aix_exports(
 ) -> pd.DataFrame:
     """Rewrite combined exports without internal flags and with foreign ISINs yearly."""
 
-    combined = pd.read_excel(monthly_path).drop(columns=["eligible"], errors="ignore")
-    try:
-        combined.to_excel(monthly_path, index=False)
-    except PermissionError as exc:
-        raise PermissionError(f"Cannot write {monthly_path}; close the workbook in Excel and retry.") from exc
+    combined = read_excel_checked(monthly_path).drop(columns=["eligible"], errors="ignore")
+    _write_excel_atomic(combined, monthly_path)
 
     yearly = _yearly_kase_aix_export(combined)
-    try:
-        yearly.to_excel(yearly_output_path, index=False)
-    except PermissionError as exc:
-        raise PermissionError(
-            f"Cannot write {yearly_output_path}; close the workbook in Excel and retry."
-        ) from exc
+    _write_excel_atomic(yearly, yearly_output_path)
     return combined
 
 
@@ -621,7 +667,7 @@ def _yearly_kase_aix_export(combined: pd.DataFrame) -> pd.DataFrame:
 
 
 def _prepare_kase_months(path: Path) -> pd.DataFrame:
-    total_df = pd.read_excel(path)
+    total_df = read_excel_checked(path)
     required = {"Код", "Компания", "Сектор", "ISIN", "month", "Объём, млн KZT", "Количество сделок"}
     missing = required - set(total_df.columns)
     if missing:
@@ -667,7 +713,7 @@ def _prepare_kase_months(path: Path) -> pd.DataFrame:
 
 
 def _prepare_aix_months(path: Path) -> pd.DataFrame:
-    total_df = pd.read_excel(path)
+    total_df = read_excel_checked(path)
     required = {"period", "secCode", "name", "assetClass", "numberOfTrades", "value", "isin"}
     missing = required - set(total_df.columns)
     if missing:
@@ -746,7 +792,7 @@ def create_yearly_check(
     criteria are used.
     """
 
-    total_df = pd.read_excel(path)
+    total_df = read_excel_checked(path)
     old_free_float = "Количество акций в свободном обращении по расчету Эмитента (%%)"
     if "Free Float %" not in total_df.columns and old_free_float in total_df.columns:
         total_df = total_df.rename(columns={old_free_float: "Free Float %"})
@@ -824,10 +870,7 @@ def create_yearly_check(
             total_df[column] = pd.NA
 
     destination = output_path or path
-    try:
-        total_df.to_excel(destination, index=False)
-    except PermissionError as exc:
-        raise PermissionError(f"Cannot write {destination}; close the workbook in Excel and retry.") from exc
+    _write_excel_atomic(total_df, destination)
 
     yearly_columns = ["Код", "Компания", "Сектор", "ISIN", "isin2", "isin3", "year", "year_check"]
     yearly_df = (
@@ -837,10 +880,5 @@ def create_yearly_check(
         .sort_values(["Год", "Код"], kind="stable")
     )
     yearly_destination = yearly_output_path or Path(destination).with_name("kase_pref_yearly.xlsx")
-    try:
-        yearly_df.to_excel(yearly_destination, index=False)
-    except PermissionError as exc:
-        raise PermissionError(
-            f"Cannot write {yearly_destination}; close the workbook in Excel and retry."
-        ) from exc
+    _write_excel_atomic(yearly_df, yearly_destination)
     return total_df
