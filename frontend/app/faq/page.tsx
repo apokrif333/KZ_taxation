@@ -16,6 +16,7 @@ const brokerGuides = [
   { href: '/faq/exante', title: 'Как скачать отчёты для Exante', description: 'Создайте Custom Report в CSV на английском языке за каждый год существования счёта и загрузите все готовые файлы.' },
   { href: '/faq/freedom-bank', title: 'Как скачать отчёты для Freedom Bank', description: 'Запросите русскоязычный PDF «Отчёт о брокерских сделках» в Freedom SuperApp за каждый год существования счёта.' },
   { href: '/faq/tabys', title: 'Как скачать отчёты для Tabys', description: 'Подготовьте русскоязычные PDF-отчёты об операциях за все годы существования счёта.' },
+  { href: '/faq/halyk', title: 'Как скачать отчёты для Halyk Finance', description: 'Скачайте XLSX «Данные для форм 240.00, 250.00, 270.00» за каждый год существования счёта в приложении Halyk Finance.' },
 ] as const
 
 export default function FaqPage() {

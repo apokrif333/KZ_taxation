@@ -123,6 +123,8 @@ function BrokerReportCard({ broker, reports, busy, onFiles, onRemove, collapsibl
         ? { href: '/faq/freedom-bank', label: 'как скачать отчёты Freedom Bank' }
         : broker.code === 'tabys'
           ? { href: '/faq/tabys', label: 'как скачать отчёты Tabys' }
+          : broker.code === 'halyk'
+            ? { href: '/faq/halyk', label: 'как скачать отчёты Halyk Finance' }
           : null
 
   return <div className="rounded-lg border bg-card p-4"><BrokerTitle broker={broker} /><p className="mt-1 text-sm text-muted-foreground">{reports.length ? `${reports.length} ${pluralFiles(reports.length)}` : 'Файлы не добавлены'}</p><FilePicker className="mt-3 w-full" broker={broker} onFiles={onFiles} /><ReportList reports={reports} busy={busy} onRemove={onRemove} />{guide && <div className="mt-4 flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-primary/10 pt-3 text-sm"><BookOpen className="size-4 text-primary" aria-hidden="true" /><span className="font-medium">Инструкция:</span><Link href={guide.href} className="text-primary underline-offset-4 hover:underline">{guide.label}</Link></div>}</div>
@@ -159,6 +161,8 @@ function BrokerGuidance({ broker }: { broker: BrokerConfig }) {
           ? { href: '/faq/freedom-broker', label: 'как скачать отчёты Freedom Broker' }
           : broker.code === 'tabys'
             ? { href: '/faq/tabys', label: 'как скачать отчёты Tabys' }
+            : broker.code === 'halyk'
+              ? { href: '/faq/halyk', label: 'как скачать отчёты Halyk Finance' }
             : null
 
   if (!guide) return null
