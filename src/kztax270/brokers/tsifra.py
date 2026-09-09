@@ -12,6 +12,7 @@ from typing import Any, Mapping, Sequence
 
 from kztax270.canonical.schema import AccountMetadata, CanonicalDataset, RawReportTotals
 from kztax270.canonical.trade_enrichment import enrich_trades_before_calculations
+from kztax270.diagnostics import instrument_parsed_reports
 from kztax270.reconciliation.models import ReconciliationMetric
 from kztax270.reference.fx import AnnualFxRateProvider
 from kztax270.transfers import TransferInFifoResolver
@@ -73,6 +74,7 @@ class TsifraParser:
 
     def parse_reports(self, reports: Sequence[BrokerReport], account_id: str) -> ParseResult:
         parsed_reports = [parse_tsifra_xml_report(report.path, account_id=account_id) for report in reports]
+        instrument_parsed_reports(self.broker_code, parsed_reports)
         dataset = build_canonical_dataset(parsed_reports, account_id, self.fx_provider, transfer_in_resolver=self.transfer_in_resolver)
         dataset.raw_totals.source_reports = [str(report.path) for report in reports]
         return ParseResult(broker=self.broker_code, account_id=account_id, reports=reports, dataset=dataset, raw_totals=dataset.raw_totals)

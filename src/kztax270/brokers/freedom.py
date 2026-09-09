@@ -2,16 +2,18 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from collections import defaultdict
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from kztax270.canonical.schema import AccountMetadata, CanonicalDataset, RawReportTotals
 from kztax270.canonical.trade_enrichment import enrich_trades_before_calculations
+from kztax270.diagnostics import instrument_parsed_reports
 from kztax270.reconciliation.models import ReconciliationMetric
 from kztax270.reference.fx import AnnualFxRateProvider
 from kztax270.transfers import TransferInFifoResolver
@@ -45,6 +47,7 @@ from .ib import (
 
 FREEDOM_BASE_CURRENCY = "USD"
 BROKER_CODE = "freedom"
+LOGGER = logging.getLogger(__name__)
 
 SECTION_TRADES = "Trades"
 SECTION_COMMISSIONS = "Commissions"
@@ -142,6 +145,7 @@ class FreedomParser:
 
     def parse_reports(self, reports: Sequence[BrokerReport], account_id: str) -> ParseResult:
         parsed_reports = [parse_freedom_report(report.path, account_id=account_id) for report in reports]
+        instrument_parsed_reports(self.broker_code, parsed_reports)
         dataset = build_canonical_dataset(
             parsed_reports,
             account_id,
@@ -204,7 +208,7 @@ def build_canonical_dataset(
     symbol_history = _instrument_symbol_history(instruments)
     dataset.tables["Instruments"] = instruments
 
-    corporate_actions = _build_corporate_actions(reports, instrument_lookup)
+    corporate_actions = _build_corporate_actions(reports, instrument_lookup, dataset.warnings)
     dataset.tables["CorporateActions"] = _canonical_corporate_actions(corporate_actions)
 
     trades = _build_trades(reports, instrument_lookup)
@@ -251,7 +255,10 @@ def build_canonical_dataset(
     )
     dataset.tables["_TradeWithholdingTax"] = []
     dataset.tables["CashBalances"] = _build_cash_balances(reports, fx_provider, dataset.warnings)
-    dataset.tables["Unprocessed"] = _build_unprocessed_rows(dataset.tables["Trades"], fifo_rows)
+    dataset.tables["Unprocessed"] = [
+        *_build_unprocessed_rows(dataset.tables["Trades"], fifo_rows),
+        *_corporate_action_amount_per_one_unprocessed_rows(corporate_actions),
+    ]
     dataset.tables["Years_Results"] = _build_years_results(dataset)
 
     _populate_raw_totals(
@@ -644,6 +651,7 @@ def _bond_transaction_multiplier(
 def _build_corporate_actions(
     reports: Sequence[ParsedFreedomReport],
     instrument_lookup: Mapping[tuple[str, int | None], dict[str, Any]],
+    warnings: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     actions: list[dict[str, Any]] = []
     for report in reports:
@@ -656,6 +664,15 @@ def _build_corporate_actions(
             isin = _normalize_isin(_cell(row, COL_ISIN))
             symbol = _clean_symbol(_cell(row, COL_TICKER)) or isin
             asset = str(_cell(row, COL_ASSET) or "").strip()
+            amount_per_one, invalid_amount_per_one = _optional_decimal(_cell(row, COL_PER_ONE))
+            if invalid_amount_per_one is not None:
+                message = (
+                    "Freedom corporate action has a non-numeric 'Per 1' value; "
+                    f"report={report.path} row={idx} symbol={symbol or '-'} value={invalid_amount_per_one!r}."
+                )
+                if warnings is not None:
+                    warnings.append(message)
+                LOGGER.warning(message)
             quantity = _decimal(_cell(row, COL_AMOUNT)) if _is_security_asset(asset) else Decimal("0")
             proceeds = Decimal("0")
             if action_type == "reorg_cash" and quantity < 0:
@@ -677,7 +694,8 @@ def _build_corporate_actions(
                     "realized_pl": "0",
                     "source_report": str(report.path),
                     "_asset": asset,
-                    "_amount_per_one": str(_decimal(_cell(row, COL_PER_ONE))),
+                    "_amount_per_one": str(amount_per_one),
+                    "_invalid_amount_per_one": invalid_amount_per_one,
                     "_record_qty": str(_decimal(_cell(row, COL_RECORD_QTY))),
                     "_source_index": idx,
                 }
@@ -704,6 +722,53 @@ def _build_corporate_actions(
 def _canonical_corporate_actions(actions: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
     columns = ("date", "symbol", "isin", "action_type", "description", "quantity", "proceeds", "value", "currency", "realized_pl", "source_report")
     return [{column: action.get(column) for column in columns} for action in actions]
+
+
+def _corporate_action_amount_per_one_unprocessed_rows(
+    actions: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    """Expose malformed Corpactions ``Per 1`` values without aborting a job."""
+
+    rows: list[dict[str, Any]] = []
+    for action in actions:
+        raw_value = _none_text(action.get("_invalid_amount_per_one"))
+        if raw_value is None:
+            continue
+        action_type = _none_text(action.get("action_type")) or "corporate action"
+        affects_calculation = action_type in {
+            "conversion",
+            "conversion_compensation",
+            "spinoff_compensation",
+            "split_compensation",
+        }
+        rows.append(
+            {
+                "severity": "error" if affects_calculation else "warning",
+                "reason": "invalid_corporate_action_amount_per_one",
+                "details": (
+                    "Corporate action field 'Per 1' is not numeric. "
+                    f"Raw value: {raw_value!r}."
+                    + (
+                        " The event may affect the tax calculation and needs review."
+                        if affects_calculation
+                        else " The value is not required by this corporate-action type."
+                    )
+                ),
+                "source_sheet": SECTION_CORPACTIONS,
+                "source_report": _none_text(action.get("source_report")),
+                "trade_id": f"corporate_action:{action.get('_source_index')}",
+                "date_time": _none_text(action.get("date_time") or action.get("date")),
+                "symbol": _none_text(action.get("symbol")),
+                "isin": _none_text(action.get("isin")),
+                "asset_type": _none_text(action.get("_asset")),
+                "currency": _none_text(action.get("currency")),
+                "quantity": _none_text(action.get("quantity")),
+                "price": raw_value,
+                "amount": _none_text(action.get("value")),
+                "commission": None,
+            }
+        )
+    return rows
 
 
 def _spinoff_actions_from_security_income(report: ParsedFreedomReport) -> list[dict[str, Any]]:
@@ -2761,6 +2826,51 @@ def _decimal(value: Any) -> Decimal:
     if not text or text.lower() in {"none", "nan", "nat", "null"}:
         return Decimal("0")
     return _ib_decimal(text)
+
+
+def _optional_decimal(value: Any) -> tuple[Decimal, str | None]:
+    """Parse an optional Excel number without letting a text placeholder abort a job.
+
+    Freedom occasionally writes a dash, a currency-decorated value, or another
+    textual placeholder into Corpactions' ``Per 1`` column.  A placeholder is
+    a genuine missing value; any other non-numeric value is retained for the
+    audit warning instead of being silently treated as a price of zero.
+    """
+
+    if value is None or _is_nan(value):
+        return Decimal("0"), None
+    raw = str(value).strip()
+    if not raw or raw.casefold() in {
+        "-",
+        "–",
+        "—",
+        "−",
+        "n/a",
+        "na",
+        "none",
+        "nan",
+        "nat",
+        "null",
+    }:
+        return Decimal("0"), None
+
+    normalized = raw.replace("\xa0", "").replace("\u202f", "").replace(" ", "")
+    normalized = normalized.replace("−", "-").replace("–", "-").replace("—", "-")
+    if "," in normalized and "." in normalized:
+        if normalized.rfind(",") > normalized.rfind("."):
+            normalized = normalized.replace(".", "").replace(",", ".")
+        else:
+            normalized = normalized.replace(",", "")
+    else:
+        normalized = normalized.replace(",", ".")
+
+    match = re.fullmatch(r"([-+]?\d+(?:\.\d+)?)(?:[A-Za-z]{3})?", normalized)
+    if match is None:
+        return Decimal("0"), raw
+    try:
+        return _ib_decimal(match.group(1)), None
+    except (InvalidOperation, ValueError):
+        return Decimal("0"), raw
 
 
 def _none_text(value: Any) -> str | None:

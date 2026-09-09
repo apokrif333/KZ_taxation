@@ -50,6 +50,71 @@ class FreedomParserTests(unittest.TestCase):
         self.assertEqual(Decimal(trade["price"]), Decimal("10.61") / Decimal("0.752"))
         self.assertEqual(Decimal(trade["amount"]), Decimal("226") * Decimal("10.61") / Decimal("0.752"))
 
+    def test_non_numeric_corporate_action_per_one_does_not_abort_and_is_unprocessed(self) -> None:
+        report = fe.ParsedFreedomReport(
+            path=Path("freedom-corporate-action.xlsx"),
+            rows={
+                fe.SECTION_CORPACTIONS: [
+                    {
+                        fe.COL_TYPE: "Conversion",
+                        fe.COL_DATE: "2025-06-01",
+                        fe.COL_ASSET: "Securities",
+                        fe.COL_AMOUNT: "-10",
+                        fe.COL_PER_ONE: "to be confirmed",
+                        fe.COL_TICKER: "NEW.US",
+                        fe.COL_ISIN: "US0000000001",
+                        fe.COL_CURRENCY: "USD",
+                        fe.COL_COMMENT: "Conversion OLD.US (US0000000002) -> NEW.US (US0000000001). ratio: 1/1.",
+                    }
+                ]
+            },
+        )
+        warnings: list[str] = []
+
+        actions = fe._build_corporate_actions([report], {}, warnings)
+        unprocessed = fe._corporate_action_amount_per_one_unprocessed_rows(actions)
+
+        self.assertEqual(actions[0]["_amount_per_one"], "0")
+        self.assertEqual(actions[0]["_invalid_amount_per_one"], "to be confirmed")
+        self.assertEqual(len(warnings), 1)
+        self.assertEqual(len(unprocessed), 1)
+        self.assertEqual(unprocessed[0]["severity"], "error")
+        self.assertEqual(unprocessed[0]["reason"], "invalid_corporate_action_amount_per_one")
+        self.assertEqual(unprocessed[0]["price"], "to be confirmed")
+
+        dataset = fe.build_canonical_dataset(
+            [report],
+            "test-account",
+            AnnualFxRateProvider({(2025, "USD"): Decimal("500")}),
+        )
+        self.assertEqual(dataset.tables["Unprocessed"][0]["reason"], "invalid_corporate_action_amount_per_one")
+
+    def test_corporate_action_per_one_placeholders_are_treated_as_missing(self) -> None:
+        report = fe.ParsedFreedomReport(
+            path=Path("freedom-corporate-action.xlsx"),
+            rows={
+                fe.SECTION_CORPACTIONS: [
+                    {
+                        fe.COL_TYPE: "Split",
+                        fe.COL_DATE: "2025-06-01",
+                        fe.COL_ASSET: "Securities",
+                        fe.COL_AMOUNT: "10",
+                        fe.COL_PER_ONE: "—",
+                        fe.COL_TICKER: "TEST.US",
+                        fe.COL_ISIN: "US0000000001",
+                        fe.COL_CURRENCY: "USD",
+                        fe.COL_COMMENT: "Split 2 for 1",
+                    }
+                ]
+            },
+        )
+
+        actions = fe._build_corporate_actions([report], {}, [])
+
+        self.assertEqual(actions[0]["_amount_per_one"], "0")
+        self.assertIsNone(actions[0]["_invalid_amount_per_one"])
+        self.assertEqual(fe._corporate_action_amount_per_one_unprocessed_rows(actions), [])
+
     def test_financing_operations_are_interest_not_trades_or_fifo(self) -> None:
         import pandas as pd  # type: ignore
 

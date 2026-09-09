@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -11,6 +12,7 @@ from kztax270.brokers.registry import BrokerRegistry, default_registry
 from kztax270.calculations.tax_rules import TaxRuleEngine
 from kztax270.canonical.schema import CanonicalDataset
 from kztax270.canonical.validation import validate_dataset_for_tax_forms
+from kztax270.diagnostics import clear_raw_row_context, current_raw_row_log_context
 from kztax270.excel.audit_workbook import ExcelAuditWorkbookWriter
 from kztax270.form270.json_builder import Form270JsonBuilder
 from kztax270.form270.merge import merge_form270_jsons
@@ -22,6 +24,9 @@ from kztax270.reference.nbk import ensure_nbk_rates_current
 from kztax270.transfers import TransferInFifoResolver
 
 from .config import AccountConfig, ClientConfig, ProjectPaths
+
+
+LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -116,7 +121,18 @@ class AccountPipeline:
         write_excel: bool,
         write_json: bool,
     ) -> AccountPipelineResult:
-        parse_result = adapter.parse_reports(reports, account.account_id)
+        clear_raw_row_context()
+        try:
+            parse_result = adapter.parse_reports(reports, account.account_id)
+        except Exception:
+            LOGGER.exception(
+                "Account report parsing failed broker=%s account_id=%s report_count=%s %s",
+                account.broker,
+                account.account_id,
+                len(reports),
+                current_raw_row_log_context(),
+            )
+            raise
         dataset = parse_result.dataset
         validate_dataset_for_tax_forms(dataset)
 
