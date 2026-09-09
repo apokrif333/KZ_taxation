@@ -710,6 +710,73 @@ class Form270JsonTests(unittest.TestCase):
         self.assertEqual(app["B"][0]["val_M"], {"value": 0, "manual": True})
         self.assertEqual(app["C"][0]["I"], 100000)
 
+    def test_application_05_reports_zero_value_option_expiration_as_disposal(self) -> None:
+        dataset = CanonicalDataset.empty("ib", "U5157275")
+        dataset.tables["Trades"] = [
+            {
+                "date_time": "2025-12-05 17:15:00",
+                "trade_type": "option_expiration",
+                "symbol": "EUR 05DEC25 1.15 P",
+                "asset_type": "Options On Futures",
+                "quantity": "-1",
+                "amount": "0",
+                "amount_with_commission": "0",
+                "kzt_rate": "521.59",
+                "currency": "USD",
+                "country": "US",
+            }
+        ]
+
+        app = _builder().build_account_draft(dataset, tax_year=2025, form270_05=True)["fnoContent"]["application_05"]
+
+        self.assertEqual(app["B"], [])
+        self.assertEqual(app["C"][0]["B"], "4")
+        self.assertEqual(app["C"][0]["C"], "EUR 05DEC25 1.15 P")
+        self.assertEqual(app["C"][0]["I"], 0)
+
+    def test_nbk_xau_is_excluded_from_270_04_and_uses_property_right_in_270_05(self) -> None:
+        dataset = CanonicalDataset.empty("tabys", "007638948")
+        dataset.tables["Trades"] = [
+            {
+                "date_time": "2025-01-02 10:00:00",
+                "trade_type": "trade",
+                "symbol": "NBK.XAU",
+                "isin": "NBK.XAU",
+                "asset_type": "Derivative",
+                "quantity": "1",
+                "amount": "100",
+                "amount_with_commission": "100",
+                "kzt_rate": "1",
+                "currency": "KZT",
+                "country": "KZ",
+            },
+            {
+                "date_time": "2025-02-02 10:00:00",
+                "trade_type": "trade",
+                "symbol": "NBK.XAU",
+                "isin": "NBK.XAU",
+                "asset_type": "Derivative",
+                "quantity": "-1",
+                "amount": "130",
+                "amount_with_commission": "130",
+                "kzt_rate": "1",
+                "currency": "KZT",
+                "country": "KZ",
+            },
+        ]
+
+        regular_form = _builder().build_account_draft(dataset, tax_year=2025)
+        form_05 = _builder().build_account_draft(dataset, tax_year=2025, form270_05=True)
+
+        self.assertEqual(regular_form["fnoContent"]["application_04"]["B"], [])
+        app = form_05["fnoContent"]["application_05"]
+        self.assertEqual(app["B"][0]["B"], "12")
+        self.assertEqual(app["B"][0]["_01"], "Имущественное право")
+        self.assertEqual(app["B"][0]["C"], "NBK.XAU")
+        self.assertEqual(app["C"][0]["B"], "12")
+        self.assertEqual(app["C"][0]["_01"], "Имущественное право")
+        self.assertEqual(app["C"][0]["C"], "NBK.XAU")
+
     def test_application_05_b_and_c_are_sorted_by_date_then_isin(self) -> None:
         dataset = CanonicalDataset.empty("ib", "USORT05")
         dataset.tables["Trades"] = [
@@ -794,6 +861,18 @@ class Form270JsonTests(unittest.TestCase):
                 "currency": "EUR",
                 "ending_cash": "250",
             },
+            {"broker": "ib", "account_id": "U1", "year": 2024, "currency": "USD", "ending_cash": "100"},
+        ]
+
+        form = _builder().build_account_draft(dataset, tax_year=2024)
+        rows = form["fnoContent"]["application_04"]["C"]
+
+        self.assertEqual([(row["B"], row["E"], row["F"]) for row in rows], [("IBKRUS33XXX", "USD", 100)])
+
+    def test_builder_excludes_halyk_cash_from_application_04_c(self) -> None:
+        dataset = CanonicalDataset.empty("merged", "Test_User")
+        dataset.tables["CashBalances"] = [
+            {"broker": "halyk", "account_id": "1028197847", "year": 2024, "currency": "USD", "ending_cash": "500"},
             {"broker": "ib", "account_id": "U1", "year": 2024, "currency": "USD", "ending_cash": "100"},
         ]
 

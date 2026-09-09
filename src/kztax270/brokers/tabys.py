@@ -39,6 +39,24 @@ BROKER_CODE = "tabys"
 RAW_FOLDER = "tabys"
 TABYS_BASE_CURRENCY = "KZT"
 TABYS_EXCHANGE = "AIX"
+NBK_XAU_SYMBOL = "NBK.XAU"
+
+# NBK.XAU is Tabys's right to receive gold from the National Bank, not an AIX
+# security.  It is deliberately modelled as a derivative for the capital-gain
+# calculation: profitable disposals are taxed separately and losses do not
+# reduce that base.  The Form 270.05 renderer gives it its legal property
+# classification ("Other — property right").
+NBK_XAU_REFERENCE: dict[str, Any] = {
+    "isin": NBK_XAU_SYMBOL,
+    "country": "KZ",
+    "type": "Derivative",
+    "description": "Right to receive gold from the National Bank of Kazakhstan",
+    "issuer": "National Bank of Kazakhstan",
+    "currency": TABYS_BASE_CURRENCY,
+    "source": "tabys:nbk_xau",
+    "preferential_tax_flag": False,
+    "force_non_preferential_tax_flag": True,
+}
 
 @dataclass(slots=True)
 class ParsedTabysReport:
@@ -265,7 +283,11 @@ def _build_instruments(
     instruments: list[dict[str, Any]] = []
     for symbol in sorted(first_source_by_symbol):
         latest_date = latest_date_by_symbol[symbol]
-        reference = resolver.resolve(symbol, snapshot_year=latest_date.year if latest_date else None)
+        reference = (
+            dict(NBK_XAU_REFERENCE)
+            if symbol == NBK_XAU_SYMBOL
+            else resolver.resolve(symbol, snapshot_year=latest_date.year if latest_date else None)
+        )
         isin = _text(reference.get("isin"))
         country = _text(reference.get("country")) or _country_from_isin(isin)
         asset_type = _text(reference.get("type"))
@@ -293,7 +315,8 @@ def _build_instruments(
                 "issuer_country": country,
                 "offshore_flag": False if country == "KZ" else None,
                 "issuer_outside_kz_flag": False if country == "KZ" else (True if country else None),
-                "preferential_tax_flag": None,
+                "preferential_tax_flag": reference.get("preferential_tax_flag"),
+                "force_non_preferential_tax_flag": reference.get("force_non_preferential_tax_flag"),
                 "source_broker": BROKER_CODE,
                 "source_account": account_id,
                 "source_report": first_source_by_symbol[symbol],

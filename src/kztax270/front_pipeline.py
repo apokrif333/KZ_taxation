@@ -38,6 +38,7 @@ from kztax270.transfers import (
 FRONT_BROKER_FOLDERS = {
     "ib": "ib",
     "exante": "exante",
+    "halyk": "halyk",
     "tabys": "tabys",
     "tsifra": "tsifra",
     "freedom_bank": "freedom_bank",

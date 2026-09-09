@@ -12,6 +12,7 @@ from .base import BrokerParser
 from .exante import ExanteParser
 from .freedom import FreedomParser
 from .freedom_bank import FreedomBankParser
+from .halyk import HalykParser
 from .ib import InteractiveBrokersParser
 from .legacy_adapters import (
     ExanteLegacyAdapter,
@@ -49,6 +50,7 @@ def default_registry(
     registry.register(InteractiveBrokersParser(fx_provider=fx_provider, transfer_in_resolver=transfer_in_resolver))
     registry.register(FreedomParser(fx_provider=fx_provider, transfer_in_resolver=transfer_in_resolver))
     registry.register(FreedomBankParser(fx_provider=fx_provider))
+    registry.register(HalykParser(fx_provider=fx_provider))
     registry.register(ExanteParser(fx_provider=fx_provider, transfer_in_resolver=transfer_in_resolver))
     registry.register(TabysParser(fx_provider=fx_provider, transfer_in_resolver=transfer_in_resolver))
     exante_legacy = ExanteLegacyAdapter()

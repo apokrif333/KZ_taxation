@@ -18,7 +18,7 @@ form270_template = "data/templates/270 new template.json"
 [[form270.jobs]]
 id = "excel"
 broker = "ib"
-account_id = "U5157275"
+account_id = "U6606350"
 
 # [[form270.jobs]]
 # id = "joint_excel"

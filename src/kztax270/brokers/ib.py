@@ -159,8 +159,7 @@ def parse_ib_csv_report(path: Path) -> ParsedIbReport:
     current_headers: dict[str, list[str]] = {}
 
     with path.open("r", newline="", encoding="utf-8-sig") as handle:
-        reader = csv.reader(handle)
-        for row in reader:
+        for row in _read_ib_csv_rows(handle):
             if not row:
                 continue
             section = row[0].strip()
@@ -194,6 +193,32 @@ def parse_ib_csv_report(path: Path) -> ParsedIbReport:
                 parsed.fields[str(record.get("Field Name"))] = str(record.get("Field Value") or "")
     _resolve_ib_base_currency_summary(parsed)
     return parsed
+
+
+def _read_ib_csv_rows(handle: Any) -> Iterable[list[str]]:
+    """Read normal IB CSVs and files re-saved with a semicolon separator.
+
+    Excel can save an IB comma-separated row into its first semicolon-delimited
+    cell and append empty semicolon cells.  Such rows need one additional CSV
+    pass after reading the outer delimiter.
+    """
+
+    sample = handle.read(8192)
+    handle.seek(0)
+    try:
+        delimiter = csv.Sniffer().sniff(sample, delimiters=",;").delimiter
+    except csv.Error:
+        delimiter = ","
+
+    for row in csv.reader(handle, delimiter=delimiter):
+        while row and not row[-1].strip():
+            row.pop()
+        if delimiter == "," and row:
+            row[-1] = row[-1].rstrip(";")
+        if len(row) == 1 and "," in row[0]:
+            embedded_row = row[0].rstrip(";")
+            row = next(csv.reader([embedded_row], delimiter=","), [])
+        yield row
 
 
 def build_canonical_dataset(
@@ -1804,7 +1829,7 @@ def _build_trades(reports: Sequence[ParsedIbReport], instrument_lookup: Mapping[
                 {
                     "date_time": trade_dt.isoformat(sep=" ") if trade_dt else None,
                     "trade_id": _trade_id(report, idx),
-                    "trade_type": "trade",
+                    "trade_type": _ib_trade_type(row),
                     "symbol": symbol,
                     "isin": isin,
                     "asset_type": asset_type,
@@ -1829,6 +1854,14 @@ def _build_trades(reports: Sequence[ParsedIbReport], instrument_lookup: Mapping[
                 }
             )
     return rows
+
+
+def _ib_trade_type(row: Mapping[str, Any]) -> str:
+    """Return a canonical trade type from IB's semicolon-separated code."""
+
+    code = _string_or_none(row.get("Code")) or ""
+    code_tokens = {token.strip().casefold() for token in re.split(r"[;,]", code) if token.strip()}
+    return "option_expiration" if "ep" in code_tokens else "trade"
 
 
 def _broker_trade_pnl(row: Mapping[str, Any], asset_type: str | None) -> Decimal | None:
@@ -2331,6 +2364,7 @@ def _build_fifo_and_positions(
     symbol_history: Mapping[str, Sequence[Mapping[str, Any]]],
     transfer_in_resolver: TransferInFifoResolver | None = None,
     broker_cost_basis_method: str = "fifo",
+    join_security_currencies: bool = False,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
     fifo_rows: list[dict[str, Any]] = []
     position_rows: list[dict[str, Any]] = []
@@ -2342,7 +2376,17 @@ def _build_fifo_and_positions(
     inventory: dict[tuple[str, str | None, str], dict[str, deque[FifoOpenLot]]] = defaultdict(lambda: {"long": deque(), "short": deque()})
     grouped_events: dict[tuple[str, str | None, str], list[tuple[datetime, int, str, Mapping[str, Any]]]] = defaultdict(list)
     for key, side, lot in initial_lots:
-        inventory[_fifo_inventory_key(key[0], key[1], lot.currency, lot.asset_type, lot.symbol, broker_cost_basis_method)][side].append(lot)
+        inventory[
+            _fifo_inventory_key(
+                key[0],
+                key[1],
+                lot.currency,
+                lot.asset_type,
+                lot.symbol,
+                broker_cost_basis_method,
+                join_security_currencies,
+            )
+        ][side].append(lot)
     for trade in trades:
         isin = _string_or_none(trade.get("isin"))
         instrument_key = _string_or_none(trade.get("_instrument_identity_key")) or _instrument_identity_key_from_values(
@@ -2361,6 +2405,7 @@ def _build_fifo_and_positions(
                 _string_or_none(trade.get("asset_type")),
                 _string_or_none(trade.get("symbol")),
                 broker_cost_basis_method,
+                join_security_currencies,
             )
         ].append((trade_dt, 0, "trade", trade))
 
@@ -2397,6 +2442,7 @@ def _build_fifo_and_positions(
                 _string_or_none(transfer.get("asset_type")),
                 _string_or_none(transfer.get("symbol")),
                 broker_cost_basis_method,
+                join_security_currencies,
             )
         ].append((transfer_dt, event_order, event_type, transfer))
 
@@ -2714,6 +2760,10 @@ def _consume_incoming_transfer(
     transfer_in_resolver: TransferInFifoResolver | None,
     warnings: list[str],
 ) -> tuple[list[dict[str, Any]], list[tuple[str, FifoOpenLot]]]:
+    if transfer.get("_transfer_cost_basis_status") == "broker_reported_cost_basis":
+        lot = _open_incoming_transfer_lot(transfer, transfer_dt)
+        return [dict(transfer)], [lot] if lot is not None else []
+
     request = _transfer_in_request(transfer, transfer_dt)
     resolved_lots = list(transfer_in_resolver(request) or []) if transfer_in_resolver is not None else []
     expected_quantity = abs(_decimal(transfer.get("_raw_quantity") or transfer.get("quantity")))
@@ -3142,16 +3192,19 @@ def _fifo_inventory_key(
     asset_type: str | None,
     symbol: str | None,
     broker_cost_basis_method: str,
+    join_security_currencies: bool = False,
 ) -> tuple[str, str | None, str]:
-    """Return the FIFO book key, joining Freedom securities across currencies.
+    """Return the FIFO book key, joining selected securities across currencies.
 
-    Freedom can change the settlement currency of the same security while the
-    position remains open (for example AIRA from KZT to USD).  Its average-cost
-    report still treats this as one position.  Other parsers retain their
-    currency-specific books, and derivatives are never joined across
-    currencies.
+    A broker can change the settlement currency of the same security while the
+    position remains open.  In that case its report treats it as one position,
+    and the opening lot is converted to the closing currency when FIFO matches
+    it.  Derivatives are always kept in separate currency books.
     """
-    if broker_cost_basis_method == "average" and not _is_derivative_record({"asset_type": asset_type, "symbol": symbol}):
+    if (
+        (broker_cost_basis_method == "average" or join_security_currencies)
+        and not _is_derivative_record({"asset_type": asset_type, "symbol": symbol})
+    ):
         return instrument_key, isin, ""
     return instrument_key, isin, currency
 
@@ -4472,6 +4525,7 @@ def _instrument_tax_flags(dataset: CanonicalDataset) -> dict[str, dict[str, Any]
             "issuer_outside_kz_flag": _bool_or_none(instrument.get("issuer_outside_kz_flag")),
             "offshore_flag": _bool_or_none(instrument.get("offshore_flag")),
             "preferential_tax_flag": _bool_or_none(instrument.get("preferential_tax_flag")),
+            "force_non_preferential_tax_flag": _bool_or_none(instrument.get("force_non_preferential_tax_flag")),
         }
         for key in (instrument.get("isin"), instrument.get("symbol"), instrument.get("security_id")):
             if key:
@@ -4496,6 +4550,7 @@ def _record_tax_flags(
     issuer_country = _string_or_none(record.get("issuer_country") or record.get("country") or flags.get("issuer_country"))
     offshore_flag = _bool_or_none(record.get("offshore_flag"))
     preferential_tax_flag = _bool_or_none(record.get("preferential_tax_flag") or record.get("kase_aix_preferential_flag"))
+    force_non_preferential_tax_flag = _bool_or_none(record.get("force_non_preferential_tax_flag"))
     issuer_outside_kz_flag = _bool_or_none(record.get("issuer_outside_kz_flag"))
     if offshore_flag is None:
         offshore_flag = _bool_or_none(flags.get("offshore_flag"))
@@ -4503,13 +4558,15 @@ def _record_tax_flags(
         preferential_tax_flag = _bool_or_none(flags.get("preferential_tax_flag"))
     if issuer_outside_kz_flag is None:
         issuer_outside_kz_flag = _bool_or_none(flags.get("issuer_outside_kz_flag"))
+    if force_non_preferential_tax_flag is None:
+        force_non_preferential_tax_flag = _bool_or_none(flags.get("force_non_preferential_tax_flag"))
     if issuer_outside_kz_flag is None and issuer_country is not None:
         issuer_outside_kz_flag = issuer_country != "KZ"
     offshore_flag = bool(offshore_flag) or offshore_provider.is_offshore_isin(isin)
     exchange_bucket = _exchange_bucket(record, flags, aix_provider=aix_provider)
     exchange = _string_or_none(record.get("exchange") or flags.get("exchange"))
     is_aix_trade = str(exchange or "").strip().upper() == EXCHANGE_AIX or ".AIX." in str(symbol or "").upper()
-    preferential_tax_flag = (
+    preferential_tax_flag = False if force_non_preferential_tax_flag else (
         not offshore_flag
         and (
             bool(preferential_tax_flag)

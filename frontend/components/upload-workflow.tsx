@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useRef, useState, type DragEvent } from 'react'
-import { BookOpen, CheckCircle2, FileSpreadsheet, Info, LockKeyhole, Plus, Trash2, UploadCloud } from 'lucide-react'
+import { BookOpen, CheckCircle2, ChevronDown, FileSpreadsheet, Info, LockKeyhole, Plus, Trash2, UploadCloud } from 'lucide-react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -39,6 +39,11 @@ export function UploadWorkflow({
   onManualAccountChange, onAddManualFiles, onRemoveManualFile, onForm27005Change, onContinue, onAbandon,
 }: UploadWorkflowProps) {
   const brokers = [...config.brokers].sort(compareBrokers)
+  const carefullyVerifyBrokerCodes = ['tabys', 'halyk']
+  const primaryBrokers = brokers.filter((broker) => !carefullyVerifyBrokerCodes.includes(broker.code))
+  const carefullyVerifyBrokers = carefullyVerifyBrokerCodes
+    .map((code) => brokers.find((broker) => broker.code === code))
+    .filter((broker): broker is BrokerConfig => Boolean(broker))
   const allReports = [...Object.values(autoFiles).flat(), ...manualGroups.flatMap((group) => group.files)]
   const hasAcceptedOrValidReport = allReports.some((report) => report.uploaded || report.status === 'valid')
   const hasInvalidReport = allReports.some((report) => report.status === 'invalid')
@@ -67,7 +72,14 @@ export function UploadWorkflow({
             </AlertDescription>
           </Alert>
 
-          {brokers.map((broker) => broker.account_id_mode === 'auto'
+          {primaryBrokers.map((broker) => broker.account_id_mode === 'auto'
+            ? <BrokerReportCard key={broker.code} broker={broker} reports={autoFiles[broker.code] || []} busy={busy} onFiles={(files) => onAddAutoFiles(broker, files)} onRemove={(reportId) => onRemoveAutoFile(broker.code, reportId)} />
+            : <ManualBrokerReportCard key={broker.code} broker={broker} groups={manualGroups.filter((group) => group.broker === broker.code)} busy={busy} onAddGroup={() => onAddManualGroup(broker.code)} onRemoveGroup={onRemoveManualGroup} onAccountChange={onManualAccountChange} onFiles={onAddManualFiles} onRemoveFile={onRemoveManualFile} />,
+          )}
+
+          {carefullyVerifyBrokers.length > 0 && <Alert className="border-amber-300/80 bg-amber-50 text-amber-950 dark:border-amber-500/40 dark:bg-amber-950/35 dark:text-amber-100"><Info /><AlertDescription>Для брокеров указанных ниже требуется внимательная перепроверка после формирования отчёта, так как код для них не тестировался на десятках тысяч сделок, как это было сделано для брокеров выше.</AlertDescription></Alert>}
+
+          {carefullyVerifyBrokers.map((broker) => broker.account_id_mode === 'auto'
             ? <BrokerReportCard key={broker.code} broker={broker} reports={autoFiles[broker.code] || []} busy={busy} onFiles={(files) => onAddAutoFiles(broker, files)} onRemove={(reportId) => onRemoveAutoFile(broker.code, reportId)} />
             : <ManualBrokerReportCard key={broker.code} broker={broker} groups={manualGroups.filter((group) => group.broker === broker.code)} busy={busy} onAddGroup={() => onAddManualGroup(broker.code)} onRemoveGroup={onRemoveManualGroup} onAccountChange={onManualAccountChange} onFiles={onAddManualFiles} onRemoveFile={onRemoveManualFile} />,
           )}
@@ -87,7 +99,22 @@ export function UploadWorkflow({
   )
 }
 
-function BrokerReportCard({ broker, reports, busy, onFiles, onRemove }: { broker: BrokerConfig; reports: SelectedReport[]; busy: boolean; onFiles: (files: File[]) => void; onRemove: (reportId: string) => void }) {
+function BrokerReportCard({ broker, reports, busy, onFiles, onRemove, collapsible = true }: { broker: BrokerConfig; reports: SelectedReport[]; busy: boolean; onFiles: (files: File[]) => void; onRemove: (reportId: string) => void; collapsible?: boolean }) {
+  const hasReports = reports.length > 0
+  const [isOpen, setIsOpen] = useState(false)
+  const expanded = hasReports || isOpen
+  const contentId = `broker-upload-${broker.code}`
+
+  if (collapsible) {
+    return <div className="rounded-lg border bg-card p-4">
+      <button type="button" className="flex w-full items-center justify-between gap-4 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default" onClick={() => setIsOpen((value) => !value)} disabled={hasReports} aria-expanded={expanded} aria-controls={contentId}>
+        <div><BrokerTitle broker={broker} /><p className="mt-1 text-sm text-muted-foreground">{hasReports ? `${reports.length} ${pluralFiles(reports.length)}` : 'Файлы не добавлены'}</p></div>
+        {hasReports ? <CheckCircle2 className="size-5 shrink-0 text-primary" aria-label="Файлы добавлены" /> : <ChevronDown className={cn('size-5 shrink-0 text-muted-foreground transition-transform', expanded && 'rotate-180')} aria-hidden="true" />}
+      </button>
+      {expanded && <div id={contentId} className="mt-4 border-t border-primary/10 pt-4"><FilePicker broker={broker} onFiles={onFiles} /><ReportList reports={reports} busy={busy} onRemove={onRemove} /><BrokerGuidance broker={broker} /></div>}
+    </div>
+  }
+
   const guide = broker.code === 'ib'
     ? { href: '/faq/interactive-brokers', label: 'как скачать отчёты Interactive Brokers' }
     : broker.code === 'exante'
@@ -101,14 +128,52 @@ function BrokerReportCard({ broker, reports, busy, onFiles, onRemove }: { broker
   return <div className="rounded-lg border bg-card p-4"><BrokerTitle broker={broker} /><p className="mt-1 text-sm text-muted-foreground">{reports.length ? `${reports.length} ${pluralFiles(reports.length)}` : 'Файлы не добавлены'}</p><FilePicker className="mt-3 w-full" broker={broker} onFiles={onFiles} /><ReportList reports={reports} busy={busy} onRemove={onRemove} />{guide && <div className="mt-4 flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-primary/10 pt-3 text-sm"><BookOpen className="size-4 text-primary" aria-hidden="true" /><span className="font-medium">Инструкция:</span><Link href={guide.href} className="text-primary underline-offset-4 hover:underline">{guide.label}</Link></div>}</div>
 }
 
-function ManualBrokerReportCard({ broker, groups, busy, onAddGroup, onRemoveGroup, onAccountChange, onFiles, onRemoveFile }: { broker: BrokerConfig; groups: ManualAccountGroup[]; busy: boolean; onAddGroup: () => void; onRemoveGroup: (groupId: string) => void; onAccountChange: (groupId: string, value: string) => void; onFiles: (groupId: string, broker: BrokerConfig, files: File[]) => void; onRemoveFile: (groupId: string, reportId: string) => void }) {
+function ManualBrokerReportCard({ broker, groups, busy, onAddGroup, onRemoveGroup, onAccountChange, onFiles, onRemoveFile, collapsible = true }: { broker: BrokerConfig; groups: ManualAccountGroup[]; busy: boolean; onAddGroup: () => void; onRemoveGroup: (groupId: string) => void; onAccountChange: (groupId: string, value: string) => void; onFiles: (groupId: string, broker: BrokerConfig, files: File[]) => void; onRemoveFile: (groupId: string, reportId: string) => void; collapsible?: boolean }) {
+  const reportCount = groups.reduce((count, group) => count + group.files.length, 0)
+  const hasReports = reportCount > 0
+  const [isOpen, setIsOpen] = useState(false)
+  const expanded = hasReports || isOpen
+  const contentId = `broker-upload-${broker.code}`
+
+  if (collapsible) {
+    return <div className="rounded-lg border bg-muted/20 p-4">
+      <button type="button" className="flex w-full items-center justify-between gap-4 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default" onClick={() => setIsOpen((value) => !value)} disabled={hasReports} aria-expanded={expanded} aria-controls={contentId}>
+        <div><BrokerTitle broker={broker} /><p className="mt-1 text-sm text-muted-foreground">{hasReports ? `${reportCount} ${pluralFiles(reportCount)}` : 'Файлы не добавлены'}</p></div>
+        {hasReports ? <CheckCircle2 className="size-5 shrink-0 text-primary" aria-label="Файлы добавлены" /> : <ChevronDown className={cn('size-5 shrink-0 text-muted-foreground transition-transform', expanded && 'rotate-180')} aria-hidden="true" />}
+      </button>
+      {expanded && <div id={contentId} className="mt-4 border-t border-primary/10 pt-4"><ManualBrokerContent broker={broker} groups={groups} busy={busy} onAddGroup={onAddGroup} onRemoveGroup={onRemoveGroup} onAccountChange={onAccountChange} onFiles={onFiles} onRemoveFile={onRemoveFile} /></div>}
+    </div>
+  }
+
   return <div className="rounded-lg border bg-muted/20 p-4"><div className="flex flex-wrap items-center justify-between gap-3"><div><BrokerTitle broker={broker} /><p className="mt-1 text-sm text-muted-foreground">Для каждого счёта укажите номер и добавьте его отчёты отдельно.</p></div><Button variant="outline" onClick={onAddGroup}><Plus data-icon="inline-start" />Добавить счёт</Button></div><div className="mt-4 flex flex-col gap-4">{groups.length === 0 && <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">Счета не добавлены.</p>}{groups.map((group, index) => { const locked = group.files.some((report) => report.uploaded); return <div key={group.id} className="rounded-md border bg-card p-4"><div className="flex flex-wrap items-end gap-3"><label className="min-w-52 flex-1 text-sm font-medium">Номер счёта {groups.length > 1 ? index + 1 : ''}<input className="mt-2 h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60" value={group.accountId} disabled={locked} onChange={(event) => onAccountChange(group.id, event.target.value)} placeholder="Например, 759023" /></label><FilePicker className="min-w-64 flex-1" broker={broker} onFiles={(files) => onFiles(group.id, broker, files)} /><Button variant="ghost" size="icon" disabled={locked} onClick={() => onRemoveGroup(group.id)} aria-label="Удалить счёт" title={locked ? 'Принятый backend счёт можно удалить только вместе со всем расчётом' : 'Удалить счёт'}><Trash2 /></Button></div>{!group.accountId.trim() && group.files.length > 0 && <p className="mt-2 text-xs text-destructive">Укажите номер счёта Freedom.</p>}<ReportList reports={group.files} busy={busy} onRemove={(reportId) => onRemoveFile(group.id, reportId)} /></div>})}</div>{broker.code === 'freedom' && <div className="mt-4 flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-primary/10 pt-3 text-sm"><BookOpen className="size-4 text-primary" aria-hidden="true" /><span className="font-medium">Инструкция:</span><Link href="/faq/freedom-broker" className="text-primary underline-offset-4 hover:underline">как скачать отчёты Freedom Broker</Link></div>}</div>
+}
+
+function BrokerGuidance({ broker }: { broker: BrokerConfig }) {
+  const guide = broker.code === 'ib'
+    ? { href: '/faq/interactive-brokers', label: 'как скачать отчёты Interactive Brokers' }
+    : broker.code === 'exante'
+      ? { href: '/faq/exante', label: 'как скачать отчёты Exante' }
+      : broker.code === 'freedom_bank'
+        ? { href: '/faq/freedom-bank', label: 'как скачать отчёты Freedom Bank' }
+        : broker.code === 'freedom'
+          ? { href: '/faq/freedom-broker', label: 'как скачать отчёты Freedom Broker' }
+          : broker.code === 'tabys'
+            ? { href: '/faq/tabys', label: 'как скачать отчёты Tabys' }
+            : null
+
+  if (!guide) return null
+  return <div className="mt-4 flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-primary/10 pt-3 text-sm"><BookOpen className="size-4 text-primary" aria-hidden="true" /><span className="font-medium">Инструкция:</span><Link href={guide.href} className="text-primary underline-offset-4 hover:underline">{guide.label}</Link></div>
+}
+
+function ManualBrokerContent({ broker, groups, busy, onAddGroup, onRemoveGroup, onAccountChange, onFiles, onRemoveFile }: { broker: BrokerConfig; groups: ManualAccountGroup[]; busy: boolean; onAddGroup: () => void; onRemoveGroup: (groupId: string) => void; onAccountChange: (groupId: string, value: string) => void; onFiles: (groupId: string, broker: BrokerConfig, files: File[]) => void; onRemoveFile: (groupId: string, reportId: string) => void }) {
+  return <><div className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm text-muted-foreground">Для каждого счёта укажите номер и добавьте его отчёты отдельно.</p><Button variant="outline" onClick={onAddGroup}><Plus data-icon="inline-start" />Добавить счёт</Button></div><div className="mt-4 flex flex-col gap-4">{groups.length === 0 && <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">Счета не добавлены.</p>}{groups.map((group, index) => { const locked = group.files.some((report) => report.uploaded); return <div key={group.id} className="rounded-md border bg-card p-4"><div className="flex flex-wrap items-end gap-3"><label className="min-w-52 flex-1 text-sm font-medium">Номер счёта {groups.length > 1 ? index + 1 : ''}<input className="mt-2 h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60" value={group.accountId} disabled={locked} onChange={(event) => onAccountChange(group.id, event.target.value)} placeholder="Например, 759023" /></label><FilePicker className="min-w-64 flex-1" broker={broker} onFiles={(files) => onFiles(group.id, broker, files)} /><Button variant="ghost" size="icon" disabled={locked} onClick={() => onRemoveGroup(group.id)} aria-label="Удалить счёт" title={locked ? 'Принятый backend счёт можно удалить только вместе со всем расчётом' : 'Удалить счёт'}><Trash2 /></Button></div>{!group.accountId.trim() && group.files.length > 0 && <p className="mt-2 text-xs text-destructive">Укажите номер счёта Freedom.</p>}<ReportList reports={group.files} busy={busy} onRemove={(reportId) => onRemoveFile(group.id, reportId)} /></div>})}</div><BrokerGuidance broker={broker} /></>
 }
 
 const brokerLogos: Record<string, { src: string; alt: string }> = {
   exante: { src: '/broker-logos/exante.png', alt: 'Exante' },
   freedom: { src: '/broker-logos/freedom-broker.png', alt: 'Freedom Broker' },
   freedom_bank: { src: '/broker-logos/freedom-bank.png', alt: 'Freedom Bank' },
+  halyk: { src: '/broker-logos/halyk-finance.png', alt: 'Halyk Finance' },
   ib: { src: '/broker-logos/interactive-brokers.png', alt: 'Interactive Brokers' },
   tabys: { src: '/broker-logos/tabys.png', alt: 'Tabys' },
   tsifra: { src: '/broker-logos/tsifra-broker.png', alt: 'Цифра Брокер' },

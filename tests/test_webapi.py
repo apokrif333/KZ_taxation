@@ -232,10 +232,15 @@ class WebApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         data = response.json()
         brokers = {item["code"]: item for item in data["brokers"]}
-        self.assertEqual(set(brokers), {"ib", "exante", "tabys", "tsifra", "freedom", "freedom_bank"})
+        self.assertEqual(
+            set(brokers),
+            {"ib", "exante", "tabys", "tsifra", "freedom", "freedom_bank", "halyk"},
+        )
         self.assertEqual(brokers["ib"]["account_id_mode"], "auto")
         self.assertEqual(brokers["freedom"]["account_id_mode"], "manual")
         self.assertEqual(brokers["freedom"]["upload_extensions"], [".xlsx"])
+        self.assertEqual(brokers["halyk"]["account_id_mode"], "auto")
+        self.assertEqual(brokers["halyk"]["upload_extensions"], [".xlsx"])
         self.assertEqual(data["max_job_files"], 6)
         self.assertEqual(data["pending_job_ttl_seconds"], 3600)
 

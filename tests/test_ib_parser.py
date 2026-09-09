@@ -107,6 +107,47 @@ Realized & Unrealized Performance Summary,Data,Total (All Assets),,0,38,0,0,0,38
 """
 
 
+OPTION_EXPIRATION_IB_CSV = """Statement,Header,Field Name,Field Value
+Statement,Data,Period,"January 1, 2025 - December 31, 2025"
+Account Information,Header,Field Name,Field Value
+Account Information,Data,Account,UEXP
+Account Information,Data,Base Currency,USD
+Financial Instrument Information,Header,Asset Category,Symbol,Description,Conid,Security ID,Underlying,Listing Exch,Multiplier,Expiry,Delivery Month,Type,Strike,Code
+Financial Instrument Information,Data,Options On Futures,EUUZ5 P1150,EUR 05DEC25 1.15 P,670793069,,6EZ5,CME,"125,000",2025-12-05,2025-12,P,1.15,
+Trades,Header,DataDiscriminator,Asset Category,Currency,Symbol,Date/Time,Quantity,T. Price,C. Price,Proceeds,Comm/Fee,Basis,Realized P/L,MTM P/L,Code
+Trades,Data,Order,Options On Futures,USD,EUR 05DEC25 1.15 P,"2025-07-31, 14:07:58",1,0.0181,0.0178,-2262.5,-2.47,2264.97,0,-37.5,O
+Trades,Data,Order,Options On Futures,USD,EUR 05DEC25 1.15 P,"2025-12-05, 17:15:00",-1,0,0,0,0,-2264.97,-2264.97,0,C;Ep
+Trades,Total,,Options On Futures,USD,,,,,,-2262.5,-2.47,0,-2264.97,-37.5,
+Cash Report,Header,Currency Summary,Currency,Total,Securities,Futures,
+Cash Report,Data,Ending Cash,USD,0,0,0,
+Open Positions,Header,DataDiscriminator,Asset Category,Currency,Symbol,Quantity,Mult,Cost Price,Cost Basis,Close Price,Value,Unrealized P/L,Code
+"""
+
+
+SEMICOLON_DELIMITED_IB_CSV = """Statement;Header;Field Name;Field Value
+Statement;Data;Period;"January 1, 2025 - December 31, 2025"
+Account Information;Header;Field Name;Field Value
+Account Information;Data;Account;USEMICOLON
+Account Information;Data;Base Currency;USD
+Financial Instrument Information;Header;Asset Category;Symbol;Description;Conid;Security ID;Underlying;Listing Exch;Multiplier;Type;Code
+Financial Instrument Information;Data;Stocks;AAPL;APPLE INC;1;US0378331005;AAPL;NASDAQ;1;COMMON;
+Trades;Header;DataDiscriminator;Asset Category;Currency;Symbol;Date/Time;Quantity;T. Price;C. Price;Proceeds;Comm/Fee;Basis;Realized P/L;MTM P/L;Code
+Trades;Data;Order;Stocks;USD;AAPL;"2025-01-10, 10:00:00";1;100;100;-100;-1;101;0;0;O
+"""
+
+
+SEMICOLON_PADDED_IB_CSV = '''Statement,Header,Field Name,Field Value;;;;;;;;;;;;
+"Statement,Data,Period,""January 1, 2025 - December 31, 2025""";;;;;;;;;;;;
+Account Information,Header,Field Name,Field Value;;;;;;;;;;;;
+Account Information,Data,Account,UPADDED;;;;;;;;;;;;
+Account Information,Data,Base Currency,USD;;;;;;;;;;;;
+Financial Instrument Information,Header,Asset Category,Symbol,Description,Conid,Security ID,Underlying,Listing Exch,Multiplier,Type,Code;;;;;;;;;;;;
+Financial Instrument Information,Data,Stocks,AAPL,APPLE INC,1,US0378331005,AAPL,NASDAQ,1,COMMON,;;;;;;;;;;;;
+Trades,Header,DataDiscriminator,Asset Category,Currency,Symbol,Date/Time,Quantity,T. Price,C. Price,Proceeds,Comm/Fee,Basis,Realized P/L,MTM P/L,Code;;;;;;;;;;;;
+"Trades,Data,Order,Stocks,USD,AAPL,""2025-01-10, 10:00:00"",1,100,100,-100,-1,101,0,0,O";;;;;;;;;;;;
+'''
+
+
 ADJUSTED_OPTION_ROOT_IB_CSV = """Statement,Header,Field Name,Field Value
 Statement,Data,Period,"January 1, 2020 - December 31, 2020"
 Account Information,Header,Field Name,Field Value
@@ -598,6 +639,23 @@ class InteractiveBrokersParserTests(unittest.TestCase):
         self.assertEqual(by_instrument_pnl[0].broker_value, Decimal("98"))
         self.assertEqual(by_instrument_pnl[0].canonical_value, Decimal("98.0"))
 
+    def test_parse_ib_csv_with_semicolon_delimiter_or_excel_padding(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            for account_id, report_text in (
+                ("USEMICOLON", SEMICOLON_DELIMITED_IB_CSV),
+                ("UPADDED", SEMICOLON_PADDED_IB_CSV),
+            ):
+                path = Path(tmp) / f"{account_id}_2025_2025.csv"
+                path.write_text(report_text, encoding="utf-8")
+
+                parsed = ib_module.parse_ib_csv_report(path)
+
+                self.assertEqual(parsed.account_id, account_id)
+                self.assertEqual(parsed.period_start, date(2025, 1, 1))
+                self.assertEqual(parsed.period_end, date(2025, 12, 31))
+                self.assertEqual(len(parsed.rows[ib_module.IB_SECTION_TRADES]), 1)
+                self.assertEqual(parsed.rows[ib_module.IB_SECTION_TRADES][0]["Symbol"], "AAPL")
+
     def test_restricted_ib_rubles_are_normalized_before_all_calculations(self) -> None:
         restricted_ruble_report = (
             MINIMAL_IB_CSV.replace("Base Currency,USD", "Base Currency,RUS")
@@ -732,6 +790,21 @@ class InteractiveBrokersParserTests(unittest.TestCase):
         self.assertEqual(derivative_rows[0]["only_profit"], "40.00")
         self.assertEqual(derivative_rows[0]["only_profit_kzt"], "20000.00")
         self.assertEqual(derivative_rows[0]["tax_kzt"], "2000.00")
+
+    def test_ib_expiration_code_is_preserved_as_zero_value_option_expiration(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            raw_root = Path(tmp) / "raw"
+            ib_root = raw_root / "ib"
+            ib_root.mkdir(parents=True)
+            (ib_root / "UEXP_2025_2025.csv").write_text(OPTION_EXPIRATION_IB_CSV, encoding="utf-8")
+
+            parser = InteractiveBrokersParser(AnnualFxRateProvider({(2025, "USD"): Decimal("521.59")}))
+            result = parser.parse_reports(parser.discover_reports(raw_root, "UEXP"), "UEXP")
+
+        expiration = result.dataset.tables["Trades"][1]
+        self.assertEqual(expiration["trade_type"], "option_expiration")
+        self.assertEqual(expiration["quantity"], "-1")
+        self.assertEqual(expiration["amount"], "0")
 
     def test_missing_opening_lot_is_visible_in_unprocessed_and_reconciliation(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

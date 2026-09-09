@@ -27,12 +27,15 @@ from kztax270.canonical.trade_enrichment import (
 ZERO = Decimal("0")
 HALF = Decimal("0.5")
 
-# Cash held with Freedom Broker is held by a Kazakhstan broker and is not
-# reported as a foreign-bank balance in application 04 C.  The second code is
-# retained for datasets produced by the broker/bank account split.
-FREEDOM_BROKER_CODES = frozenset({"freedom", "freedom_broker"})
+# Cash held with Kazakhstan brokers is not reported as a foreign-bank balance
+# in application 04 C. The second Freedom code is retained for datasets
+# produced by the broker/bank account split.
+DOMESTIC_BROKER_CODES = frozenset({"freedom", "freedom_broker", "halyk"})
 SECURITIES_ASSET_CODE = "3"
 DERIVATIVE_ASSET_CODE = "4"
+OTHER_ASSET_CODE = "12"
+NBK_XAU_IDENTIFIER = "NBK.XAU"
+NBK_XAU_OTHER_TEXT = "\u0418\u043c\u0443\u0449\u0435\u0441\u0442\u0432\u0435\u043d\u043d\u043e\u0435 \u043f\u0440\u0430\u0432\u043e"
 SECURITIES_ASSET_NAME = "ценные бумаги"
 DERIVATIVE_ASSET_NAME = "производные финансовые инструменты"
 OPERATION_PURCHASE = "Покупка"
@@ -655,7 +658,7 @@ def _build_application_04_c(
         if _int_or_none(row.get("year")) != tax_year:
             continue
         source_broker = (_str_or_none(row.get("broker")) or broker).lower()
-        if source_broker in FREEDOM_BROKER_CODES:
+        if source_broker in DOMESTIC_BROKER_CODES:
             continue
         currency = _str_or_none(row.get("currency"))
         if currency is None or currency == "KZT":
@@ -781,7 +784,7 @@ def _build_application_05(
                 {
                     "A": _row_no(len(buys) + 1),
                     "B": _asset_kind_code(row),
-                    "_01": None,
+                    "_01": _asset_kind_other_text(row),
                     "C": identifier,
                     "D": _format_date(parsed_date),
                     "E": country,
@@ -802,7 +805,7 @@ def _build_application_05(
                 {
                     "A": _row_no(len(sells) + 1),
                     "B": _asset_kind_code(row),
-                    "_01": None,
+                    "_01": _asset_kind_other_text(row),
                     "C": identifier,
                     "D": _format_date(parsed_date),
                     "E": country,
@@ -1075,6 +1078,8 @@ def _rate_lookup(tables: Mapping[str, Sequence[Mapping[str, Any]]]) -> dict[tupl
 
 
 def _asset_kind_code(row: Mapping[str, Any]) -> str:
+    if _is_nbk_xau_gold_right(row):
+        return OTHER_ASSET_CODE
     if _is_derivative_asset(row):
         value, fallback = DERIVATIVE_ASSET_NAME, DERIVATIVE_ASSET_CODE
     else:
@@ -1083,7 +1088,18 @@ def _asset_kind_code(row: Mapping[str, Any]) -> str:
     return code if code in _reference_codes(ASSET_TYPES_FILE) else fallback
 
 
+def _asset_kind_other_text(row: Mapping[str, Any]) -> str | None:
+    return NBK_XAU_OTHER_TEXT if _is_nbk_xau_gold_right(row) else None
+
+
+def _is_nbk_xau_gold_right(row: Mapping[str, Any]) -> bool:
+    identifiers = (row.get("isin"), row.get("symbol"), row.get("security_id"))
+    return any(str(value or "").strip().upper() == NBK_XAU_IDENTIFIER for value in identifiers)
+
+
 def _is_application_04_property_asset(row: Mapping[str, Any]) -> bool:
+    if _is_nbk_xau_gold_right(row):
+        return False
     if _is_excluded_security(row):
         return False
     if _is_derivative_asset(row):

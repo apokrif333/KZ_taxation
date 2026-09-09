@@ -5,7 +5,7 @@ import unittest
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pandas as pd
 
@@ -386,6 +386,93 @@ class TabysParserTests(unittest.TestCase):
                 ).resolve("SOLV3.0526")
             second_requests_factory.assert_not_called()
             self.assertEqual(cached_instrument["isin"], "KZX000002241")
+
+    def test_nbk_xau_uses_tabys_rule_without_aix_lookup_and_taxes_each_profit(self) -> None:
+        reports = [
+            ParsedTabysReport(
+                path=Path("007638948 nbk-xau 2025.pdf"),
+                account_id="007638948",
+                period_start=date(2025, 1, 1),
+                period_end=date(2025, 12, 31),
+                rows=[
+                    _row(
+                        sequence=1,
+                        transaction_datetime="2025-01-02 10:00:00",
+                        transaction_id="buy-profit",
+                        account_type="Securities account",
+                        operation="Purchase",
+                        security="NBK.XAU",
+                        quantity="1",
+                        price="100",
+                        amount="100",
+                        currency="KZT",
+                        status="Executed",
+                    ),
+                    _row(
+                        sequence=2,
+                        transaction_datetime="2025-02-02 10:00:00",
+                        transaction_id="sell-profit",
+                        account_type="Securities account",
+                        operation="Sale",
+                        security="NBK.XAU",
+                        quantity="1",
+                        price="130",
+                        amount="130",
+                        currency="KZT",
+                        status="Executed",
+                    ),
+                    _row(
+                        sequence=3,
+                        transaction_datetime="2025-03-02 10:00:00",
+                        transaction_id="buy-loss",
+                        account_type="Securities account",
+                        operation="Purchase",
+                        security="NBK.XAU",
+                        quantity="1",
+                        price="100",
+                        amount="100",
+                        currency="KZT",
+                        status="Executed",
+                    ),
+                    _row(
+                        sequence=4,
+                        transaction_datetime="2025-04-02 10:00:00",
+                        transaction_id="sell-loss",
+                        account_type="Securities account",
+                        operation="Sale",
+                        security="NBK.XAU",
+                        quantity="1",
+                        price="90",
+                        amount="90",
+                        currency="KZT",
+                        status="Executed",
+                    ),
+                ],
+            )
+        ]
+        resolver = Mock()
+        dataset = build_canonical_dataset(
+            reports,
+            "007638948",
+            AnnualFxRateProvider({(2025, "KZT"): Decimal("1")}),
+            instrument_resolver=resolver,
+        )
+
+        resolver.resolve.assert_not_called()
+        instrument = dataset.tables["Instruments"][0]
+        self.assertEqual(instrument["isin"], "NBK.XAU")
+        self.assertEqual(instrument["country"], "KZ")
+        self.assertEqual(instrument["type"], "Derivative")
+        self.assertTrue(instrument["force_non_preferential_tax_flag"])
+        self.assertTrue(all(row["asset_type"] == "Derivative" for row in dataset.tables["Trades"]))
+
+        yearly = dataset.tables["Years_Results"]
+        self.assertEqual(len(yearly), 1)
+        self.assertEqual(yearly[0]["table"], "Yearly Derivatives")
+        self.assertEqual(yearly[0]["flag"], "non-preferential")
+        self.assertEqual(yearly[0]["pnl_kzt"], "20.00")
+        self.assertEqual(yearly[0]["only_profit_kzt"], "30.00")
+        self.assertEqual(yearly[0]["tax_kzt"], "3.00")
 
     def test_discovery_and_registry_expose_tabys(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
