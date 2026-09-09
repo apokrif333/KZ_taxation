@@ -19,6 +19,7 @@ from .legacy_adapters import (
     InteractiveBrokersLegacyAdapter,
     TsifraLegacyAdapter,
 )
+from .paidax import PaidaxParser
 from .tabys import TabysParser
 from .tsifra import TsifraParser
 
@@ -51,6 +52,7 @@ def default_registry(
     registry.register(FreedomParser(fx_provider=fx_provider, transfer_in_resolver=transfer_in_resolver))
     registry.register(FreedomBankParser(fx_provider=fx_provider))
     registry.register(HalykParser(fx_provider=fx_provider))
+    registry.register(PaidaxParser(fx_provider=fx_provider))
     registry.register(ExanteParser(fx_provider=fx_provider, transfer_in_resolver=transfer_in_resolver))
     registry.register(TabysParser(fx_provider=fx_provider, transfer_in_resolver=transfer_in_resolver))
     exante_legacy = ExanteLegacyAdapter()

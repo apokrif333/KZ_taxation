@@ -80,6 +80,13 @@ def _halyk_report(path: Path) -> DetectedReportMetadata:
     return DetectedReportMetadata(parsed.account_id, parsed.period_end)
 
 
+def _paidax_report(path: Path) -> DetectedReportMetadata:
+    from kztax270.brokers.paidax import parse_paidax_xlsx
+
+    parsed = parse_paidax_xlsx(path)
+    return DetectedReportMetadata(parsed.account_id, parsed.period_end)
+
+
 def _freedom_report(path: Path) -> DetectedReportMetadata:
     from kztax270.brokers.freedom import parse_freedom_report
 
@@ -109,6 +116,9 @@ BROKER_REPORT_SPECS: dict[str, BrokerReportSpec] = {
     ),
     "halyk": BrokerReportSpec(
         "halyk", "Halyk Finance", frozenset({".xlsx"}), _halyk_report, True
+    ),
+    "paidax": BrokerReportSpec(
+        "paidax", "Paidax", frozenset({".xlsx"}), _paidax_report, True
     ),
     "tabys": BrokerReportSpec(
         "tabys", "Tabys", frozenset({".pdf"}), _tabys_report, True

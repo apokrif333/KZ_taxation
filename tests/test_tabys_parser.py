@@ -17,7 +17,12 @@ from kztax270.canonical.validation import validate_dataset_for_tax_forms
 from kztax270.reconciliation.engine import ReconciliationEngine
 from kztax270.reconciliation.models import ReconciliationSeverity
 from kztax270.reference.fx import AnnualFxRateProvider
-from kztax270.reference.securities import AIX_COLUMNS, AIX_PROFILE_API_URL, AixInstrumentResolver
+from kztax270.reference.securities import (
+    AIX_COLUMNS,
+    AIX_PROFILE_API_URL,
+    AixInstrumentNotFoundError,
+    AixInstrumentResolver,
+)
 
 
 class TabysParserTests(unittest.TestCase):
@@ -386,6 +391,102 @@ class TabysParserTests(unittest.TestCase):
                 ).resolve("SOLV3.0526")
             second_requests_factory.assert_not_called()
             self.assertEqual(cached_instrument["isin"], "KZX000002241")
+
+    def test_aix_profile_404_is_reported_as_missing_instrument(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            resolver = AixInstrumentResolver(
+                aix_path=Path(tmp) / "aix_instruments.xlsx",
+                profile_cache_path=Path(tmp) / "tabys_instruments.xlsx",
+            )
+            with patch("kztax270.reference.securities._requests") as requests_factory:
+                response = requests_factory.return_value.get.return_value
+                response.status_code = 404
+                with self.assertRaises(AixInstrumentNotFoundError):
+                    resolver.resolve("UNKNOWN")
+
+        response.raise_for_status.assert_not_called()
+
+    def test_china_equities_display_name_resolves_as_brixc(self) -> None:
+        reports = [
+            ParsedTabysReport(
+                path=Path("007638948 2025.pdf"),
+                period_start=date(2025, 1, 1),
+                period_end=date(2025, 12, 31),
+                rows=[
+                    _row(
+                        transaction_datetime="2025-01-05 17:06:00",
+                        transaction_id="brixc-buy",
+                        account_type="Securities account",
+                        operation="Purchase",
+                        security="CHINA EQUITIES",
+                        quantity="2",
+                        price="39.28",
+                        amount="78.56",
+                        currency="CNY",
+                        status="Executed",
+                    )
+                ],
+            )
+        ]
+        resolver = Mock()
+        resolver.resolve.return_value = {
+            "isin": "KZX000001078",
+            "country": "KZ",
+            "type": "ETN",
+            "description": "China Equities",
+            "currency": "CNY",
+        }
+
+        dataset = build_canonical_dataset(
+            reports,
+            "007638948",
+            AnnualFxRateProvider({(2025, "CNY"): Decimal("72")}),
+            instrument_resolver=resolver,
+        )
+
+        resolver.resolve.assert_called_once_with("BRIXC", snapshot_year=2025)
+        self.assertEqual(dataset.tables["Instruments"][0]["symbol"], "BRIXC")
+        self.assertEqual(dataset.tables["Instruments"][0]["isin"], "KZX000001078")
+        self.assertEqual(dataset.tables["Trades"][0]["symbol"], "BRIXC")
+
+    def test_aix_404_leaves_unknown_tabys_instrument_unprocessed(self) -> None:
+        reports = [
+            ParsedTabysReport(
+                path=Path("007638948 2025.pdf"),
+                period_start=date(2025, 1, 1),
+                period_end=date(2025, 12, 31),
+                rows=[
+                    _row(
+                        transaction_datetime="2025-01-05 17:06:00",
+                        transaction_id="unknown-buy",
+                        account_type="Securities account",
+                        operation="Purchase",
+                        security="Unknown Tabys Product",
+                        quantity="1",
+                        price="10",
+                        amount="10",
+                        currency="USD",
+                        status="Executed",
+                    )
+                ],
+            )
+        ]
+        resolver = Mock()
+        resolver.resolve.side_effect = AixInstrumentNotFoundError("AIX has no instrument profile for UNKNOWN TABYS PRODUCT.")
+
+        dataset = build_canonical_dataset(
+            reports,
+            "007638948",
+            AnnualFxRateProvider({(2025, "USD"): Decimal("520")}),
+            instrument_resolver=resolver,
+        )
+
+        self.assertEqual(dataset.tables["Trades"], [])
+        self.assertEqual(dataset.tables["Instruments"][0]["type"], "Unresolved")
+        self.assertEqual(
+            [(row["reason"], row["symbol"]) for row in dataset.tables["Unprocessed"]],
+            [("unresolved_tabys_instrument", "Unknown Tabys Product")],
+        )
 
     def test_nbk_xau_uses_tabys_rule_without_aix_lookup_and_taxes_each_profit(self) -> None:
         reports = [

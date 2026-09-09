@@ -39,7 +39,7 @@ export function UploadWorkflow({
   onManualAccountChange, onAddManualFiles, onRemoveManualFile, onForm27005Change, onContinue, onAbandon,
 }: UploadWorkflowProps) {
   const brokers = [...config.brokers].sort(compareBrokers)
-  const carefullyVerifyBrokerCodes = ['tabys', 'halyk']
+  const carefullyVerifyBrokerCodes = ['tabys', 'halyk', 'paidax']
   const primaryBrokers = brokers.filter((broker) => !carefullyVerifyBrokerCodes.includes(broker.code))
   const carefullyVerifyBrokers = carefullyVerifyBrokerCodes
     .map((code) => brokers.find((broker) => broker.code === code))

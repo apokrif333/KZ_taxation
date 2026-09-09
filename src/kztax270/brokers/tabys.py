@@ -16,7 +16,7 @@ from kztax270.canonical.trade_enrichment import enrich_trades_before_calculation
 from kztax270.diagnostics import instrument_parsed_reports
 from kztax270.reconciliation.models import ReconciliationMetric
 from kztax270.reference.fx import AnnualFxRateProvider
-from kztax270.reference.securities import AixInstrumentResolver
+from kztax270.reference.securities import AixInstrumentNotFoundError, AixInstrumentResolver
 from kztax270.transfers import TransferInFifoResolver
 
 from .base import BrokerReport, ParseResult
@@ -58,6 +58,8 @@ NBK_XAU_REFERENCE: dict[str, Any] = {
     "preferential_tax_flag": False,
     "force_non_preferential_tax_flag": True,
 }
+
+UNRESOLVED_TABYS_INSTRUMENT_TYPE = "Unresolved"
 
 @dataclass(slots=True)
 class ParsedTabysReport:
@@ -285,11 +287,13 @@ def _build_instruments(
     instruments: list[dict[str, Any]] = []
     for symbol in sorted(first_source_by_symbol):
         latest_date = latest_date_by_symbol[symbol]
-        reference = (
-            dict(NBK_XAU_REFERENCE)
-            if symbol == NBK_XAU_SYMBOL
-            else resolver.resolve(symbol, snapshot_year=latest_date.year if latest_date else None)
-        )
+        if symbol == NBK_XAU_SYMBOL:
+            reference = dict(NBK_XAU_REFERENCE)
+        else:
+            try:
+                reference = resolver.resolve(symbol, snapshot_year=latest_date.year if latest_date else None)
+            except AixInstrumentNotFoundError:
+                reference = _unresolved_tabys_instrument_reference(symbol)
         isin = _text(reference.get("isin"))
         country = _text(reference.get("country")) or _country_from_isin(isin)
         asset_type = _text(reference.get("type"))
@@ -345,6 +349,8 @@ def _build_trades(
                 continue
             symbol = _security_symbol(row)
             instrument = instruments.get(symbol or "", {})
+            if _is_unresolved_tabys_instrument(instrument):
+                continue
             quantity = _decimal(row.get("quantity"))
             if _is_sale_operation(row):
                 quantity = -quantity
@@ -440,6 +446,8 @@ def _build_transfers(
 
         symbol = _security_symbol(row)
         instrument = instruments.get(symbol or "", {})
+        if _is_unresolved_tabys_instrument(instrument):
+            continue
         isin = _text(instrument.get("isin"))
         identity = isin or symbol or ""
         quantity = abs(_decimal(row.get("quantity")))
@@ -612,8 +620,17 @@ def _build_tabys_unprocessed_rows(
             if not _is_executed(row):
                 rows.append(_unprocessed_row(row, "tabys_operation_not_executed", "Tabys operation status is not Executed."))
                 continue
+            instrument = instruments.get(_security_symbol(row) or "", {})
+            if _is_unresolved_tabys_instrument(instrument):
+                rows.append(
+                    _unprocessed_row(
+                        row,
+                        "unresolved_tabys_instrument",
+                        "Tabys provided an instrument name that could not be resolved to an AIX profile.",
+                    )
+                )
+                continue
             if _is_income_operation(row):
-                instrument = instruments.get(_security_symbol(row) or "", {})
                 if _text(instrument.get("type")) not in {"Bonds", "ETN", "Stocks"}:
                     rows.append(
                         _unprocessed_row(
@@ -706,12 +723,26 @@ def _security_symbol(row: Mapping[str, Any]) -> str | None:
     if ticker_match:
         return ticker_match.group(1)
     alias = {
+        "china equities": "BRIXC",
         "real estate": "IXR",
         "islamic etn": "IXI",
     }.get(" ".join(symbol.casefold().split()))
     if alias:
         return alias
     return symbol
+
+
+def _unresolved_tabys_instrument_reference(symbol: str) -> dict[str, Any]:
+    return {
+        "symbol": symbol,
+        "description": symbol,
+        "type": UNRESOLVED_TABYS_INSTRUMENT_TYPE,
+        "source": "tabys:unresolved_aix_profile",
+    }
+
+
+def _is_unresolved_tabys_instrument(instrument: Mapping[str, Any]) -> bool:
+    return _text(instrument.get("type")) == UNRESOLVED_TABYS_INSTRUMENT_TYPE
 
 
 def _is_security_account(row: Mapping[str, Any]) -> bool:

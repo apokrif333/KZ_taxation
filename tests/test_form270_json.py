@@ -861,6 +861,7 @@ class Form270JsonTests(unittest.TestCase):
                 "currency": "EUR",
                 "ending_cash": "250",
             },
+            {"broker": "paidax", "account_id": "PDK1", "year": 2024, "currency": "USD", "ending_cash": "300"},
             {"broker": "ib", "account_id": "U1", "year": 2024, "currency": "USD", "ending_cash": "100"},
         ]
 

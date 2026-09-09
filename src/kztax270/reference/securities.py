@@ -47,6 +47,10 @@ TABYS_PROFILE_COLUMNS = (
 )
 
 
+class AixInstrumentNotFoundError(RuntimeError):
+    """Raised when AIX has no profile for the requested instrument ticker."""
+
+
 def ensure_aix_instruments_current(path: Path = DEFAULT_AIX_INSTRUMENTS_PATH, today: date | None = None) -> bool:
     """Ensure the local AIX instrument snapshot was refreshed for the previous year."""
 
@@ -183,6 +187,8 @@ def fetch_aix_instrument_profile(ticker: str, *, timeout: float = 30) -> dict[st
     normalized_ticker = str(ticker or "").strip().upper()
     requests = _requests()
     response = requests.get(AIX_PROFILE_API_URL.format(ticker=normalized_ticker), timeout=timeout)
+    if response.status_code == 404:
+        raise AixInstrumentNotFoundError(f"AIX has no instrument profile for {normalized_ticker}.")
     response.raise_for_status()
     profile = response.json()
     if not isinstance(profile, dict) or not _normalize_isin(profile.get("isin")):

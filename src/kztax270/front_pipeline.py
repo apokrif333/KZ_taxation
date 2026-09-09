@@ -39,6 +39,7 @@ FRONT_BROKER_FOLDERS = {
     "ib": "ib",
     "exante": "exante",
     "halyk": "halyk",
+    "paidax": "paidax",
     "tabys": "tabys",
     "tsifra": "tsifra",
     "freedom_bank": "freedom_bank",

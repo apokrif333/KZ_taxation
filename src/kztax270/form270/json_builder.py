@@ -30,7 +30,7 @@ HALF = Decimal("0.5")
 # Cash held with Kazakhstan brokers is not reported as a foreign-bank balance
 # in application 04 C. The second Freedom code is retained for datasets
 # produced by the broker/bank account split.
-DOMESTIC_BROKER_CODES = frozenset({"freedom", "freedom_broker", "halyk"})
+DOMESTIC_BROKER_CODES = frozenset({"freedom", "freedom_broker", "halyk", "paidax"})
 SECURITIES_ASSET_CODE = "3"
 DERIVATIVE_ASSET_CODE = "4"
 OTHER_ASSET_CODE = "12"
