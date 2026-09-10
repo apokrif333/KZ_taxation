@@ -73,7 +73,6 @@ def ensure_aix_instruments_current(path: Path = DEFAULT_AIX_INSTRUMENTS_PATH, to
 
 
 def read_aix_instruments_dataframe(path: Path) -> Any:
-    pd = _pandas()
     df = read_excel_checked(path, engine="openpyxl")
     required_columns = {"year", "isin", "listingDate"}
     missing_columns = required_columns - set(df.columns)
@@ -90,7 +89,6 @@ def read_tabys_instruments_dataframe(path: Path) -> Any:
     classification based on ``aix_instruments.xlsx``.
     """
 
-    pd = _pandas()
     return _normalize_tabys_instruments_dataframe(read_excel_checked(path, engine="openpyxl"))
 
 

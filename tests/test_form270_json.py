@@ -13,6 +13,7 @@ from kztax270.form270 import json_builder
 from kztax270.form270.json_builder import (
     ASSET_TYPES_FILE,
     COUNTRY_CODES_FILE,
+    COUNTRY_ISO3_BY_ISO2,
     CURRENCY_CODES_FILE,
     OPERATION_GRATUITOUS,
     OPERATION_GRATUITOUS_TRANSFERRED,
@@ -1158,6 +1159,7 @@ iin = "1"
         self.assertTrue(config.jobs[0].form270_05)
 
     def test_reference_dictionaries_normalize_form_codes(self) -> None:
+        self.assertEqual(_country_code_for_form("DE"), "DEU")
         self.assertEqual(_country_code_for_form("US"), "USA")
         self.assertEqual(_country_code_for_form("США"), "USA")
         self.assertEqual(_country_code_for_form("Cyprus"), "CYP")
@@ -1168,6 +1170,30 @@ iin = "1"
         self.assertEqual(_trade_type_code_for_form("Приобретено путем обмена"), "2")
         self.assertEqual(_trade_type_code_for_form("Продажа"), "4")
         self.assertIn(_trade_type_code_for_form("Продажа"), _reference_codes(TRADES_TYPES_FILE))
+
+    def test_isin_country_prefixes_map_to_codes_supported_by_form270(self) -> None:
+        for prefix, code in COUNTRY_ISO3_BY_ISO2.items():
+            if len(prefix) != 2:
+                continue
+            self.assertIn(code, _reference_codes(COUNTRY_CODES_FILE), f"{prefix} must map to a Form 270 code")
+
+    def test_builder_uses_deu_for_german_isin_positions(self) -> None:
+        dataset = CanonicalDataset.empty("ib", "DE_TEST")
+        dataset.tables["Positions"] = [
+            {
+                "year": 2025,
+                "asset_type": "Stocks",
+                "symbol": "EXAMPLE",
+                "isin": "DE0008232125",
+                "quantity": "1",
+            }
+        ]
+
+        form = _builder().build_account_draft(dataset, tax_year=2025)
+        position = form["fnoContent"]["application_04"]["E"][0]
+
+        self.assertEqual(position["C"], "DE0008232125")
+        self.assertEqual(position["D"], "DEU")
 
     def test_merge_concatenates_lists_and_keeps_existing_scalar(self) -> None:
         merged = merge_form270_jsons(
