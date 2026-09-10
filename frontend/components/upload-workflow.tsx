@@ -179,6 +179,7 @@ const brokerLogos: Record<string, { src: string; alt: string }> = {
   freedom_bank: { src: '/broker-logos/freedom-bank.png', alt: 'Freedom Bank' },
   halyk: { src: '/broker-logos/halyk-finance.png', alt: 'Halyk Finance' },
   ib: { src: '/broker-logos/interactive-brokers.png', alt: 'Interactive Brokers' },
+  paidax: { src: '/broker-logos/paidax.png', alt: 'Paidax' },
   tabys: { src: '/broker-logos/tabys.png', alt: 'Tabys' },
   tsifra: { src: '/broker-logos/tsifra-broker.png', alt: 'Цифра Брокер' },
 }
