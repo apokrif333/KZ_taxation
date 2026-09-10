@@ -115,6 +115,12 @@ def parse_paidax_xlsx(path: Path) -> ParsedPaidaxReport:
     workbook = load_workbook(path, read_only=True, data_only=True)
     parsed = ParsedPaidaxReport(path=path)
     try:
+        # Paidax workbooks can contain stale worksheet ``<dimension>`` values.
+        # In read-only mode openpyxl treats that value as an iteration boundary,
+        # which otherwise silently drops valid rows below the declared range.
+        for worksheet in workbook.worksheets:
+            worksheet.reset_dimensions()
+            worksheet.calculate_dimension(force=True)
         if SUMMARY_SHEET in workbook.sheetnames:
             _parse_summary(workbook[SUMMARY_SHEET], parsed)
         if TRADES_SHEET in workbook.sheetnames:
@@ -991,7 +997,7 @@ def _build_dividends(
                     "net_amount": _money_text(net),
                     "kzt_rate": str(rate) if rate is not None else None,
                     "gross_amount_kzt": _amount_kzt(gross, rate),
-                    "tax": _money_text(tax),
+                    "tax": str(tax),
                     "tax_kzt": _amount_kzt(tax, rate),
                     "offshore_flag": False if country == "KZ" else None,
                     "kase_aix_preferential_flag": True if country == "KZ" else None,

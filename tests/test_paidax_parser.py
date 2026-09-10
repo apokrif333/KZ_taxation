@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+import zipfile
 from decimal import Decimal
 from pathlib import Path
 
@@ -9,6 +10,7 @@ from openpyxl import Workbook
 
 from conftest_imports import SRC  # noqa: F401
 from kztax270.brokers.account_detection import detect_report_account_id, detect_report_period_end
+from kztax270.brokers import paidax as paidax_module
 from kztax270.brokers.paidax import PaidaxParser, parse_paidax_xlsx
 from kztax270.brokers.registry import default_registry
 from kztax270.canonical.validation import validate_dataset_for_tax_forms
@@ -178,6 +180,21 @@ def _report(path: Path, account_id: str = "PDK001") -> None:
     workbook.close()
 
 
+def _set_stale_worksheet_dimension(path: Path, sheet_path: str, dimension: str) -> None:
+    with zipfile.ZipFile(path) as source:
+        entries = {
+            entry.filename: source.read(entry.filename)
+            for entry in source.infolist()
+        }
+    contents = entries[sheet_path]
+    start = contents.index(b'<dimension ref="')
+    end = contents.index(b'"', start + len(b'<dimension ref="'))
+    entries[sheet_path] = contents[:start] + f'<dimension ref="{dimension}'.encode() + contents[end:]
+    with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as target:
+        for entry_name, content in entries.items():
+            target.writestr(entry_name, content)
+
+
 class PaidaxParserTests(unittest.TestCase):
     def test_paidax_builds_canonical_audit_and_excludes_direct_crypto(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -221,6 +238,53 @@ class PaidaxParserTests(unittest.TestCase):
             self.assertEqual(detect_report_account_id("paidax", path), "PDK008156")
             self.assertEqual(detect_report_period_end("paidax", path).isoformat(), "2025-12-31")
         self.assertIn("paidax", default_registry().broker_codes())
+
+    def test_paidax_reads_rows_beyond_a_stale_worksheet_dimension(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "report.xlsx"
+            _report(path)
+            _set_stale_worksheet_dimension(path, "xl/worksheets/sheet2.xml", "B1:T5")
+
+            parsed = parse_paidax_xlsx(path)
+            dataset = paidax_module.build_canonical_dataset(
+                [parsed],
+                "PDK001",
+                AnnualFxRateProvider({(2025, "USD"): Decimal("520")}),
+            )
+
+        self.assertEqual([row["symbol"] for row in parsed.trades], ["AAA", "AAA"])
+        self.assertIn(
+            "unsupported_crypto_asset",
+            {row["reason"] for row in parsed.unprocessed},
+        )
+        self.assertNotIn(
+            "unexplained_ending_position",
+            {row["reason"] for row in dataset.tables["Unprocessed"]},
+        )
+
+    def test_paidax_dividend_tax_keeps_fractional_cent_precision(self) -> None:
+        report = paidax_module.ParsedPaidaxReport(path=Path("paidax.xlsx"))
+        report.payments = [
+            {
+                "date": "2025-12-10",
+                "record_date": "2025-12-01",
+                "symbol": "BND",
+                "isin": "US9219378356",
+                "currency": "USD",
+                "gross": "0.23",
+                "withholding": "0.03",
+                "net": "0.20",
+            }
+        ]
+
+        dividends = paidax_module._build_dividends(
+            [report],
+            [{"isin": "US9219378356", "symbol": "BND", "country": "US"}],
+            AnnualFxRateProvider({(2025, "USD"): Decimal("521.59")} ),
+            [],
+        )
+
+        self.assertEqual(dividends[0]["tax"], "0.0230")
 
 
 if __name__ == "__main__":

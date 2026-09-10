@@ -514,7 +514,7 @@ def _build_dividends(
                     "net_amount": _money_text(gross),
                     "kzt_rate": str(rate) if rate is not None else None,
                     "gross_amount_kzt": _amount_kzt(gross, rate),
-                    "tax": _money_text(tax),
+                    "tax": str(tax),
                     "tax_kzt": _amount_kzt(tax, rate),
                     "offshore_flag": False if country == "KZ" else None,
                     "kase_aix_preferential_flag": True if country == "KZ" else None,

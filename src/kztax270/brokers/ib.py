@@ -4413,7 +4413,6 @@ def _build_dividend_year_groups(
         lambda: {
             "amount": Decimal("0"),
             "amount_kzt": Decimal("0"),
-            "tax_usd": Decimal("0"),
             "withholding_paid": Decimal("0"),
             "withholding_reverted": Decimal("0"),
             "rate": Decimal("0"),
@@ -4428,7 +4427,6 @@ def _build_dividend_year_groups(
         )
         gross_amount = sum((_decimal(record.get("gross_amount")) for record in group_records), Decimal("0"))
         gross_amount_kzt = sum((_decimal(record.get("gross_amount_kzt")) for record in group_records), Decimal("0"))
-        tax_amount = sum((_decimal(record.get("tax")) for record in group_records), Decimal("0"))
         withholding_paid = sum(
             (abs(_decimal(record.get("withholding_tax"))) for record in group_records if _decimal(record.get("withholding_tax")) < 0),
             Decimal("0"),
@@ -4445,7 +4443,6 @@ def _build_dividend_year_groups(
             values = credit_groups[key]
             values["amount"] += gross_amount
             values["amount_kzt"] += gross_amount_kzt
-            values["tax_usd"] += tax_amount
             values["rate"] = rate or values["rate"]
             values["withholding_paid"] += withholding_paid
             values["withholding_reverted"] += withholding_reverted
@@ -4457,7 +4454,10 @@ def _build_dividend_year_groups(
     for key, values in credit_groups.items():
         final_foreign_tax_paid = values["withholding_paid"] - values["withholding_reverted"]
         displayed_foreign_tax_paid = max(final_foreign_tax_paid, Decimal("0"))
-        kz_tax_before_credit = values["tax_usd"]
+        # Tax credit is limited by 10% of the aggregate dividend income. Do
+        # not sum the per-payment ``tax`` field here: legacy workbooks and
+        # some broker adapters round it to cents before annual aggregation.
+        kz_tax_before_credit = max(values["amount"], Decimal("0")) * Decimal("0.10")
         foreign_tax_credit = min(max(final_foreign_tax_paid, Decimal("0")), kz_tax_before_credit)
         if values["amount"] == 0 and values["amount_kzt"] == 0 and foreign_tax_credit == 0:
             continue

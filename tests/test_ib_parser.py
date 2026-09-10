@@ -2177,6 +2177,63 @@ Cash Report,Data,Ending Cash,USD,0,0,0,
             ("OMC 5 3/8 06/15/33", "USU68191AK88"),
         ])
 
+    def test_dividend_credit_uses_unrounded_aggregate_tax_base(self) -> None:
+        records = [
+            {
+                "pay_date": "2025-12-10",
+                "symbol": "BND",
+                "isin": "US9219378356",
+                "country": "US",
+                "currency": "USD",
+                "gross_amount": "0.23",
+                "gross_amount_kzt": "119.9657",
+                # This is how older broker adapters persisted rounded tax.
+                "tax": "0.02",
+                "withholding_tax": "-0.03",
+                "kzt_rate": "521.59",
+            },
+            {
+                "pay_date": "2025-12-10",
+                "symbol": "TLT",
+                "isin": "US4642874329",
+                "country": "US",
+                "currency": "USD",
+                "gross_amount": "0.63",
+                "gross_amount_kzt": "328.6017",
+                "tax": "0.06",
+                "withholding_tax": "-0.09",
+                "kzt_rate": "521.59",
+            },
+            {
+                "pay_date": "2025-12-26",
+                "symbol": "TLT",
+                "isin": "US4642874329",
+                "country": "US",
+                "currency": "USD",
+                "gross_amount": "0.68",
+                "gross_amount_kzt": "354.6812",
+                "tax": "0.07",
+                "withholding_tax": "-0.10",
+                "kzt_rate": "521.59",
+            },
+            {
+                "pay_date": "2025-12-31",
+                "symbol": "SPUS",
+                "isin": "US8863648015",
+                "country": "US",
+                "currency": "USD",
+                "gross_amount": "0.01",
+                "gross_amount_kzt": "5.2159",
+                "tax": "0.00",
+                "withholding_tax": "0.00",
+                "kzt_rate": "521.59",
+            },
+        ]
+
+        values = next(iter(ib_module._build_dividend_year_groups(records).values()))
+
+        self.assertEqual(values["foreign_tax_credit_kzt"], Decimal("-80.84645"))
+
 
 if __name__ == "__main__":
     unittest.main()
