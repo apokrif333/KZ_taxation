@@ -111,6 +111,7 @@ function BrokerReportCard({ broker, reports, busy, onFiles, onRemove, collapsibl
         <div><BrokerTitle broker={broker} /><p className="mt-1 text-sm text-muted-foreground">{hasReports ? `${reports.length} ${pluralFiles(reports.length)}` : 'Файлы не добавлены'}</p></div>
         {hasReports ? <CheckCircle2 className="size-5 shrink-0 text-primary" aria-label="Файлы добавлены" /> : <ChevronDown className={cn('size-5 shrink-0 text-muted-foreground transition-transform', expanded && 'rotate-180')} aria-hidden="true" />}
       </button>
+      <BrokerWarning broker={broker} />
       {expanded && <div id={contentId} className="mt-4 border-t border-primary/10 pt-4"><FilePicker broker={broker} onFiles={onFiles} /><ReportList reports={reports} busy={busy} onRemove={onRemove} /><BrokerGuidance broker={broker} /></div>}
     </div>
   }
@@ -171,6 +172,11 @@ function BrokerGuidance({ broker }: { broker: BrokerConfig }) {
 
   if (!guide) return null
   return <div className="mt-4 flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-primary/10 pt-3 text-sm"><BookOpen className="size-4 text-primary" aria-hidden="true" /><span className="font-medium">Инструкция:</span><Link href={guide.href} className="text-primary underline-offset-4 hover:underline">{guide.label}</Link></div>
+}
+
+function BrokerWarning({ broker }: { broker: BrokerConfig }) {
+  if (broker.code !== 'paidax') return null
+  return <Alert className="mt-3 border-amber-300/80 bg-amber-50 text-amber-950 dark:border-amber-500/40 dark:bg-amber-950/35 dark:text-amber-100"><Info className="mt-0.5" aria-hidden="true" /><AlertDescription><span className="font-semibold">Внимание!</span> Сделки с криптовалютой не обрабатываются и не учитываются!</AlertDescription></Alert>
 }
 
 function ManualBrokerContent({ broker, groups, busy, onAddGroup, onRemoveGroup, onAccountChange, onFiles, onRemoveFile }: { broker: BrokerConfig; groups: ManualAccountGroup[]; busy: boolean; onAddGroup: () => void; onRemoveGroup: (groupId: string) => void; onAccountChange: (groupId: string, value: string) => void; onFiles: (groupId: string, broker: BrokerConfig, files: File[]) => void; onRemoveFile: (groupId: string, reportId: string) => void }) {
