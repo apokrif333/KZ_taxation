@@ -63,6 +63,7 @@ WINDOWS_RESERVED_NAMES = frozenset(
     {"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1, 10)), *(f"LPT{i}" for i in range(1, 10))}
 )
 UPLOAD_CHUNK_SIZE = 1024 * 1024
+ALATAY_REPORT_KINDS = frozenset({"cash", "securities"})
 EXCEL_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 JSON_MEDIA_TYPE = "application/json"
 ZIP_MEDIA_TYPE = "application/zip"
@@ -88,6 +89,21 @@ class ApiError(Exception):
         self.code = code
         self.message = message
         self.extra = extra or {}
+
+
+def _ensure_alatay_report_pairs(record: JobRecord) -> None:
+    alatay_kinds = tuple(record.upload_kinds.values())
+    if not alatay_kinds:
+        return
+    cash_reports = sum(kind == "cash" for kind in alatay_kinds)
+    securities_reports = sum(kind == "securities" for kind in alatay_kinds)
+    if cash_reports == securities_reports and cash_reports > 0:
+        return
+    raise ApiError(
+        422,
+        "alatay_reports_not_paired",
+        "Для Alatau City Invest загрузите одинаковое количество отчётов ОДДС и ОДЦБ.",
+    )
 
 
 def create_app(
@@ -194,12 +210,22 @@ def create_app(
         broker: str = Form(...),  # noqa: B008 - FastAPI parameter declaration
         files: list[UploadFile] = File(...),  # noqa: B008 - real multi-file Swagger control
         account_id: str | None = Form(None),  # noqa: B008 - FastAPI parameter declaration
+        alatay_report_kind: str | None = Form(None),  # noqa: B008 - FastAPI parameter declaration
     ) -> UploadBatchResponse:
         record = _job_or_error(store, job_id)
         _ensure_pending(record)
         broker = broker.strip().casefold()
         if broker not in UPLOAD_BROKERS:
             raise ApiError(422, "unsupported_broker", "Выбранный брокер не поддерживается.")
+        normalized_alatay_report_kind = alatay_report_kind.strip().casefold() if alatay_report_kind else None
+        if broker == "alatay" and normalized_alatay_report_kind not in ALATAY_REPORT_KINDS:
+            raise ApiError(
+                422,
+                "alatay_report_kind_required",
+                "Для Alatau City Invest укажите тип отчёта: ОДДС или ОДЦБ.",
+            )
+        if broker != "alatay" and normalized_alatay_report_kind is not None:
+            raise ApiError(422, "alatay_report_kind_not_allowed", "Тип отчёта доступен только для Alatau City Invest.")
         if not files:
             raise ApiError(422, "validation_error", "Загрузите хотя бы один отчёт брокера.")
         if len(files) > resolved_settings.max_files:
@@ -250,6 +276,11 @@ def create_app(
                     job_id,
                     saved,
                     max_job_files=resolved_settings.max_job_files,
+                    upload_kinds=(
+                        {digest: normalized_alatay_report_kind for digest, _path in saved}
+                        if normalized_alatay_report_kind is not None
+                        else None
+                    ),
                 )
             except DuplicateReportError as exc:
                 raise ApiError(409, "duplicate_report", "Этот отчёт уже загружен в задание.") from exc
@@ -294,6 +325,7 @@ def create_app(
         _ensure_pending(record)
         if not record.uploads:
             raise ApiError(422, "validation_error", "Сначала загрузите брокерские отчёты.")
+        _ensure_alatay_report_pairs(record)
         pipeline = front_pipeline_factory(record.workspace.project_paths(resolved_settings.project_paths))
         try:
             accounts = await run_in_threadpool(

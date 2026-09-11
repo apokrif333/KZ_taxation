@@ -360,6 +360,30 @@ class Form270JsonTests(unittest.TestCase):
         self.assertEqual(app["E"][0]["D"], "USA")
         self.assertEqual(app["E"][0]["E"], "США")
 
+    def test_application_04_c_excludes_alatay_cash_even_with_bank_info(self) -> None:
+        dataset = CanonicalDataset.empty("alatay", "010101TEST")
+        dataset.tables["CashBalances"] = [
+            {
+                "broker": "alatay",
+                "year": 2025,
+                "currency": "USD",
+                "ending_cash": "500",
+                "ending_cash_kzt": "250000",
+            }
+        ]
+
+        form = _builder().build_account_draft(
+            dataset,
+            tax_year=2025,
+            bank_info={
+                "code": "ALATKZKX",
+                "name": "Alatau City Invest",
+                "country": "KZ",
+            },
+        )
+
+        self.assertEqual(form["fnoContent"]["application_04"]["C"], [])
+
     def test_builder_includes_treasury_bills_in_application_04_b(self) -> None:
         dataset = CanonicalDataset.empty("ib", "UTEST")
         dataset.tables["Trades"] = [
@@ -956,6 +980,45 @@ class Form270JsonTests(unittest.TestCase):
         self.assertEqual(app["E"]["_E4"], 3000)
         self.assertEqual(app["E"]["_E"], 5000)
         self.assertEqual(app["_G"], 1000)
+
+    def test_builder_corrects_offshore_sale_proceeds_on_kase_and_aix(self) -> None:
+        dataset = CanonicalDataset.empty("paidax", "PTEST")
+        dataset.tables["Years_Results"] = [
+            {
+                "table": "Yearly Trades",
+                "year": 2024,
+                "flag": "offshore",
+                "country": "KZ",
+                "tax_exchange": "AIX",
+                "pnl_kzt": "36766.54",
+            },
+            {
+                "table": "Yearly Trades",
+                "year": 2024,
+                "flag": "offshore",
+                "country": "BS",
+                "tax_exchange": "KASE",
+                "pnl_kzt": "5000",
+            },
+            {
+                "table": "Yearly Trades",
+                "year": 2024,
+                "flag": "non-preferential",
+                "country": "US",
+                "tax_exchange": "outofKZ",
+                "pnl_kzt": "1000",
+            },
+        ]
+
+        form = _builder().build_account_draft(dataset, tax_year=2024)
+        app = form["fnoContent"]["application_01"]
+
+        self.assertEqual(app["A"]["_01"], 36767)
+        self.assertEqual(app["A"]["_02"], 6000)
+        self.assertEqual(app["E"]["_E1"], 5000)
+        self.assertEqual(app["E"]["_E4"], 36767)
+        self.assertEqual(app["_G"], 1000)
+        self.assertEqual(app["_H"], 100)
 
     def test_foreign_tax_credit_excludes_preferential_dividends_from_country_pool(self) -> None:
         dataset = CanonicalDataset.empty("exante", "HXR2208.001")

@@ -26,6 +26,11 @@ def discover_raw_reports(raw_root: Path, rule: DiscoveryRule) -> list[BrokerRepo
 
     reports: list[BrokerReport] = []
     for path in sorted(p for p in broker_root.rglob("*") if p.is_file()):
+        # Microsoft Excel creates a temporary lock workbook while a report is
+        # open. It has the same extension and may contain the account ID, but
+        # is not a report that can be parsed.
+        if path.name.startswith("~$"):
+            continue
         if path.suffix.lower() not in rule.extensions:
             continue
         if is_transfer_out_source_file(path):

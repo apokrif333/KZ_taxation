@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import csv
+import re
+from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 from typing import Any
@@ -21,6 +23,7 @@ from kztax270.reference.fx import AnnualFxRateProvider
 from .base import BrokerReport, ParseResult
 from .discovery import DiscoveryRule, discover_raw_reports
 from .ib import (
+    FifoOpenLot,
     _build_broker_trade_realized_pl,
     _build_fifo_and_positions,
     _build_unprocessed_rows,
@@ -43,6 +46,14 @@ HISTORICAL_TRADES_SECTION = (
     "за время до начала отчетного периода:"
 )
 CASH_MOVEMENTS_HEADER = "Дата проведения операции/сделки"
+ISIN_RE = re.compile(r"(?<![A-Z0-9])([A-Z]{2}[A-Z0-9]{10})(?![A-Z0-9])")
+CURRENCY_NAME_MARKERS = {
+    "доллар": "USD",
+    "тенг": "KZT",
+    "евро": "EUR",
+    "рубл": "RUB",
+    "фунт": "GBP",
+}
 
 
 @dataclass(slots=True)
@@ -59,6 +70,8 @@ class ParsedAlatayReport:
     opening_cash: Decimal | None = None
     ending_cash: Decimal | None = None
     cash_currency: str | None = None
+    opening_cash_by_currency: dict[str, Decimal] = field(default_factory=dict)
+    ending_cash_by_currency: dict[str, Decimal] = field(default_factory=dict)
     unprocessed: list[dict[str, Any]] = field(default_factory=list)
 
 
@@ -117,6 +130,7 @@ def parse_alatay_report(path: Path) -> ParsedAlatayReport:
 def _parse_alatay_rows(path: Path, rows: Sequence[Sequence[Any]] | Any) -> ParsedAlatayReport:
     parsed = ParsedAlatayReport(path=path)
     section: str | None = None
+    cash_section_currency: str | None = None
 
     for source_row, row in enumerate(rows, start=1):
         values = [_clean_text(value) for value in row]
@@ -138,10 +152,21 @@ def _parse_alatay_rows(path: Path, rows: Sequence[Sequence[Any]] | Any) -> Parse
         opening_cash = _metadata_value(values, "Входящий остаток на начало периода:")
         if opening_cash is not None:
             parsed.opening_cash, parsed.cash_currency = _parse_amount_currency(opening_cash)
+            parsed.opening_cash_by_currency.update(
+                _parse_currency_amounts(_metadata_values(values, "Входящий остаток на начало периода:"))
+            )
             continue
         ending_cash = _metadata_value(values, "Исходящий остаток на конец периода:")
         if ending_cash is not None:
             parsed.ending_cash, parsed.cash_currency = _parse_amount_currency(ending_cash)
+            parsed.ending_cash_by_currency.update(
+                _parse_currency_amounts(_metadata_values(values, "Исходящий остаток на конец периода:"))
+            )
+            continue
+
+        if first.casefold().startswith("движение денежных средств по счету в"):
+            cash_section_currency = _currency_from_section(values)
+            section = None
             continue
 
         if first == POSITIONS_SECTION:
@@ -182,13 +207,18 @@ def _parse_alatay_rows(path: Path, rows: Sequence[Sequence[Any]] | Any) -> Parse
                 continue
             if trade.get("_recognized_operation"):
                 parsed.trades.append(trade)
-            elif _is_internal_security_transfer(trade.get("operation")):
+            elif _is_security_transfer(trade.get("operation")):
                 parsed.security_transfers.append(trade)
             else:
                 parsed.unprocessed.append(_unprocessed_trade(trade))
             continue
         if section == "cash_movements":
-            movement = _parse_cash_movement_row(values, source_report=str(path), source_row=source_row)
+            movement = _parse_cash_movement_row(
+                values,
+                source_report=str(path),
+                source_row=source_row,
+                section_currency=cash_section_currency,
+            )
             if movement is not None:
                 parsed.cash_movements.append(movement)
 
@@ -216,10 +246,19 @@ def build_canonical_dataset(
     dataset.tables["Trades"] = _canonical_trade_rows(internal_trades)
     dataset.tables["_BrokerTradeRealizedPL"] = _build_broker_trade_realized_pl(internal_trades)
 
+    security_transfers = _build_security_transfers(reports, instruments)
+    fifo_transfers = [row for row in security_transfers if row.get("_changes_ownership")]
+    audit_only_transfers = [row for row in security_transfers if not row.get("_changes_ownership")]
+    initial_lots, initial_lot_issues = _build_derived_initial_lots(
+        reports,
+        instruments,
+        internal_trades,
+        fifo_transfers,
+    )
     fifo_rows, positions, transfer_rows = _build_fifo_and_positions(
         internal_trades,
-        transfers=[],
-        initial_lots=[],
+        transfers=fifo_transfers,
+        initial_lots=initial_lots,
         max_year=_max_report_year(reports),
         fx_provider=fx_provider,
         warnings=dataset.warnings,
@@ -227,7 +266,7 @@ def build_canonical_dataset(
     )
     dataset.tables["Fifo"] = fifo_rows
     dataset.tables["Positions"] = positions
-    dataset.tables["Transfers"] = [*transfer_rows, *_build_security_transfers(reports, instruments)]
+    dataset.tables["Transfers"] = [*transfer_rows, *audit_only_transfers]
     dataset.tables["CorporateActions"] = _build_corporate_actions(reports, instruments)
     dataset.tables["Dividends"] = _build_dividends(reports, instruments, fx_provider, dataset.warnings)
     dataset.tables["Interest"] = []
@@ -238,8 +277,13 @@ def build_canonical_dataset(
         fx_provider,
         dataset.warnings,
     )
+    fifo_unprocessed = _build_unprocessed_rows(dataset.tables["Trades"], fifo_rows)
+    fifo_unprocessed_isins = {_text(row.get("isin")) for row in fifo_unprocessed}
+    unmatched_cash_redemptions = _build_unmatched_cash_redemption_issues(reports)
     dataset.tables["Unprocessed"] = [
-        *_build_unprocessed_rows(dataset.tables["Trades"], fifo_rows),
+        *(row for row in initial_lot_issues if _text(row.get("isin")) not in fifo_unprocessed_isins),
+        *fifo_unprocessed,
+        *unmatched_cash_redemptions,
         *(row for report in reports for row in report.unprocessed),
     ]
     dataset.tables["Years_Results"] = _build_years_results(dataset)
@@ -287,9 +331,13 @@ def _parse_trade_row(
         return None
     operation = values[5]
     operation_key = operation.casefold()
-    recognized = operation_key.startswith("покупка") or operation_key.startswith("продажа")
+    recognized = (
+        operation_key.startswith("покупка")
+        or operation_key.startswith("продажа")
+        or operation_key.startswith("погашение цб")
+    )
     quantity = _decimal(values[6])
-    if operation_key.startswith("продажа"):
+    if operation_key.startswith("продажа") or operation_key.startswith("погашение цб"):
         quantity = -abs(quantity)
     elif operation_key.startswith("покупка"):
         quantity = abs(quantity)
@@ -320,12 +368,32 @@ def _parse_cash_movement_row(
     *,
     source_report: str,
     source_row: int,
+    section_currency: str | None = None,
 ) -> dict[str, Any] | None:
-    if len(values) < 10:
+    if len(values) < 8:
         return None
     movement_date = _parse_date(values[0])
     if movement_date is None:
         return None
+    if len(values) < 10:
+        issuer, isin = _split_issuer_isin(values[3])
+        return {
+            "date": movement_date.isoformat(),
+            "description": values[1],
+            "operation": values[2],
+            "issuer": issuer,
+            "isin": isin,
+            "opening_cash": str(_decimal(values[4])),
+            "credit": str(_decimal(values[5])),
+            "debit": str(_decimal(values[6])),
+            "ending_cash": str(_decimal(values[7])),
+            "currency": section_currency or BASE_CURRENCY,
+            "security_type": None,
+            "issuer_country": _country_from_values(None, isin),
+            "exchange": None,
+            "source_report": source_report,
+            "source_row": source_row,
+        }
     return {
         "date": movement_date.isoformat(),
         "description": values[1],
@@ -350,18 +418,31 @@ def _build_instruments(
     account_id: str,
 ) -> list[dict[str, Any]]:
     sources: dict[str, dict[str, Any]] = {}
+    source_priorities: dict[str, int] = {}
     latest_dates: dict[str, date | None] = {}
     for report in reports:
         # Trade rows carry the exchange while position rows do not, so prefer
         # them as the instrument source when both are available.
-        for row in [*report.trades, *report.positions, *report.cash_movements]:
-            isin = _text(row.get("isin"))
-            if not isin:
-                continue
-            sources.setdefault(isin, row)
-            current = latest_dates.get(isin)
-            if report.period_end and (current is None or report.period_end > current):
-                latest_dates[isin] = report.period_end
+        # Cash movements may mention an ISIN but do not reliably contain the
+        # security type. Prefer trades, then position snapshots, and use cash
+        # movements only as a fallback for instruments absent from securities
+        # reports.
+        for priority, rows in ((2, report.trades), (1, report.positions), (0, report.cash_movements)):
+            for row in rows:
+                isin = _text(row.get("isin"))
+                if not isin:
+                    continue
+                current = sources.get(isin)
+                current_priority = source_priorities.get(isin, -1)
+                if current is None or priority > current_priority:
+                    sources[isin] = row
+                    source_priorities[isin] = priority
+                current = sources.get(isin)
+                if current is None:
+                    continue
+                latest_dates.setdefault(isin, None)
+                if report.period_end and (latest_dates.get(isin) is None or report.period_end > latest_dates[isin]):
+                    latest_dates[isin] = report.period_end
 
     instruments: list[dict[str, Any]] = []
     for isin in sorted(sources):
@@ -417,11 +498,12 @@ def _build_trades(
             commission = abs(_decimal(row.get("commission")))
             symbol = _text(instrument.get("symbol")) or isin
             country = _text(instrument.get("country")) or _country_from_values(row.get("issuer_country"), isin)
+            is_redemption = (_text(row.get("operation")) or "").casefold().startswith("погашение цб")
             trades.append(
                 {
                     "date_time": row.get("date_time"),
                     "trade_id": f"{report.path.name}:{row.get('source_row')}",
-                    "trade_type": "trade",
+                    "trade_type": "corporate_action:redemption" if is_redemption else "trade",
                     "symbol": symbol,
                     "isin": isin,
                     "asset_type": _text(instrument.get("type")) or _asset_type(row.get("security_type")),
@@ -440,6 +522,7 @@ def _build_trades(
                     "source_report": row.get("source_report"),
                     "_instrument_identity_key": _instrument_identity_key_from_values(isin=isin, symbol=symbol),
                     "_broker_realized_pl": "0",
+                    "_corporate_action_type": "redemption" if is_redemption else None,
                 }
             )
     return trades
@@ -456,8 +539,11 @@ def _build_security_transfers(
             operation = _text(row.get("operation")) or ""
             operation_key = operation.casefold()
             direction = "in" if "получатель" in operation_key else "out"
+            changes_ownership = "смена прав собственности" in operation_key and "без смены" not in operation_key
             isin = _text(row.get("isin"))
             instrument = instrument_lookup.get(isin or "", {})
+            price = abs(_decimal(row.get("price")))
+            quantity = abs(_decimal(row.get("quantity")))
             transfers.append(
                 {
                     "date": _date_from_datetime(row.get("date_time")),
@@ -467,18 +553,215 @@ def _build_security_transfers(
                     "symbol": _text(instrument.get("symbol")) or isin,
                     "isin": isin,
                     "currency": _text(row.get("currency")) or BASE_CURRENCY,
-                    "quantity": str(abs(_decimal(row.get("quantity")))),
-                    "price": str(_decimal(row.get("price"))),
+                    "country": _text(instrument.get("country")) or _country_from_values(row.get("issuer_country"), isin),
+                    "exchange": _text(instrument.get("listing_exchange")) or _normalized_exchange(row.get("exchange")),
+                    "quantity": str(quantity if direction == "in" else -quantity),
+                    "price": str(price),
                     "enter_date": None,
                     # This is an internal depository movement without a change
                     # of ownership, not a cash deposit/withdrawal.
                     "amount": "0",
                     "broker_comment": operation,
-                    "counterparty": "internal depository transfer (no change of ownership)",
+                    "counterparty": (
+                        "ownership-changing security transfer"
+                        if changes_ownership
+                        else "internal depository transfer (no change of ownership)"
+                    ),
                     "source_report": row.get("source_report"),
+                    "_changes_ownership": changes_ownership,
+                    "_transfer_cost_basis_status": (
+                        "broker_reported_cost_basis" if changes_ownership and price else None
+                    ),
                 }
             )
     return transfers
+
+
+def _build_derived_initial_lots(
+    reports: Sequence[ParsedAlatayReport],
+    instruments: Sequence[Mapping[str, Any]],
+    trades: Sequence[Mapping[str, Any]],
+    transfers: Sequence[Mapping[str, Any]],
+) -> tuple[list[tuple[tuple[str, str | None, str], str, FifoOpenLot]], list[dict[str, Any]]]:
+    closing_positions = [
+        row
+        for report in reports
+        for row in report.positions
+        if row.get("_snapshot_kind") == "closing" and row.get("_snapshot_date")
+    ]
+    if not closing_positions:
+        return [], []
+    earliest_snapshot = min(str(row["_snapshot_date"]) for row in closing_positions)
+    ending_by_isin: dict[str, Decimal] = defaultdict(Decimal)
+    source_by_isin: dict[str, Mapping[str, Any]] = {}
+    for row in closing_positions:
+        if str(row.get("_snapshot_date")) != earliest_snapshot:
+            continue
+        isin = _text(row.get("isin"))
+        if not isin:
+            continue
+        ending_by_isin[isin] += _decimal(row.get("quantity"))
+        source_by_isin.setdefault(isin, row)
+
+    snapshot_dt = datetime.combine(date.fromisoformat(earliest_snapshot), datetime.max.time())
+    net_by_isin: dict[str, Decimal] = defaultdict(Decimal)
+    currency_by_isin: dict[str, str] = {}
+    earliest_event: datetime | None = None
+    for trade in trades:
+        event_dt = datetime.fromisoformat(str(trade.get("date_time")))
+        if event_dt > snapshot_dt:
+            continue
+        isin = _text(trade.get("isin"))
+        if not isin:
+            continue
+        net_by_isin[isin] += _decimal(trade.get("calculation_quantity") or trade.get("quantity"))
+        currency_by_isin.setdefault(isin, _text(trade.get("currency")) or BASE_CURRENCY)
+        earliest_event = event_dt if earliest_event is None or event_dt < earliest_event else earliest_event
+    for transfer in transfers:
+        event_date = _parse_date(transfer.get("date"))
+        if event_date is None:
+            continue
+        event_dt = datetime.combine(event_date, datetime.min.time())
+        if event_dt > snapshot_dt:
+            continue
+        isin = _text(transfer.get("isin"))
+        if not isin:
+            continue
+        quantity = abs(_decimal(transfer.get("quantity")))
+        net_by_isin[isin] += quantity if transfer.get("direction") == "in" else -quantity
+        currency_by_isin.setdefault(isin, _text(transfer.get("currency")) or BASE_CURRENCY)
+        earliest_event = event_dt if earliest_event is None or event_dt < earliest_event else earliest_event
+
+    instrument_lookup = {str(row.get("isin")): row for row in instruments}
+    lot_date = earliest_event - timedelta(seconds=1) if earliest_event else datetime.combine(
+        date.fromisoformat(earliest_snapshot), datetime.min.time()
+    )
+    lots: list[tuple[tuple[str, str | None, str], str, FifoOpenLot]] = []
+    issues: list[dict[str, Any]] = []
+    for isin in sorted(set(ending_by_isin) | set(net_by_isin)):
+        signed_quantity = ending_by_isin.get(isin, Decimal("0")) - net_by_isin.get(isin, Decimal("0"))
+        if abs(signed_quantity) <= Decimal("0.00000001"):
+            continue
+        instrument = instrument_lookup.get(isin, {})
+        source = source_by_isin.get(isin, {})
+        symbol = _text(instrument.get("symbol")) or isin
+        currency = currency_by_isin.get(isin, BASE_CURRENCY)
+        quantity = abs(signed_quantity)
+        key = _instrument_identity_key_from_values(isin=isin, symbol=symbol)
+        if not key:
+            continue
+        lots.append(
+            (
+                (key, isin, currency),
+                "long" if signed_quantity > 0 else "short",
+                FifoOpenLot(
+                    asset_type=_text(instrument.get("type")) or _asset_type(source.get("security_type")),
+                    symbol=symbol,
+                    isin=isin,
+                    currency=currency,
+                    country=_text(instrument.get("country")) or _country_from_values(source.get("issuer_country"), isin),
+                    exchange=_text(instrument.get("listing_exchange")),
+                    date_time=lot_date,
+                    raw_quantity=signed_quantity,
+                    raw_amount=Decimal("0"),
+                    raw_commission=Decimal("0"),
+                    price=Decimal("0"),
+                    calculation_price=Decimal("0"),
+                    multiplier=Decimal("1"),
+                    quantity=quantity,
+                    broker_quantity=quantity,
+                    commission_per_unit=Decimal("0"),
+                    trade_id=f"alatay-derived-opening:{isin}",
+                    opening_lot_status="missing_opening_lot",
+                    source_file=_text(source.get("source_report")),
+                    source_row=int(source.get("source_row")) if source.get("source_row") else None,
+                ),
+            )
+        )
+        issues.append(
+            {
+                "severity": "error",
+                "reason": "missing_opening_lot",
+                "details": (
+                    "The earliest ending position requires an opening lot that is not explained by the "
+                    "discovered Alatay transactions; acquisition cost is unknown."
+                ),
+                "source_sheet": "Positions",
+                "source_report": source.get("source_report"),
+                "trade_id": f"alatay-derived-opening:{isin}",
+                "date_time": lot_date.isoformat(sep=" "),
+                "symbol": symbol,
+                "isin": isin,
+                "asset_type": _text(instrument.get("type")) or _asset_type(source.get("security_type")),
+                "currency": currency,
+                "quantity": str(signed_quantity),
+                "price": None,
+                "amount": None,
+                "commission": None,
+            }
+        )
+    return lots, issues
+
+
+def _build_unmatched_cash_redemption_issues(
+    reports: Sequence[ParsedAlatayReport],
+) -> list[dict[str, Any]]:
+    """Flag OДДС redemptions which cannot be verified against an ОДЦБ report.
+
+    Alatay's cash report confirms only the principal proceeds.  It has no
+    quantity or acquisition cost, so it cannot be made into a FIFO closing
+    event on its own.  A matching security redemption or a position in an
+    ОДЦБ report is the minimum evidence that the cash movement belongs to a
+    reported security holding.
+    """
+
+    redemption_isins = {
+        isin
+        for report in reports
+        for row in report.trades
+        if _is_redemption_operation(row.get("operation"))
+        if (isin := _text(row.get("isin")))
+    }
+    position_isins = {
+        isin
+        for report in reports
+        for row in report.positions
+        if (isin := _text(row.get("isin")))
+    }
+    security_evidence_isins = redemption_isins | position_isins
+
+    issues: list[dict[str, Any]] = []
+    for report in reports:
+        for row in report.cash_movements:
+            if not _is_redemption_operation(row.get("operation")):
+                continue
+            isin = _text(row.get("isin"))
+            if isin and isin in security_evidence_isins:
+                continue
+            issues.append(
+                {
+                    "severity": "warning",
+                    "reason": "unmatched_cash_redemption",
+                    "details": (
+                        "Alatay ОДДС contains a bond redemption, but the discovered ОДЦБ reports "
+                        "contain neither a matching redemption transaction nor a position for this ISIN; "
+                        "quantity and acquisition cost cannot be reconciled."
+                    ),
+                    "source_sheet": "Cash movements",
+                    "source_report": row.get("source_report"),
+                    "trade_id": f"{Path(str(row.get('source_report'))).name}:{row.get('source_row')}",
+                    "date_time": row.get("date"),
+                    "symbol": isin,
+                    "isin": isin,
+                    "asset_type": _asset_type(row.get("security_type")),
+                    "currency": _text(row.get("currency")) or BASE_CURRENCY,
+                    "quantity": None,
+                    "price": None,
+                    "amount": _money_text(_decimal(row.get("credit")) - _decimal(row.get("debit"))),
+                    "commission": None,
+                }
+            )
+    return issues
 
 
 def _build_dividends(
@@ -573,22 +856,25 @@ def _build_cash_balances(
 ) -> list[dict[str, Any]]:
     balances: list[dict[str, Any]] = []
     for report in reports:
-        if report.ending_cash is None or report.period_end is None:
+        if report.period_end is None:
             continue
-        currency = report.cash_currency or BASE_CURRENCY
-        rate = _annual_rate(fx_provider, report.period_end.year, currency, warnings)
-        balances.append(
-            {
-                "broker": BROKER_CODE,
-                "account_id": account_id,
-                "year": report.period_end.year,
-                "date": report.period_end.isoformat(),
-                "currency": currency,
-                "ending_cash": _money_text(report.ending_cash),
-                "ending_cash_kzt": _amount_kzt(report.ending_cash, rate),
-                "source_report": str(report.path),
-            }
-        )
+        ending_by_currency = dict(report.ending_cash_by_currency)
+        if not ending_by_currency and report.ending_cash is not None:
+            ending_by_currency[report.cash_currency or BASE_CURRENCY] = report.ending_cash
+        for currency, ending_cash in sorted(ending_by_currency.items()):
+            rate = _annual_rate(fx_provider, report.period_end.year, currency, warnings)
+            balances.append(
+                {
+                    "broker": BROKER_CODE,
+                    "account_id": account_id,
+                    "year": report.period_end.year,
+                    "date": report.period_end.isoformat(),
+                    "currency": currency,
+                    "ending_cash": _money_text(ending_cash),
+                    "ending_cash_kzt": _amount_kzt(ending_cash, rate),
+                    "source_report": str(report.path),
+                }
+            )
     return balances
 
 
@@ -724,6 +1010,22 @@ def _metadata_value(values: Sequence[str], label: str) -> str | None:
     return None
 
 
+def _metadata_values(values: Sequence[str], label: str) -> list[str]:
+    for index, value in enumerate(values):
+        if value == label:
+            return [item for item in values[index + 1 :] if item]
+    return []
+
+
+def _parse_currency_amounts(values: Sequence[str]) -> dict[str, Decimal]:
+    result: dict[str, Decimal] = {}
+    for value in values:
+        amount, currency = _parse_amount_currency(value)
+        if currency:
+            result[currency] = amount
+    return result
+
+
 def _parse_period(value: str) -> tuple[date | None, date | None]:
     if "-" not in value:
         report_date = _parse_date(value)
@@ -741,16 +1043,20 @@ def _parse_amount_currency(value: Any) -> tuple[Decimal, str | None]:
 
 def _parse_date(value: Any) -> date | None:
     text = _clean_text(value)
-    try:
-        return datetime.strptime(text, "%d.%m.%Y").date()
-    except ValueError:
-        return None
+    for pattern in ("%d.%m.%Y", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(text, pattern).date()
+        except ValueError:
+            continue
+    return None
 
 
 def _decimal(value: Any) -> Decimal:
     if value in (None, ""):
         return Decimal("0")
     text = str(value).replace("\u00a0", "").replace(" ", "").replace(",", ".").strip()
+    if text in {"-", "–", "—"}:
+        return Decimal("0")
     return Decimal(text or "0")
 
 
@@ -802,9 +1108,31 @@ def _date_from_datetime(value: Any) -> str | None:
     return text[:10] if len(text) >= 10 else None
 
 
-def _is_internal_security_transfer(value: Any) -> bool:
+def _is_security_transfer(value: Any) -> bool:
     operation = _clean_text(value).casefold()
-    return "перевод" in operation and "без смены прав собственности" in operation
+    return "перевод" in operation
+
+
+def _is_redemption_operation(value: Any) -> bool:
+    return _clean_text(value).casefold().startswith("погашение цб")
+
+
+def _currency_from_section(values: Sequence[str]) -> str | None:
+    text = " ".join(values).casefold()
+    for marker, currency in CURRENCY_NAME_MARKERS.items():
+        if marker in text:
+            return currency
+    return None
+
+
+def _split_issuer_isin(value: Any) -> tuple[str | None, str | None]:
+    text = _clean_text(value)
+    match = ISIN_RE.search(text.upper())
+    if match is None:
+        return _text(text), None
+    isin = match.group(1)
+    issuer = text[: match.start()].rstrip(" /-")
+    return _text(issuer), isin
 
 
 def _same_account_id(left: Any, right: Any) -> bool:

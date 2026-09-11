@@ -18,6 +18,7 @@ class RawDiscoveryTests(unittest.TestCase):
             expected.write_text("x", encoding="utf-8")
             (broker_dir / "U999_2024.csv").write_text("x", encoding="utf-8")
             (broker_dir / "U123_notes.txt").write_text("x", encoding="utf-8")
+            (broker_dir / "~$U123_2024.xlsx").write_text("Excel lock file", encoding="utf-8")
 
             reports = discover_raw_reports(root, DiscoveryRule(broker="ib", account_id="U123"))
 

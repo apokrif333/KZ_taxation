@@ -7,6 +7,7 @@ import type {
   InvalidReportPeriod,
   ProcessJobRequest,
   ProcessResponse,
+  AlatayReportKind,
   UploadBatchResponse,
 } from '@/lib/types'
 
@@ -78,10 +79,12 @@ export function uploadReports(
   broker: string,
   files: File[],
   accountId?: string,
+  alatayReportKind?: AlatayReportKind,
 ): Promise<UploadBatchResponse> {
   const body = new FormData()
   body.append('broker', broker)
   if (accountId !== undefined) body.append('account_id', accountId)
+  if (alatayReportKind !== undefined) body.append('alatay_report_kind', alatayReportKind)
   for (const file of files) body.append('files', file, file.name)
   return requestJson<UploadBatchResponse>(`/api/jobs/${encodeURIComponent(jobId)}/reports`, {
     method: 'POST',

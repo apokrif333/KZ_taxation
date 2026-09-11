@@ -30,7 +30,7 @@ HALF = Decimal("0.5")
 # Cash held with Kazakhstan brokers is not reported as a foreign-bank balance
 # in application 04 C. The second Freedom code is retained for datasets
 # produced by the broker/bank account split.
-DOMESTIC_BROKER_CODES = frozenset({"freedom", "freedom_broker", "halyk", "paidax"})
+DOMESTIC_BROKER_CODES = frozenset({"alatay", "freedom", "freedom_broker", "halyk", "paidax"})
 SECURITIES_ASSET_CODE = "3"
 DERIVATIVE_ASSET_CODE = "4"
 OTHER_ASSET_CODE = "12"
@@ -476,6 +476,25 @@ def _build_application_01(
         aix=raw_preferential_aix_trades,
         reported_income=reported_preferential_trade_income,
     )
+    # An offshore security remains taxable on its full sale proceeds, which is
+    # what its Years_Results ``pnl_kzt`` stores.  A sale through KASE or AIX is
+    # then fully removed through the respective Article 341 correction.  Do
+    # not cap these amounts by preferential income: they are reported in A.1
+    # as non-preferential offshore income.
+    offshore_kase_trades = _sum_positive(
+        rows,
+        "pnl_kzt",
+        table="Yearly Trades",
+        flags={"offshore"},
+        tax_exchange="KASE",
+    )
+    offshore_aix_trades = _sum_positive(
+        rows,
+        "pnl_kzt",
+        table="Yearly Trades",
+        flags={"offshore"},
+        tax_exchange="AIX",
+    )
     dividends = _sum_positive(rows, "amount_kzt", table="Yearly Dividends")
     dividend_corrections = _sum_positive(rows, "amount_kzt", table="Yearly Dividends", flags=preferential_flags)
     preferential_kase_dividends = _sum_positive(
@@ -509,8 +528,8 @@ def _build_application_01(
         "trades_kz_non_preferential": trades_kz_non_preferential,
         "trades_foreign_preferential": trades_foreign_preferential,
         "trades_foreign_non_preferential": trades_foreign_non_preferential,
-        "preferential_kase_trades": preferential_kase_trades,
-        "preferential_aix_trades": preferential_aix_trades,
+        "preferential_kase_trades": preferential_kase_trades + offshore_kase_trades,
+        "preferential_aix_trades": preferential_aix_trades + offshore_aix_trades,
         "trades_foreign": trades_foreign,
         "dividends": dividends,
         "dividend_corrections": dividend_corrections,

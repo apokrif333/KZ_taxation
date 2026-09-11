@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Checkbox } from '@/components/ui/checkbox'
 import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
 import { cn } from '@/lib/utils'
-import type { ApiConfig, BrokerConfig, InvalidReportPeriod, ManualAccountGroup, SelectedReport } from '@/lib/types'
+import type { AlatayReportKind, ApiConfig, BrokerConfig, InvalidReportPeriod, ManualAccountGroup, SelectedReport } from '@/lib/types'
 
 interface UploadWorkflowProps {
   config: ApiConfig
@@ -21,7 +21,7 @@ interface UploadWorkflowProps {
   busy: boolean
   error: string | null
   invalidReports: InvalidReportPeriod[]
-  onAddAutoFiles: (broker: BrokerConfig, files: File[]) => void
+  onAddAutoFiles: (broker: BrokerConfig, files: File[], alatayReportKind?: AlatayReportKind) => void
   onRemoveAutoFile: (brokerCode: string, reportId: string) => void
   onAddManualGroup: (brokerCode: string) => void
   onRemoveManualGroup: (groupId: string) => void
@@ -47,10 +47,17 @@ export function UploadWorkflow({
   const allReports = [...Object.values(autoFiles).flat(), ...manualGroups.flatMap((group) => group.files)]
   const hasAcceptedOrValidReport = allReports.some((report) => report.uploaded || report.status === 'valid')
   const hasInvalidReport = allReports.some((report) => report.status === 'invalid')
+  const alatayReports = autoFiles.alatay || []
+  const alatayCashReports = alatayReports.filter((report) => report.alatayReportKind === 'cash')
+  const alataySecuritiesReports = alatayReports.filter((report) => report.alatayReportKind === 'securities')
+  const hasAlatayReports = alatayReports.length > 0
+  const alatayReportsPaired = !hasAlatayReports || (
+    alatayCashReports.length > 0 && alatayCashReports.length === alataySecuritiesReports.length
+  )
   const missingManualAccount = manualGroups.some(
     (group) => group.files.some((report) => report.uploaded || report.status === 'valid') && !group.accountId.trim(),
   )
-  const canSubmit = hasAcceptedOrValidReport && !hasInvalidReport && !missingManualAccount && !busy
+  const canSubmit = hasAcceptedOrValidReport && !hasInvalidReport && !missingManualAccount && alatayReportsPaired && !busy
 
   return (
     <section aria-labelledby="calculation-title" className="grid gap-6 lg:grid-cols-[1fr_19rem]">
@@ -72,8 +79,10 @@ export function UploadWorkflow({
             </AlertDescription>
           </Alert>
 
-          {primaryBrokers.map((broker) => broker.account_id_mode === 'auto'
-            ? <BrokerReportCard key={broker.code} broker={broker} reports={autoFiles[broker.code] || []} busy={busy} onFiles={(files) => onAddAutoFiles(broker, files)} onRemove={(reportId) => onRemoveAutoFile(broker.code, reportId)} />
+          {primaryBrokers.map((broker) => broker.code === 'alatay'
+            ? <AlatayReportCard key={broker.code} broker={broker} cashReports={alatayCashReports} securitiesReports={alataySecuritiesReports} busy={busy} onFiles={(kind, files) => onAddAutoFiles(broker, files, kind)} onRemove={(reportId) => onRemoveAutoFile(broker.code, reportId)} />
+            : broker.account_id_mode === 'auto'
+              ? <BrokerReportCard key={broker.code} broker={broker} reports={autoFiles[broker.code] || []} busy={busy} onFiles={(files) => onAddAutoFiles(broker, files)} onRemove={(reportId) => onRemoveAutoFile(broker.code, reportId)} />
             : <ManualBrokerReportCard key={broker.code} broker={broker} groups={manualGroups.filter((group) => group.broker === broker.code)} busy={busy} onAddGroup={() => onAddManualGroup(broker.code)} onRemoveGroup={onRemoveManualGroup} onAccountChange={onManualAccountChange} onFiles={onAddManualFiles} onRemoveFile={onRemoveManualFile} />,
           )}
 
@@ -97,6 +106,55 @@ export function UploadWorkflow({
       {(error || invalidReports.length > 0) && <Alert variant="destructive" className="lg:col-span-2"><Info /><AlertDescription>{error && <p className="font-medium">{error}</p>}{invalidReports.length > 0 && <ul className="mt-2 list-disc space-y-1 pl-5">{invalidReports.map((report, index) => <li key={`${report.broker}:${report.report_name}:${index}`}>{report.broker}{report.account_id ? ` · ${report.account_id}` : ''} · {report.report_name} · окончание периода: {report.period_end || 'не определено'}</li>)}</ul>}</AlertDescription></Alert>}
     </section>
   )
+}
+
+function AlatayReportCard({
+  broker,
+  cashReports,
+  securitiesReports,
+  busy,
+  onFiles,
+  onRemove,
+}: {
+  broker: BrokerConfig
+  cashReports: SelectedReport[]
+  securitiesReports: SelectedReport[]
+  busy: boolean
+  onFiles: (kind: AlatayReportKind, files: File[]) => void
+  onRemove: (reportId: string) => void
+}) {
+  const reportsPaired = cashReports.length > 0 && cashReports.length === securitiesReports.length
+
+  return <div className="rounded-lg border bg-card p-4">
+    <BrokerTitle broker={broker} />
+    <p className="mt-1 text-sm text-muted-foreground">Номера счетов определяются автоматически из отчётов.</p>
+    <Alert className="mt-4 border-primary/20 bg-primary/5"><Info aria-hidden="true" /><AlertDescription>Для расчёта загрузите одинаковое количество отчётов ОДДС и ОДЦБ.</AlertDescription></Alert>
+    <div className="mt-4 grid gap-4 xl:grid-cols-2">
+      <AlatayUploadSection title="ОДДС" description="Отчёт движения денежных средств" broker={broker} reports={cashReports} busy={busy} onFiles={(files) => onFiles('cash', files)} onRemove={onRemove} />
+      <AlatayUploadSection title="ОДЦБ" description="Отчёт движения ценных бумаг" broker={broker} reports={securitiesReports} busy={busy} onFiles={(files) => onFiles('securities', files)} onRemove={onRemove} />
+    </div>
+    {(cashReports.length > 0 || securitiesReports.length > 0) && <p className={cn('mt-4 text-sm font-medium', reportsPaired ? 'text-primary' : 'text-destructive')}>
+      {reportsPaired
+        ? `Добавлено пар отчётов: ${cashReports.length}. Можно продолжить расчёт.`
+        : `ОДДС: ${cashReports.length}; ОДЦБ: ${securitiesReports.length}. Добавьте недостающие отчёты.`}
+    </p>}
+  </div>
+}
+
+function AlatayUploadSection({ title, description, broker, reports, busy, onFiles, onRemove }: {
+  title: string
+  description: string
+  broker: BrokerConfig
+  reports: SelectedReport[]
+  busy: boolean
+  onFiles: (files: File[]) => void
+  onRemove: (reportId: string) => void
+}) {
+  return <div className="rounded-md border bg-muted/20 p-4">
+    <div className="mb-3 flex items-start justify-between gap-3"><div><h3 className="font-semibold">{title}</h3><p className="mt-1 text-sm text-muted-foreground">{description}</p></div><span className="rounded-full bg-background px-2.5 py-1 text-xs font-medium text-muted-foreground ring-1 ring-border">{reports.length} {pluralFiles(reports.length)}</span></div>
+    <FilePicker broker={broker} onFiles={onFiles} />
+    <ReportList reports={reports} busy={busy} onRemove={onRemove} />
+  </div>
 }
 
 function BrokerReportCard({ broker, reports, busy, onFiles, onRemove, collapsible = true }: { broker: BrokerConfig; reports: SelectedReport[]; busy: boolean; onFiles: (files: File[]) => void; onRemove: (reportId: string) => void; collapsible?: boolean }) {
@@ -184,6 +242,7 @@ function ManualBrokerContent({ broker, groups, busy, onAddGroup, onRemoveGroup, 
 }
 
 const brokerLogos: Record<string, { src: string; alt: string }> = {
+  alatay: { src: '/broker-logos/alatay.png', alt: 'Alatau City Invest' },
   exante: { src: '/broker-logos/exante.png', alt: 'Exante' },
   freedom: { src: '/broker-logos/freedom-broker.png', alt: 'Freedom Broker' },
   freedom_bank: { src: '/broker-logos/freedom-bank.png', alt: 'Freedom Bank' },

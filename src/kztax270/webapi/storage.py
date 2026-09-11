@@ -127,6 +127,7 @@ class JobRecord:
     status: str
     expires_at: float
     uploads: dict[str, Path] = field(default_factory=dict)
+    upload_kinds: dict[str, str] = field(default_factory=dict)
     artifacts: dict[str, ArtifactRecord] = field(default_factory=dict)
 
     @property
@@ -215,6 +216,7 @@ class JobStore:
         uploads: Sequence[tuple[str, Path]],
         *,
         max_job_files: int,
+        upload_kinds: dict[str, str] | None = None,
     ) -> JobRecord:
         with self._lock:
             record = self._require(job_id)
@@ -228,6 +230,7 @@ class JobStore:
             if len(record.uploads) + len(uploads) > max_job_files:
                 raise JobFileLimitError
             record.uploads.update(uploads)
+            record.upload_kinds.update(upload_kinds or {})
             record.status = "collecting"
             self._refresh_pending(record)
             return record
@@ -257,6 +260,7 @@ class JobStore:
                 self._require_managed_file(record.workspace, path)
                 path.unlink()
             del record.uploads[report_id]
+            record.upload_kinds.pop(report_id, None)
             parent = path.parent.resolve()
             if parent.parent == record.workspace.client_root.resolve() and parent.is_dir() and not any(parent.iterdir()):
                 parent.rmdir()
@@ -307,6 +311,7 @@ class JobStore:
                 self._require_managed_file(record.workspace, artifact.path)
             self._remove_inputs(record.workspace)
             record.uploads.clear()
+            record.upload_kinds.clear()
             record.artifacts = {artifact.artifact_id: artifact for artifact in artifacts}
             record.status = "completed"
             record.expires_at = self._clock() + self.completed_ttl_seconds

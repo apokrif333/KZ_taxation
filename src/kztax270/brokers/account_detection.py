@@ -70,7 +70,17 @@ def _alatay_report(path: Path) -> DetectedReportMetadata:
     from kztax270.brokers.alatay import parse_alatay_report
 
     parsed = parse_alatay_report(path)
-    return DetectedReportMetadata(parsed.account_id, parsed.period_end)
+    account_id = parsed.account_id
+    filename_account_id = path.name.split(maxsplit=1)[0]
+    if (
+        account_id
+        and account_id.isdigit()
+        and filename_account_id.isdigit()
+        and filename_account_id.lstrip("0") == account_id.lstrip("0")
+        and len(filename_account_id) > len(account_id)
+    ):
+        account_id = filename_account_id
+    return DetectedReportMetadata(account_id, parsed.period_end)
 
 
 def _halyk_report(path: Path) -> DetectedReportMetadata:

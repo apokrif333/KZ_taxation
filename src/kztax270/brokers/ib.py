@@ -2378,17 +2378,19 @@ def _build_fifo_and_positions(
     inventory: dict[tuple[str, str | None, str], dict[str, deque[FifoOpenLot]]] = defaultdict(lambda: {"long": deque(), "short": deque()})
     grouped_events: dict[tuple[str, str | None, str], list[tuple[datetime, int, str, Mapping[str, Any]]]] = defaultdict(list)
     for key, side, lot in initial_lots:
-        inventory[
-            _fifo_inventory_key(
-                key[0],
-                key[1],
-                lot.currency,
-                lot.asset_type,
-                lot.symbol,
-                broker_cost_basis_method,
-                join_security_currencies,
-            )
-        ][side].append(lot)
+        inventory_key = _fifo_inventory_key(
+            key[0],
+            key[1],
+            lot.currency,
+            lot.asset_type,
+            lot.symbol,
+            broker_cost_basis_method,
+            join_security_currencies,
+        )
+        inventory[inventory_key][side].append(lot)
+        # Initial holdings without any later event still need annual position
+        # snapshots; seed an empty timeline for their inventory key.
+        grouped_events[inventory_key]
     for trade in trades:
         isin = _string_or_none(trade.get("isin"))
         instrument_key = _string_or_none(trade.get("_instrument_identity_key")) or _instrument_identity_key_from_values(
@@ -2725,7 +2727,9 @@ def _build_fifo_and_positions(
                                 trade_dt,
                             )
                         )
-        if current_year is not None and max_year is not None:
+        if current_year is None and max_year is not None:
+            _append_position_snapshots(position_rows, books, max_year, fx_provider, warnings, key[0], symbol_history)
+        elif current_year is not None and max_year is not None:
             for snapshot_year in range(current_year, max_year + 1):
                 _append_position_snapshots(position_rows, books, snapshot_year, fx_provider, warnings, key[0], symbol_history)
     return fifo_rows, position_rows, sorted(transfer_rows, key=_transfer_sort_key)
@@ -4165,9 +4169,14 @@ def _build_years_results(
         foreign_tax_credit_kzt = values["foreign_tax_credit_kzt"]
         display_pnl_kzt = values["taxable_proceeds_kzt"] if table_name == "Yearly Trades" and flag == FLAG_OFFSHORE else pnl_kzt
         taxable_pnl_kzt = max(display_pnl_kzt, Decimal("0"))
+        offshore_exchange_exempt = (
+            table_name == "Yearly Trades"
+            and flag == FLAG_OFFSHORE
+            and tax_exchange in {EXCHANGE_AIX, EXCHANGE_KASE}
+        )
         exempt = table_name in {"Yearly Bonds Redemption", "Yearly FX Trades"} or (
             table_name == "Yearly Trades" and flag == FLAG_PREFERENTIAL
-        )
+        ) or offshore_exchange_exempt
         if exempt:
             tax_kzt = Decimal("0")
         elif table_name == "Yearly Trades" and flag == FLAG_OFFSHORE:
@@ -4269,9 +4278,9 @@ def _build_years_results(
 
 
 def _is_bond_redemption_fifo_row(record: Mapping[str, Any]) -> bool:
-    if not str(record.get("source_trade_id") or "").startswith("CA:"):
-        return False
     corporate_action_type = _string_or_none(record.get("corporate_action_type"))
+    if not str(record.get("source_trade_id") or "").startswith("CA:") and corporate_action_type is None:
+        return False
     asset_type = str(record.get("asset_type") or "").lower()
     if corporate_action_type in {"maturity", "full_call"}:
         return True

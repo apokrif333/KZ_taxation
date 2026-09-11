@@ -1710,6 +1710,48 @@ Grant Activity,Data,UGRANTPRE,IBKR,2025-01-01,Stock Award Withholding,2024-01-01
         self.assertEqual(trade_rows[("offshore", "outofKZ")]["pnl_kzt"], "470000.00")
         self.assertEqual(trade_rows[("offshore", "outofKZ")]["tax_kzt"], "47000.00")
 
+    def test_offshore_sale_on_aix_or_kase_keeps_proceeds_and_zeroes_tax(self) -> None:
+        dataset = CanonicalDataset.empty("ib", "UOFFEX")
+        dataset.tables["Fifo"] = [
+            {
+                "exit_date": "2024-01-01 10:00:00",
+                "asset_type": "Stocks",
+                "symbol": "OFFAIX",
+                "isin": "BS0000000001",
+                "country": "BS",
+                "exchange": "AIX",
+                "currency": "USD",
+                "pnl": "-10",
+                "pnl_kzt": "-4700",
+                "exit_amount_kzt": "470000",
+            },
+            {
+                "exit_date": "2024-02-01 10:00:00",
+                "asset_type": "Stocks",
+                "symbol": "OFFKASE",
+                "isin": "BS0000000002",
+                "country": "BS",
+                "exchange": "KASE",
+                "currency": "USD",
+                "pnl": "-5",
+                "pnl_kzt": "-2350",
+                "exit_amount_kzt": "235000",
+            },
+        ]
+
+        yearly = ib_module._build_years_results(
+            dataset,
+            offshore_provider=OffshoreJurisdictionProvider(frozenset({"BS"})),
+        )
+        trade_rows = {row["tax_exchange"]: row for row in yearly if row["table"] == "Yearly Trades"}
+
+        self.assertEqual(trade_rows["AIX"]["pnl_kzt"], "470000.00")
+        self.assertEqual(trade_rows["AIX"]["tax_kzt"], "0.00")
+        self.assertEqual(trade_rows["AIX"]["tax_kzt_withhold"], "0.00")
+        self.assertEqual(trade_rows["KASE"]["pnl_kzt"], "235000.00")
+        self.assertEqual(trade_rows["KASE"]["tax_kzt"], "0.00")
+        self.assertEqual(trade_rows["KASE"]["tax_kzt_withhold"], "0.00")
+
     def test_explicit_aix_exchange_takes_priority_over_listing_date(self) -> None:
         dataset = CanonicalDataset.empty("ib", "UAIXDATE")
         dataset.tables["Fifo"] = [

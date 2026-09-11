@@ -134,7 +134,10 @@ export interface SelectedReport {
   error?: string
   uploaded: boolean
   serverReportId?: string
+  alatayReportKind?: AlatayReportKind
 }
+
+export type AlatayReportKind = 'cash' | 'securities'
 
 export interface ManualAccountGroup {
   id: string

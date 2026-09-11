@@ -36,6 +36,7 @@ from kztax270.transfers import (
 # ``freedom bank`` is accepted as a compatibility alias for the existing
 # client folder; ``freedom_bank`` is the canonical spelling for new folders.
 FRONT_BROKER_FOLDERS = {
+    "alatay": "alatay",
     "ib": "ib",
     "exante": "exante",
     "halyk": "halyk",

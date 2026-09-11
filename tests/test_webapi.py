@@ -62,6 +62,7 @@ class _FakeFrontPipeline:
                     grouped.setdefault((broker, account_id), []).append(report)
             else:
                 account_id = {
+                    "alatay": "A1",
                     "exante": "EX1",
                     "tabys": "T1",
                     "tsifra": "C1",
@@ -187,11 +188,14 @@ class WebApiTests(unittest.TestCase):
         *,
         broker: str = "ib",
         account_id: str | None = None,
+        alatay_report_kind: str | None = None,
         uploads: list[tuple[str, bytes]] | None = None,
     ):
         data = {"broker": broker}
         if account_id is not None:
             data["account_id"] = account_id
+        if alatay_report_kind is not None:
+            data["alatay_report_kind"] = alatay_report_kind
         values = uploads or [("u1-report.csv", b"report")]
         files = [("files", (name, content, "application/octet-stream")) for name, content in values]
         return self.client.post(f"/api/jobs/{job_id}/reports", data=data, files=files)
@@ -234,8 +238,10 @@ class WebApiTests(unittest.TestCase):
         brokers = {item["code"]: item for item in data["brokers"]}
         self.assertEqual(
             set(brokers),
-            {"ib", "exante", "tabys", "tsifra", "freedom", "freedom_bank", "halyk", "paidax"},
+            {"alatay", "ib", "exante", "tabys", "tsifra", "freedom", "freedom_bank", "halyk", "paidax"},
         )
+        self.assertEqual(brokers["alatay"]["account_id_mode"], "auto")
+        self.assertEqual(brokers["alatay"]["upload_extensions"], [".csv", ".xlsx"])
         self.assertEqual(brokers["ib"]["account_id_mode"], "auto")
         self.assertEqual(brokers["freedom"]["account_id_mode"], "manual")
         self.assertEqual(brokers["freedom"]["upload_extensions"], [".xlsx"])
@@ -291,6 +297,48 @@ class WebApiTests(unittest.TestCase):
         response = self._upload(job_id, broker="freedom", account_id="../bad", uploads=[("r.xlsx", b"x")])
         self.assertEqual(response.status_code, 422)
         self.assertEqual(response.json()["detail"]["code"], "invalid_account_id")
+
+    def test_alatay_requires_a_report_kind(self) -> None:
+        job_id = str(self._create()["job_id"])
+
+        response = self._upload(job_id, broker="alatay", uploads=[("report.csv", b"x")])
+
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.json()["detail"]["code"], "alatay_report_kind_required")
+
+    def test_alatay_requires_equal_cash_and_securities_report_counts(self) -> None:
+        job_id = str(self._create()["job_id"])
+        self.assertEqual(
+            self._upload(
+                job_id,
+                broker="alatay",
+                alatay_report_kind="cash",
+                uploads=[("01010105826 ОДДС.csv", b"cash")],
+            ).status_code,
+            200,
+        )
+
+        unpaired = self._discover(job_id)
+        self.assertEqual(unpaired.status_code, 422)
+        self.assertEqual(unpaired.json()["detail"]["code"], "alatay_reports_not_paired")
+        self.assertEqual(self.factory.discover_calls, [])
+
+        securities_upload = self._upload(
+            job_id,
+            broker="alatay",
+            alatay_report_kind="securities",
+            uploads=[("01010105826 ОДЦБ.csv", b"securities")],
+        )
+        self.assertEqual(securities_upload.status_code, 200)
+        paired = self._discover(job_id)
+        self.assertEqual(paired.status_code, 200)
+        self.assertEqual(paired.json()["accounts"][0]["broker"], "alatay")
+
+        report_id = securities_upload.json()["reports"][0]["report_id"]
+        self.assertEqual(self.client.delete(f"/api/jobs/{job_id}/reports/{report_id}").status_code, 200)
+        unpaired_again = self._discover(job_id)
+        self.assertEqual(unpaired_again.status_code, 422)
+        self.assertEqual(unpaired_again.json()["detail"]["code"], "alatay_reports_not_paired")
 
     def test_multiple_freedom_accounts_use_separate_front_pipeline_folders(self) -> None:
         job_id = str(self._create()["job_id"])

@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button'
 import { ApiClientError, createJob, deleteJob, deleteReport, discoverAccounts, getConfig, processJob, uploadReports } from '@/lib/api-client'
 import type {
   AccountSelection,
+  AlatayReportKind,
   ApiConfig,
   AppStep,
   BrokerConfig,
@@ -60,7 +61,7 @@ export function TaxApp() {
 
   const clearError = () => { setError(null); setInvalidReports([]) }
 
-  const addReports = (broker: BrokerConfig, files: File[]): SelectedReport[] => {
+  const addReports = (broker: BrokerConfig, files: File[], alatayReportKind?: AlatayReportKind): SelectedReport[] => {
     if (!config) return []
     const allowed = new Set(broker.upload_extensions.map(normalizeExtension))
     return files.map((file) => {
@@ -68,13 +69,23 @@ export function TaxApp() {
       let reportError: string | undefined
       if (!allowed.has(extension)) reportError = `Формат не поддерживается для ${broker.display_name}`
       else if (file.size > config.max_upload_bytes) reportError = `Файл превышает лимит ${config.max_upload_mb} МБ`
-      return { id: crypto.randomUUID(), file, status: reportError ? 'invalid' : 'valid', error: reportError, uploaded: false }
+      return {
+        id: crypto.randomUUID(),
+        file,
+        status: reportError ? 'invalid' : 'valid',
+        error: reportError,
+        uploaded: false,
+        alatayReportKind,
+      }
     })
   }
 
-  const handleAddAutoFiles = (broker: BrokerConfig, files: File[]) => {
+  const handleAddAutoFiles = (broker: BrokerConfig, files: File[], alatayReportKind?: AlatayReportKind) => {
     clearError()
-    setAutoFiles((current) => ({ ...current, [broker.code]: [...(current[broker.code] || []), ...addReports(broker, files)] }))
+    setAutoFiles((current) => ({
+      ...current,
+      [broker.code]: [...(current[broker.code] || []), ...addReports(broker, files, alatayReportKind)],
+    }))
   }
 
   const handleAddManualFiles = (groupId: string, broker: BrokerConfig, files: File[]) => {
@@ -86,6 +97,10 @@ export function TaxApp() {
   const handleContinue = async () => {
     if (!config) return
     clearError()
+    if (!hasBalancedAlatayReports(autoFiles)) {
+      setError('Для Alatau City Invest загрузите одинаковое количество отчётов ОДДС и ОДЦБ.')
+      return
+    }
     const totalFiles = [...Object.values(autoFiles).flat(), ...manualGroups.flatMap((group) => group.files)].length
     if (totalFiles > config.max_job_files) {
       setError(`В одном расчёте допускается не более ${config.max_job_files} файлов.`)
@@ -102,9 +117,23 @@ export function TaxApp() {
 
       for (const broker of config.brokers.filter((item) => item.account_id_mode === 'auto')) {
         const pending = (autoFiles[broker.code] || []).filter((report) => !report.uploaded && report.status === 'valid')
-        for (const batch of chunks(pending, config.max_files)) {
-          const uploaded = await uploadReports(currentJobId, broker.code, batch.map((report) => report.file))
-          markAutoUploaded(broker.code, new Map(batch.map((report, index) => [report.id, uploaded.reports[index]?.report_id])))
+        const pendingGroups = broker.code === 'alatay'
+          ? (['cash', 'securities'] as const).map((alatayReportKind) => ({
+              alatayReportKind,
+              reports: pending.filter((report) => report.alatayReportKind === alatayReportKind),
+            }))
+          : [{ alatayReportKind: undefined, reports: pending }]
+        for (const { alatayReportKind, reports } of pendingGroups) {
+          for (const batch of chunks(reports, config.max_files)) {
+            const uploaded = await uploadReports(
+              currentJobId,
+              broker.code,
+              batch.map((report) => report.file),
+              undefined,
+              alatayReportKind,
+            )
+            markAutoUploaded(broker.code, new Map(batch.map((report, index) => [report.id, uploaded.reports[index]?.report_id])))
+          }
         }
       }
 
@@ -236,6 +265,14 @@ export function TaxApp() {
 function normalizeExtension(extension: string) { return extension.trim().toLowerCase().replace(/^([^.]|$)/, '.$1') }
 function chunks<T>(items: T[], size: number): T[][] { return Array.from({ length: Math.ceil(items.length / size) }, (_, index) => items.slice(index * size, (index + 1) * size)) }
 function errorMessage(caught: unknown) { return caught instanceof Error ? caught.message : 'Произошла неизвестная ошибка.' }
+function hasBalancedAlatayReports(autoFiles: Record<string, SelectedReport[]>) {
+  const reports = autoFiles.alatay || []
+  if (reports.length === 0) return true
+  const cash = reports.filter((report) => report.alatayReportKind === 'cash').length
+  const securities = reports.filter((report) => report.alatayReportKind === 'securities').length
+  return cash > 0 && cash === securities
+}
+
 function WorkflowItem({ number, label }: { number: string; label: string }) { return <div className="flex max-w-24 flex-col gap-2"><span className="flex size-6 items-center justify-center rounded-full bg-accent font-mono text-xs font-semibold text-primary ring-1 ring-primary/20">{number}</span><span className="text-muted-foreground">{label}</span></div> }
 function LoadingConfig() { return <div className="flex min-h-52 items-center justify-center gap-3 text-muted-foreground"><LoaderCircle className="animate-spin" />Загружаем список брокеров…</div> }
 function ConfigError({ message, onRetry }: { message: string; onRetry: () => void }) { return <Alert variant="destructive"><TriangleAlert /><AlertDescription><p>{message}</p><Button className="mt-3" variant="outline" onClick={onRetry}><RefreshCw data-icon="inline-start" />Повторить</Button></AlertDescription></Alert> }
