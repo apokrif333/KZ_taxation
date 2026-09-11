@@ -146,6 +146,7 @@ function AlatayReportCard({
           ? `Добавлено пар отчётов: ${cashReports.length}. Можно продолжить расчёт.`
           : `ОДДС: ${cashReports.length}; ОДЦБ: ${securitiesReports.length}. Добавьте недостающие отчёты.`}
       </p>}
+      <BrokerGuidance broker={broker} />
     </div>}
   </div>
 }
@@ -235,6 +236,8 @@ function BrokerGuidance({ broker }: { broker: BrokerConfig }) {
               ? { href: '/faq/halyk', label: 'как скачать отчёты Halyk Finance' }
               : broker.code === 'paidax'
                 ? { href: '/faq/paidax', label: 'как скачать отчёты Paidax' }
+                : broker.code === 'alatay'
+                  ? { href: '/faq/alatay', label: 'как скачать отчёты Alatau City Invest' }
                 : null
 
   if (!guide) return null

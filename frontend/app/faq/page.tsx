@@ -18,6 +18,7 @@ const brokerGuides = [
   { href: '/faq/tabys', title: 'Как скачать отчёты для Tabys', description: 'Подготовьте русскоязычные PDF-отчёты об операциях за все годы существования счёта.' },
   { href: '/faq/halyk', title: 'Как скачать отчёты для Halyk Finance', description: 'Скачайте XLSX «Данные для форм 240.00, 250.00, 270.00» за каждый год существования счёта в приложении Halyk Finance.' },
   { href: '/faq/paidax', title: 'Как скачать отчёты для Paidax', description: 'Скачайте Excel-отчёты Paidax за каждый год существования счёта и загрузите все файлы в блок Paidax.' },
+  { href: '/faq/alatay', title: 'Как скачать отчёты для Alatau City Invest', description: 'Скачайте Excel-отчёты ОДДС и ОДЦБ за все годы существования счёта и загрузите их в соответствующие блоки.' },
 ] as const
 
 export default function FaqPage() {
