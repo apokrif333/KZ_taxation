@@ -42,7 +42,7 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   try {
     response = await fetch(resolveApiUrl(path), init)
   } catch {
-    throw new ApiClientError('Не удалось подключиться к серверу расчёта. Проверьте, что FastAPI запущен.')
+    throw new ApiClientError(`Сервер расчёта не ответил на этапе «${requestStage(path)}». Проверьте подключение к интернету и повторите действие. Это не означает ошибку в самом отчёте.`)
   }
 
   if (!response.ok) {
@@ -64,6 +64,15 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   }
 
   return (await response.json()) as T
+}
+
+function requestStage(path: string): string {
+  if (path === '/api/config') return 'получение настроек'
+  if (path.endsWith('/reports')) return 'загрузка отчётов'
+  if (path.endsWith('/discover')) return 'проверка отчётов'
+  if (path.endsWith('/process')) return 'расчёт'
+  if (path.endsWith('/all')) return 'скачивание результатов'
+  return 'обмен данными с сервером'
 }
 
 export function getConfig(): Promise<ApiConfig> {
