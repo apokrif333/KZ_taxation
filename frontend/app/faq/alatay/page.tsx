@@ -31,7 +31,7 @@ const steps = [
   },
   {
     title: 'Загрузите отчёты в QCM Tax 270',
-    text: 'Добавьте отчёты ОДДС и ОДЦБ в одноимённые блоки Alatau City Invest на главной странице. Количество файлов в обоих блоках должно совпадать; затем нажмите «Продолжить».',
+    text: 'Добавьте отчёты ОДДС и ОДЦБ в одноимённые блоки Alatau City Invest на главной странице, затем нажмите «Продолжить».',
     image: '/faq/alatay/step-4-upload.png',
     alt: 'Кнопка «Продолжить» на странице загрузки QCM Tax 270',
   },
@@ -51,7 +51,7 @@ export default function AlatayGuidePage() {
         </header>
 
         <Card className="mt-8 border-primary/20 bg-accent/25">
-          <CardContent className="flex gap-3 pt-4"><FileSpreadsheet className="mt-0.5 size-5 shrink-0 text-primary" aria-hidden="true" /><p className="text-sm leading-relaxed">Для каждого периода скачайте оба отчёта: о движении денежных средств и о движении ценных бумаг. Перед расчётом количество файлов ОДДС и ОДЦБ должно совпадать.</p></CardContent>
+          <CardContent className="flex gap-3 pt-4"><FileSpreadsheet className="mt-0.5 size-5 shrink-0 text-primary" aria-hidden="true" /><p className="text-sm leading-relaxed">Скачайте все доступные отчёты о движении денежных средств и о движении ценных бумаг за весь срок существования счёта.</p></CardContent>
         </Card>
 
         <ol className="mt-10 grid gap-8" aria-label="Инструкция по отчётам Alatau City Invest">
@@ -66,7 +66,7 @@ export default function AlatayGuidePage() {
           ))}
         </ol>
 
-        <Card className="mt-10 border-primary/25 bg-accent/25"><CardHeader><div className="flex size-10 items-center justify-center rounded-md bg-primary/10 text-primary"><UploadCloud aria-hidden="true" /></div><CardTitle>Перед загрузкой</CardTitle><CardDescription>Проверьте, что для каждого периода подготовлены оба Excel-отчёта: ОДДС и ОДЦБ.</CardDescription></CardHeader><CardContent><Link href="/" className="inline-flex items-center gap-2 text-sm font-medium text-primary underline-offset-4 hover:underline">Перейти к загрузке отчётов <ArrowLeft className="size-4 rotate-180" aria-hidden="true" /></Link></CardContent></Card>
+        <Card className="mt-10 border-primary/25 bg-accent/25"><CardHeader><div className="flex size-10 items-center justify-center rounded-md bg-primary/10 text-primary"><UploadCloud aria-hidden="true" /></div><CardTitle>Перед загрузкой</CardTitle><CardDescription>Загрузите все доступные Excel-отчёты ОДДС и ОДЦБ за весь срок существования счёта.</CardDescription></CardHeader><CardContent><Link href="/" className="inline-flex items-center gap-2 text-sm font-medium text-primary underline-offset-4 hover:underline">Перейти к загрузке отчётов <ArrowLeft className="size-4 rotate-180" aria-hidden="true" /></Link></CardContent></Card>
       </main>
     </div>
   )

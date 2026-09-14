@@ -97,10 +97,6 @@ export function TaxApp() {
   const handleContinue = async () => {
     if (!config) return
     clearError()
-    if (!hasBalancedAlatayReports(autoFiles)) {
-      setError('Для Alatau City Invest загрузите одинаковое количество отчётов ОДДС и ОДЦБ.')
-      return
-    }
     const totalFiles = [...Object.values(autoFiles).flat(), ...manualGroups.flatMap((group) => group.files)].length
     if (totalFiles > config.max_job_files) {
       setError(`В одном расчёте допускается не более ${config.max_job_files} файлов.`)
@@ -265,14 +261,6 @@ export function TaxApp() {
 function normalizeExtension(extension: string) { return extension.trim().toLowerCase().replace(/^([^.]|$)/, '.$1') }
 function chunks<T>(items: T[], size: number): T[][] { return Array.from({ length: Math.ceil(items.length / size) }, (_, index) => items.slice(index * size, (index + 1) * size)) }
 function errorMessage(caught: unknown) { return caught instanceof Error ? caught.message : 'Произошла неизвестная ошибка.' }
-function hasBalancedAlatayReports(autoFiles: Record<string, SelectedReport[]>) {
-  const reports = autoFiles.alatay || []
-  if (reports.length === 0) return true
-  const cash = reports.filter((report) => report.alatayReportKind === 'cash').length
-  const securities = reports.filter((report) => report.alatayReportKind === 'securities').length
-  return cash > 0 && cash === securities
-}
-
 function WorkflowItem({ number, label }: { number: string; label: string }) { return <div className="flex max-w-24 flex-col gap-2"><span className="flex size-6 items-center justify-center rounded-full bg-accent font-mono text-xs font-semibold text-primary ring-1 ring-primary/20">{number}</span><span className="text-muted-foreground">{label}</span></div> }
 function LoadingConfig() { return <div className="flex min-h-52 items-center justify-center gap-3 text-muted-foreground"><LoaderCircle className="animate-spin" />Загружаем список брокеров…</div> }
 function ConfigError({ message, onRetry }: { message: string; onRetry: () => void }) { return <Alert variant="destructive"><TriangleAlert /><AlertDescription><p>{message}</p><Button className="mt-3" variant="outline" onClick={onRetry}><RefreshCw data-icon="inline-start" />Повторить</Button></AlertDescription></Alert> }

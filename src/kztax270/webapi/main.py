@@ -91,21 +91,6 @@ class ApiError(Exception):
         self.extra = extra or {}
 
 
-def _ensure_alatay_report_pairs(record: JobRecord) -> None:
-    alatay_kinds = tuple(record.upload_kinds.values())
-    if not alatay_kinds:
-        return
-    cash_reports = sum(kind == "cash" for kind in alatay_kinds)
-    securities_reports = sum(kind == "securities" for kind in alatay_kinds)
-    if cash_reports == securities_reports and cash_reports > 0:
-        return
-    raise ApiError(
-        422,
-        "alatay_reports_not_paired",
-        "Для Alatau City Invest загрузите одинаковое количество отчётов ОДДС и ОДЦБ.",
-    )
-
-
 def create_app(
     settings: WebApiSettings | None = None,
     *,
@@ -325,7 +310,6 @@ def create_app(
         _ensure_pending(record)
         if not record.uploads:
             raise ApiError(422, "validation_error", "Сначала загрузите брокерские отчёты.")
-        _ensure_alatay_report_pairs(record)
         pipeline = front_pipeline_factory(record.workspace.project_paths(resolved_settings.project_paths))
         try:
             accounts = await run_in_threadpool(

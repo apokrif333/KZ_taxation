@@ -128,7 +128,6 @@ function AlatayReportCard({
   const [isOpen, setIsOpen] = useState(false)
   const expanded = hasReports || isOpen
   const contentId = `broker-upload-${broker.code}`
-  const reportsPaired = cashReports.length > 0 && cashReports.length === securitiesReports.length
 
   return <div className="rounded-lg border bg-muted/20 p-4">
     <button type="button" className="flex w-full items-center justify-between gap-4 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default" onClick={() => setIsOpen((value) => !value)} disabled={hasReports} aria-expanded={expanded} aria-controls={contentId}>
@@ -136,16 +135,11 @@ function AlatayReportCard({
       {hasReports ? <CheckCircle2 className="size-5 shrink-0 text-primary" aria-label="Файлы добавлены" /> : <ChevronDown className={cn('size-5 shrink-0 text-muted-foreground transition-transform', expanded && 'rotate-180')} aria-hidden="true" />}
     </button>
     {expanded && <div id={contentId} className="mt-4 border-t border-primary/10 pt-4">
-      <Alert className="border-primary/20 bg-primary/5"><Info aria-hidden="true" /><AlertDescription>Для расчёта загрузите одинаковое количество отчётов ОДДС и ОДЦБ.</AlertDescription></Alert>
-      <div className="mt-4 grid gap-4 xl:grid-cols-2">
+      <div className="grid gap-4 xl:grid-cols-2">
         <AlatayUploadSection title="ОДДС" description="Отчёт движения денежных средств" broker={broker} reports={cashReports} busy={busy} onFiles={(files) => onFiles('cash', files)} onRemove={onRemove} />
         <AlatayUploadSection title="ОДЦБ" description="Отчёт движения ценных бумаг" broker={broker} reports={securitiesReports} busy={busy} onFiles={(files) => onFiles('securities', files)} onRemove={onRemove} />
       </div>
-      {(cashReports.length > 0 || securitiesReports.length > 0) && <p className={cn('mt-4 text-sm font-medium', reportsPaired ? 'text-primary' : 'text-destructive')}>
-        {reportsPaired
-          ? `Добавлено пар отчётов: ${cashReports.length}. Можно продолжить расчёт.`
-          : `ОДДС: ${cashReports.length}; ОДЦБ: ${securitiesReports.length}. Добавьте недостающие отчёты.`}
-      </p>}
+      {(cashReports.length > 0 || securitiesReports.length > 0) && <p className="mt-4 text-sm text-muted-foreground">ОДДС: {cashReports.length}; ОДЦБ: {securitiesReports.length}.</p>}
       <BrokerGuidance broker={broker} />
     </div>}
   </div>

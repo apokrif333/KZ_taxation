@@ -306,7 +306,7 @@ class WebApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 422)
         self.assertEqual(response.json()["detail"]["code"], "alatay_report_kind_required")
 
-    def test_alatay_requires_equal_cash_and_securities_report_counts(self) -> None:
+    def test_alatay_allows_different_cash_and_securities_report_counts(self) -> None:
         job_id = str(self._create()["job_id"])
         self.assertEqual(
             self._upload(
@@ -318,27 +318,9 @@ class WebApiTests(unittest.TestCase):
             200,
         )
 
-        unpaired = self._discover(job_id)
-        self.assertEqual(unpaired.status_code, 422)
-        self.assertEqual(unpaired.json()["detail"]["code"], "alatay_reports_not_paired")
-        self.assertEqual(self.factory.discover_calls, [])
-
-        securities_upload = self._upload(
-            job_id,
-            broker="alatay",
-            alatay_report_kind="securities",
-            uploads=[("01010105826 ОДЦБ.csv", b"securities")],
-        )
-        self.assertEqual(securities_upload.status_code, 200)
-        paired = self._discover(job_id)
-        self.assertEqual(paired.status_code, 200)
-        self.assertEqual(paired.json()["accounts"][0]["broker"], "alatay")
-
-        report_id = securities_upload.json()["reports"][0]["report_id"]
-        self.assertEqual(self.client.delete(f"/api/jobs/{job_id}/reports/{report_id}").status_code, 200)
-        unpaired_again = self._discover(job_id)
-        self.assertEqual(unpaired_again.status_code, 422)
-        self.assertEqual(unpaired_again.json()["detail"]["code"], "alatay_reports_not_paired")
+        discovered = self._discover(job_id)
+        self.assertEqual(discovered.status_code, 200)
+        self.assertEqual(discovered.json()["accounts"][0]["broker"], "alatay")
 
     def test_multiple_freedom_accounts_use_separate_front_pipeline_folders(self) -> None:
         job_id = str(self._create()["job_id"])
