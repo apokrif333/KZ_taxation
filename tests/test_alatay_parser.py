@@ -321,6 +321,59 @@ class AlatayParserTests(unittest.TestCase):
         self.assertTrue(row["_recognized_operation"])
         self.assertEqual(row["quantity"], "-57")
 
+    def test_usd_trade_commission_is_kept_and_deducted_in_kzt(self) -> None:
+        report = ParsedAlatayReport(
+            path=Path("usd.xlsx"),
+            period_end=date(2025, 12, 31),
+            trades=[
+                {
+                    "date_time": "2025-01-15 00:00:00",
+                    "issuer": "Issuer",
+                    "security_type": "Акции",
+                    "isin": "US0000000001",
+                    "operation": "Покупка",
+                    "quantity": "1",
+                    "price": "10",
+                    "amount": "10",
+                    "currency": "USD",
+                    "exchange": "ITS",
+                    "commission": "100",
+                    "source_report": "usd.xlsx",
+                    "source_row": 10,
+                },
+                {
+                    "date_time": "2025-02-15 00:00:00",
+                    "issuer": "Issuer",
+                    "security_type": "Акции",
+                    "isin": "US0000000001",
+                    "operation": "Продажа",
+                    "quantity": "-1",
+                    "price": "12",
+                    "amount": "12",
+                    "currency": "USD",
+                    "exchange": "ITS",
+                    "commission": "50",
+                    "source_report": "usd.xlsx",
+                    "source_row": 11,
+                },
+            ],
+        )
+
+        dataset = build_canonical_dataset(
+            [report],
+            "ATEST",
+            AnnualFxRateProvider({(2025, "USD"): Decimal("500")}),
+        )
+
+        buy = dataset.tables["Trades"][0]
+        fifo = dataset.tables["Fifo"][0]
+        self.assertEqual(buy["commission"], "0.2")
+        self.assertEqual(fifo["enter_commission"], "0.2")
+        self.assertEqual(fifo["exit_commission"], "0.1")
+        self.assertEqual(fifo["acquisition_cost_with_commission_kzt"], "5100.0")
+        self.assertEqual(fifo["pnl_kzt"], "900.0")
+        self.assertEqual(fifo["pnl_after_all_commissions_kzt"], "850.0")
+
     def test_bond_redemption_is_classified_in_trades_and_yearly_results(self) -> None:
         report = ParsedAlatayReport(
             path=Path("report.xlsx"),

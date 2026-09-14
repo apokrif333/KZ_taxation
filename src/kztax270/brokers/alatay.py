@@ -241,7 +241,7 @@ def build_canonical_dataset(
 
     instruments = _build_instruments(reports, account_id)
     dataset.tables["Instruments"] = instruments
-    internal_trades = _sort_trades_by_datetime(_build_trades(reports, instruments))
+    internal_trades = _sort_trades_by_datetime(_build_trades(reports, instruments, fx_provider, dataset.warnings))
     enrich_trades_before_calculations(dataset, internal_trades, fx_provider)
     dataset.tables["Trades"] = _canonical_trade_rows(internal_trades)
     dataset.tables["_BrokerTradeRealizedPL"] = _build_broker_trade_realized_pl(internal_trades)
@@ -485,6 +485,8 @@ def _build_instruments(
 def _build_trades(
     reports: Sequence[ParsedAlatayReport],
     instruments: Sequence[Mapping[str, Any]],
+    fx_provider: AnnualFxRateProvider,
+    warnings: list[str],
 ) -> list[dict[str, Any]]:
     instrument_lookup = {str(row.get("isin")): row for row in instruments}
     trades: list[dict[str, Any]] = []
@@ -495,7 +497,13 @@ def _build_trades(
             quantity = _decimal(row.get("quantity"))
             price = _decimal(row.get("price"))
             amount = abs(_decimal(row.get("amount"))) or abs(quantity * price)
-            commission = abs(_decimal(row.get("commission")))
+            commission_kzt = abs(_decimal(row.get("commission")))
+            currency = _text(row.get("currency")) or BASE_CURRENCY
+            trade_year = _year_from_datetime(row.get("date_time"))
+            rate = _annual_rate(fx_provider, trade_year, currency, warnings)
+            commission = commission_kzt if currency == BASE_CURRENCY else (
+                commission_kzt / rate if rate else Decimal("0")
+            )
             symbol = _text(instrument.get("symbol")) or isin
             country = _text(instrument.get("country")) or _country_from_values(row.get("issuer_country"), isin)
             is_redemption = (_text(row.get("operation")) or "").casefold().startswith("погашение цб")
@@ -514,9 +522,12 @@ def _build_trades(
                     "multiplier": "1",
                     "_calculation_multiplier": "1",
                     "amount": str(amount),
+                    # Alatau debits every fee in KZT.  Normalize it into the
+                    # execution currency with the annual NBK rate so the
+                    # shared Trades and FIFO contract remains currency-safe.
                     "commission": str(commission),
                     "amount_with_commission": str(amount + commission),
-                    "currency": _text(row.get("currency")) or BASE_CURRENCY,
+                    "currency": currency,
                     "exchange": _normalized_exchange(row.get("exchange")),
                     "country": country,
                     "source_report": row.get("source_report"),
