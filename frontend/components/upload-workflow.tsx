@@ -50,14 +50,10 @@ export function UploadWorkflow({
   const alatayReports = autoFiles.alatay || []
   const alatayCashReports = alatayReports.filter((report) => report.alatayReportKind === 'cash')
   const alataySecuritiesReports = alatayReports.filter((report) => report.alatayReportKind === 'securities')
-  const hasAlatayReports = alatayReports.length > 0
-  const alatayReportsPaired = !hasAlatayReports || (
-    alatayCashReports.length > 0 && alatayCashReports.length === alataySecuritiesReports.length
-  )
   const missingManualAccount = manualGroups.some(
     (group) => group.files.some((report) => report.uploaded || report.status === 'valid') && !group.accountId.trim(),
   )
-  const canSubmit = hasAcceptedOrValidReport && !hasInvalidReport && !missingManualAccount && alatayReportsPaired && !busy
+  const canSubmit = hasAcceptedOrValidReport && !hasInvalidReport && !missingManualAccount && !busy
 
   return (
     <section aria-labelledby="calculation-title" className="grid gap-6 lg:grid-cols-[1fr_19rem]">
