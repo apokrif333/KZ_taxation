@@ -164,25 +164,27 @@ class ReconciliationTests(unittest.TestCase):
         self.assertEqual(len(unprocessed), 2)
         self.assertTrue(all(item.severity == ReconciliationSeverity.ERROR for item in unprocessed))
 
-    def test_cme_country_is_filled_during_precalculation_enrichment(self) -> None:
+    def test_us_derivatives_exchange_country_is_filled_during_precalculation_enrichment(self) -> None:
         dataset = CanonicalDataset.empty("test", "account")
         dataset.tables["Trades"] = [
             {
-                "symbol": "MES",
+                "symbol": exchange,
                 "asset_type": "Futures",
                 "currency": "USD",
-                "exchange": "CME.Z2022",
+                "exchange": f"{exchange}.Z2022",
                 "country": None,
             }
+            for exchange in ("CBOE", "CME", "COMEX", "NYMEX")
         ]
         dataset.tables["Fifo"] = [
             {
-                "symbol": "MES",
+                "symbol": exchange,
                 "asset_type": "Futures",
                 "currency": "USD",
-                "exchange": "CME.Z2022",
+                "exchange": f"{exchange}.Z2022",
                 "country": None,
             }
+            for exchange in ("CBOE", "CME", "COMEX", "NYMEX")
         ]
 
         _fill_known_countries(dataset)

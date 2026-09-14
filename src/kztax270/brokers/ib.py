@@ -65,11 +65,14 @@ US_LISTING_EXCHANGES = {
     "ARCA",
     "BATS",
     "CBOE",
+    "CME",
+    "COMEX",
     "IEX",
     "ISE",
     "NASDAQ",
     "NYSE",
     "NYSEARCA",
+    "NYMEX",
     "PINK",
 }
 

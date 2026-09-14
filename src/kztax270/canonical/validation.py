@@ -17,7 +17,10 @@ _MISSING_FX_RATE_RE = re.compile(
 # forms.  Keep this small and explicit; broker adapters remain responsible for
 # their own fuller exchange mappings.
 _EXCHANGE_COUNTRIES = {
+    "CBOE": "US",
     "CME": "US",
+    "COMEX": "US",
+    "NYMEX": "US",
 }
 _COUNTRY_SHEETS = ("Instruments", "Trades", "Fifo", "Positions", "Dividends", "Coupons")
 _NON_SECURITY_ASSET_TYPES = {"cash", "forex", "fx spot"}
