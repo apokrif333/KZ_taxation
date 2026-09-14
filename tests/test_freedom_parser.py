@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
 import tempfile
@@ -111,6 +111,89 @@ class FreedomParserTests(unittest.TestCase):
         self.assertEqual(Decimal(trade["quantity"]), Decimal("-226"))
         self.assertEqual(Decimal(trade["price"]), Decimal("10.61") / Decimal("0.752"))
         self.assertEqual(Decimal(trade["amount"]), Decimal("226") * Decimal("10.61") / Decimal("0.752"))
+
+    def test_conversion_closes_predecessor_without_merging_independently_traded_successor(self) -> None:
+        description = "Conversion of securities OLD.US (US0000000001) -> NEW.US (US0000000002). ratio: 1/0.752."
+        report = fe.ParsedFreedomReport(
+            path=Path("freedom-conversion-with-existing-successor.xlsx"),
+            period_end=date(2023, 12, 31),
+            rows={
+                fe.SECTION_TRADES: [
+                    {
+                        fe.COL_TICKER: "OLD.US",
+                        fe.COL_ISIN: "US0000000001",
+                        fe.COL_OPERATION: "Sell",
+                        fe.COL_QTY: 300,
+                        fe.COL_PRICE: 9,
+                        fe.COL_CURRENCY: "USD",
+                        fe.COL_AMOUNT: 2700,
+                        fe.COL_COMMISSION: 0,
+                        fe.COL_TRADE_DATE: "2023-08-01 10:00:00",
+                    },
+                    {
+                        fe.COL_TICKER: "NEW.US",
+                        fe.COL_ISIN: "US0000000002",
+                        fe.COL_OPERATION: "Buy",
+                        fe.COL_QTY: 50,
+                        fe.COL_PRICE: 12,
+                        fe.COL_CURRENCY: "USD",
+                        fe.COL_AMOUNT: 600,
+                        fe.COL_COMMISSION: 0,
+                        fe.COL_TRADE_DATE: "2023-08-02 10:00:00",
+                    },
+                ],
+                fe.SECTION_CORPACTIONS: [
+                    {
+                        fe.COL_TYPE: "Conversion",
+                        fe.COL_DATE: "2023-09-08",
+                        fe.COL_ASSET: "Securities",
+                        fe.COL_TICKER: "OLD.US",
+                        fe.COL_ISIN: "US0000000001",
+                        fe.COL_AMOUNT: 300,
+                        fe.COL_PER_ONE: "10.61",
+                        fe.COL_CURRENCY: "USD",
+                        fe.COL_COMMENT: description,
+                    },
+                    {
+                        fe.COL_TYPE: "Conversion",
+                        fe.COL_DATE: "2023-09-08",
+                        fe.COL_ASSET: "Securities",
+                        fe.COL_TICKER: "NEW.US",
+                        fe.COL_ISIN: "US0000000002",
+                        fe.COL_AMOUNT: -226,
+                        fe.COL_PER_ONE: "10.61",
+                        fe.COL_CURRENCY: "USD",
+                        fe.COL_COMMENT: description,
+                    },
+                ],
+            },
+        )
+
+        dataset = fe.build_canonical_dataset(
+            [report],
+            "test-account",
+            AnnualFxRateProvider({(2023, "USD"): Decimal("460")}),
+        )
+
+        conversion_trades = [
+            row for row in dataset.tables["Trades"] if row["trade_type"] == "corporate_action:conversion"
+        ]
+        self.assertEqual(
+            {(row["symbol"], Decimal(row["quantity"])) for row in conversion_trades},
+            {("OLD.US", Decimal("300")), ("NEW.US", Decimal("-226"))},
+        )
+        self.assertEqual(
+            {row["symbol"]: Decimal(row["price"]) for row in conversion_trades},
+            {"OLD.US": Decimal("10.61"), "NEW.US": Decimal("10.61") / Decimal("0.752")},
+        )
+        positions = {
+            symbol: sum(
+                (Decimal(row["quantity"]) for row in dataset.tables["Positions"] if row["year"] == 2023 and row["symbol"] == symbol),
+                Decimal(),
+            )
+            for symbol in ("OLD.US", "NEW.US")
+        }
+        self.assertEqual(positions, {"OLD.US": Decimal(), "NEW.US": Decimal("-176")})
 
     def test_non_numeric_corporate_action_per_one_does_not_abort_and_is_unprocessed(self) -> None:
         report = fe.ParsedFreedomReport(

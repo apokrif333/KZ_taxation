@@ -215,7 +215,7 @@ def build_canonical_dataset(
 
     trades = _build_trades(reports, instrument_lookup, fx_provider, dataset.warnings)
     trades = _apply_identity_changes_to_trades(trades, corporate_actions, instrument_lookup)
-    synthetic_trades = _build_corporate_action_trades(corporate_actions, instrument_lookup)
+    synthetic_trades = _build_corporate_action_trades(corporate_actions, instrument_lookup, trades)
     internal_trades = _sort_trades_by_datetime([*trades, *synthetic_trades])
     _apply_broker_country_to_forex_trades(internal_trades, BROKER_CODE)
     enrich_trades_before_calculations(dataset, internal_trades, fx_provider)
@@ -1117,8 +1117,9 @@ def _corporate_action_type(
 def _build_corporate_action_trades(
     actions: Sequence[Mapping[str, Any]],
     instrument_lookup: Mapping[tuple[str, int | None], dict[str, Any]],
+    trades: Sequence[Mapping[str, Any]] = (),
 ) -> list[dict[str, Any]]:
-    trades: list[dict[str, Any]] = []
+    synthetic_trades: list[dict[str, Any]] = []
     for action in _net_corporate_actions_for_synthetic_trades(actions):
         action_type = _none_text(action.get("action_type"))
         if action_type in {"redemption", "reorg_cash"}:
@@ -1126,7 +1127,11 @@ def _build_corporate_action_trades(
         elif action_type in {"spinoff", "rights"}:
             trade = _synthetic_zero_cost_trade(action, instrument_lookup, action_type)
         elif action_type == "conversion":
-            trade = _synthetic_conversion_opening_trade(action, instrument_lookup)
+            trade = _synthetic_conversion_trade(
+                action,
+                instrument_lookup,
+                preserve_separate_histories=_conversion_has_independent_successor_history(action, trades),
+            )
         elif action_type in {"conversion_compensation", "spinoff_compensation", "split_compensation"}:
             # Cash paid for fractional conversion shares is cash compensation;
             # it must not create an additional security lot beside the rounded
@@ -1137,8 +1142,8 @@ def _build_corporate_action_trades(
         else:
             trade = None
         if trade is not None:
-            trades.append(trade)
-    return trades
+            synthetic_trades.append(trade)
+    return synthetic_trades
 
 
 def _net_corporate_actions_for_synthetic_trades(actions: Sequence[Mapping[str, Any]]) -> list[Mapping[str, Any]]:
@@ -1243,29 +1248,65 @@ def _synthetic_zero_cost_trade(action: Mapping[str, Any], instrument_lookup: Map
     return _synthetic_trade_dict(action, action_dt, symbol, isin, quantity, Decimal("0"), Decimal("0"), instrument, action_type)
 
 
-def _synthetic_conversion_opening_trade(
+def _conversion_has_independent_successor_history(
+    action: Mapping[str, Any],
+    trades: Sequence[Mapping[str, Any]],
+) -> bool:
+    description = str(action.get("description") or "")
+    old_symbol, old_isin, new_symbol, new_isin = _conversion_identities(description)
+    action_dt = _parse_datetime(action.get("date_time") or action.get("date"))
+    return bool(
+        action_dt
+        and old_isin
+        and new_isin
+        and _conversion_target_traded_before(trades, old_isin, new_symbol, new_isin, action_dt)
+    )
+
+
+def _synthetic_conversion_trade(
     action: Mapping[str, Any],
     instrument_lookup: Mapping[tuple[str, int | None], dict[str, Any]],
+    *,
+    preserve_separate_histories: bool,
 ) -> dict[str, Any] | None:
-    """Open the rounded successor lot at the conversion-implied price."""
+    """Create a conversion leg without merging independently traded books.
+
+    If the successor already traded before the conversion, its FIFO inventory
+    must remain separate from the predecessor.  Freedom reports both legs of
+    such an event, so create an exact close/open trade for each leg.  Otherwise
+    the predecessor history is bridged to the successor by
+    ``_apply_identity_changes_to_trades`` and only the successor leg is needed.
+    """
     quantity = _decimal(action.get("quantity"))
     action_dt = _parse_datetime(action.get("date_time") or action.get("date"))
     isin = _normalize_isin(action.get("isin"))
-    if quantity >= 0 or action_dt is None or not isin:
+    if quantity == 0 or action_dt is None or not isin:
         return None
     description = str(action.get("description") or "")
-    _, _, _, new_isin = _conversion_identities(description)
-    if new_isin != isin:
+    old_symbol, old_isin, new_symbol, new_isin = _conversion_identities(description)
+    is_predecessor_leg = old_isin == isin
+    is_successor_leg = new_isin == isin
+    if not is_predecessor_leg and not is_successor_leg:
+        return None
+    if not preserve_separate_histories and not (is_successor_leg and quantity < 0):
         return None
     old_price = _decimal(action.get("_amount_per_one"))
     ratio = _conversion_ratio(description)
     if old_price <= 0 or ratio <= 0:
         return None
-    price = old_price * ratio
+    price = old_price if is_predecessor_leg else old_price * ratio
     amount = abs(quantity * price)
     instrument = _lookup_instrument(instrument_lookup, symbol=_none_text(action.get("symbol")), isin=isin, year=action_dt.year) or {}
     symbol = _none_text(instrument.get("symbol")) or _none_text(action.get("symbol")) or isin
     return _synthetic_trade_dict(action, action_dt, symbol, isin, quantity, price, amount, instrument, "conversion")
+
+
+def _synthetic_conversion_opening_trade(
+    action: Mapping[str, Any],
+    instrument_lookup: Mapping[tuple[str, int | None], dict[str, Any]],
+) -> dict[str, Any] | None:
+    """Backward-compatible helper for callers that need only the successor leg."""
+    return _synthetic_conversion_trade(action, instrument_lookup, preserve_separate_histories=False)
 
 
 def _is_conversion_cash_compensation(

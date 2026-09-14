@@ -802,7 +802,7 @@ def _build_corporate_actions(reports: Sequence[ParsedIbReport]) -> list[dict[str
             target_symbol, target_isin = _corporate_action_target_symbol_isin(description)
             action_date = _parse_datetime(row.get("Date/Time")) or _parse_datetime(row.get("Date_Time"))
             quantity = _decimal(row.get("Quantity"))
-            proceeds = _decimal(row.get("Proceeds"))
+            proceeds = _trade_notional(row)
             raw_rows.append(
                 {
                     "date": _date_to_iso(action_date),
@@ -1867,6 +1867,14 @@ def _ib_trade_type(row: Mapping[str, Any]) -> str:
     code = _string_or_none(row.get("Code")) or ""
     code_tokens = {token.strip().casefold() for token in re.split(r"[;,]", code) if token.strip()}
     return "option_expiration" if "ep" in code_tokens else "trade"
+
+
+def _trade_notional(row: Mapping[str, Any]) -> Decimal:
+    """Read IB's trade amount from either supported statement layout."""
+
+    if row.get("Proceeds") not in (None, ""):
+        return _decimal(row.get("Proceeds"))
+    return _decimal(row.get("Notional Value"))
 
 
 def _broker_trade_pnl(row: Mapping[str, Any], asset_type: str | None) -> Decimal | None:
@@ -4753,7 +4761,7 @@ def _populate_raw_totals(
             trade_currency = _string_or_none(row.get("Currency"))
             instrument = _lookup_instrument(instrument_lookup, trade_symbol, trade_year) or {}
             instrument_key = _string_or_none(instrument.get("isin") or trade_symbol)
-            gross_amount = abs(_decimal(row.get("Proceeds")))
+            gross_amount = abs(_trade_notional(row))
             gross_trades += gross_amount
             commission = abs(_decimal(row.get("Comm/Fee") or row.get("Comm in USD")))
             commissions += commission

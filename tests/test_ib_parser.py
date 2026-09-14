@@ -52,6 +52,22 @@ Realized & Unrealized Performance Summary,Data,Total (All Assets),,0,98,0,0,0,98
 """
 
 
+NOTIONAL_VALUE_FUTURES_IB_CSV = """Statement,Header,Field Name,Field Value
+Statement,Data,Period,"January 1, 2025 - December 31, 2025"
+Account Information,Header,Field Name,Field Value
+Account Information,Data,Account,UNOTIONAL
+Account Information,Data,Base Currency,USD
+Financial Instrument Information,Header,Asset Category,Symbol,Description,Conid,Security ID,Underlying,Listing Exch,Multiplier,Expiry,Delivery Month,Code
+Financial Instrument Information,Data,Futures,MNQH5,MNQ 21MAR25,672387468,,MNQ,CME,2,2025-03-21,2025-03,
+Trades,Header,DataDiscriminator,Asset Category,Currency,Account,Symbol,Date/Time,Quantity,T. Price,C. Price,Notional Value,Comm/Fee,Basis,Realized P/L,MTM P/L,Code
+Trades,Data,Order,Futures,USD,UNOTIONAL,MNQH5,"2025-01-06, 09:55:26",-2,21822.625,21744.5,87290.5,-1.24,-87289.26,0,312.5,O;P
+Trades,Total,,Futures,USD,,,,,,,87290.5,-1.24,0,0,312.5,
+Cash Report,Header,Currency Summary,Currency,Total,Securities,Futures,
+Cash Report,Data,Ending Cash,USD,0,0,0,
+Open Positions,Header,DataDiscriminator,Asset Category,Currency,Symbol,Quantity,Mult,Cost Price,Cost Basis,Close Price,Value,Unrealized P/L,Code
+"""
+
+
 CUSIP_DIVIDEND_IB_CSV = """Statement,Header,Field Name,Field Value
 Statement,Data,Period,"January 1, 2025 - December 31, 2025"
 Account Information,Header,Field Name,Field Value
@@ -655,6 +671,33 @@ class InteractiveBrokersParserTests(unittest.TestCase):
                 self.assertEqual(parsed.period_end, date(2025, 12, 31))
                 self.assertEqual(len(parsed.rows[ib_module.IB_SECTION_TRADES]), 1)
                 self.assertEqual(parsed.rows[ib_module.IB_SECTION_TRADES][0]["Symbol"], "AAPL")
+
+    def test_notional_value_is_used_when_new_ib_trade_layout_omits_proceeds(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            raw_root = Path(tmp) / "raw"
+            ib_root = raw_root / "ib"
+            ib_root.mkdir(parents=True)
+            report_path = ib_root / "UNOTIONAL_2025_2025.csv"
+            report_path.write_text(NOTIONAL_VALUE_FUTURES_IB_CSV, encoding="utf-8")
+
+            parser = InteractiveBrokersParser(AnnualFxRateProvider({(2025, "USD"): Decimal("500")}))
+            result = parser.parse_reports(parser.discover_reports(raw_root, "UNOTIONAL"), "UNOTIONAL")
+
+        dataset = result.dataset
+        trade = dataset.tables["Trades"][0]
+        self.assertEqual(Decimal(trade["amount"]), Decimal("87290.5"))
+        self.assertEqual(
+            dataset.raw_totals.scalar_totals[ReconciliationMetric.TOTAL_TRADES_GROSS_AMOUNT.value],
+            Decimal("87290.5"),
+        )
+        turnover = next(
+            item
+            for item in ReconciliationEngine().reconcile_dataset(dataset)
+            if item.metric == ReconciliationMetric.TRADE_GROSS_AMOUNT_BY_INSTRUMENT
+        )
+        self.assertEqual(turnover.broker_value, Decimal("87290.5"))
+        self.assertEqual(turnover.canonical_value, Decimal("87290.5"))
+        self.assertEqual(turnover.difference, Decimal("0"))
 
     def test_restricted_ib_rubles_are_normalized_before_all_calculations(self) -> None:
         restricted_ruble_report = (
