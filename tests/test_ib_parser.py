@@ -744,6 +744,34 @@ class InteractiveBrokersParserTests(unittest.TestCase):
         self.assertEqual(cash_balance[0]["ending_cash"], "108")
         self.assertEqual(cash_balance[0]["ending_cash_kzt"], "50760")
 
+    def test_cash_prefers_explicit_currency_balance_over_base_currency_summary(self) -> None:
+        report_with_both_usd_rows = MINIMAL_IB_CSV.replace(
+            "Cash Report,Data,Ending Cash,USD,108,108,0",
+            "\n".join(
+                (
+                    "Cash Report,Data,Ending Cash,Base Currency Summary,108,108,0",
+                    "Cash Report,Data,Ending Cash,EUR,0,0,0",
+                    "Cash Report,Data,Ending Cash,USD,108,108,0",
+                )
+            ),
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            raw_root = Path(tmp) / "raw"
+            ib_root = raw_root / "ib"
+            ib_root.mkdir(parents=True)
+            (ib_root / "UBASEDUP_2024_2024.csv").write_text(report_with_both_usd_rows, encoding="utf-8")
+
+            parser = InteractiveBrokersParser(
+                AnnualFxRateProvider({(2024, "USD"): Decimal("470"), (2024, "EUR"): Decimal("510")})
+            )
+            result = parser.parse_reports(parser.discover_reports(raw_root, "UBASEDUP"), "UBASEDUP")
+
+        cash_balances = {
+            row["currency"]: Decimal(row["ending_cash"])
+            for row in result.dataset.tables["CashBalances"]
+        }
+        self.assertEqual(cash_balances, {"USD": Decimal("108"), "EUR": Decimal("0")})
+
     def test_dividend_cusip_description_resolves_to_isin_from_instruments(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             raw_root = Path(tmp) / "raw"

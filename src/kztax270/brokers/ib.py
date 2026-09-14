@@ -454,6 +454,7 @@ def _resolve_ib_base_currency_summary(report: ParsedIbReport) -> None:
     for row in (*report.rows.get(IB_SECTION_CASH, []), *report.totals.get(IB_SECTION_CASH, [])):
         if row.get("Currency") == IB_BASE_CURRENCY_SUMMARY:
             row["Currency"] = report.base_currency
+            row["_ib_base_currency_summary"] = True
 
 
 def _date_to_iso(value: date | datetime | None) -> str | None:
@@ -3896,11 +3897,27 @@ def _build_cash_balances(
     rows: list[dict[str, Any]] = []
     for report in reports:
         year = _year_for_report(report)
-        for row in report.rows.get(IB_SECTION_CASH, []):
-            if row.get("Currency Summary") != "Ending Cash":
-                continue
+        ending_cash_rows = [
+            row
+            for row in report.rows.get(IB_SECTION_CASH, [])
+            if row.get("Currency Summary") == "Ending Cash"
+        ]
+        explicit_currencies = {
+            currency
+            for row in ending_cash_rows
+            if not row.get("_ib_base_currency_summary")
+            for currency in [_string_or_none(row.get("Currency"))]
+            if currency
+        }
+        for row in ending_cash_rows:
             currency = _string_or_none(row.get("Currency"))
-            if not currency or currency == "Base Currency Summary":
+            if not currency:
+                continue
+            # Newer IB exports include both a Base Currency Summary and a
+            # separate balance row for the same currency.  The explicit row is
+            # the balance; retain the summary only in older exports where it is
+            # the sole representation of the account's base currency.
+            if row.get("_ib_base_currency_summary") and currency in explicit_currencies:
                 continue
             ending_cash = _decimal(row.get("Total"))
             rate = _annual_rate(fx_provider, year, currency, warnings)
