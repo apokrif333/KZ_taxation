@@ -164,6 +164,18 @@ Trades,Header,DataDiscriminator,Asset Category,Currency,Symbol,Date/Time,Quantit
 '''
 
 
+COMMA_DELIMITED_IB_CSV_WITH_SEMICOLON_CODES = '''Statement,Header,Field Name,Field Value
+Statement,Data,Period,"January 1, 2025 - December 31, 2025"
+Account Information,Header,Field Name,Field Value
+Account Information,Data,Account,USEMICOLONCODE
+Financial Instrument Information,Header,Asset Category,Symbol,Description,Conid,Security ID,Underlying,Listing Exch,Multiplier,Type,Code
+Financial Instrument Information,Data,Stocks,GLDM,SPDR GOLD,1,US98149E3036,GLDM,ARCA,1,ETF,
+Trades,Header,DataDiscriminator,Asset Category,Currency,Symbol,Date/Time,Quantity,T. Price,C. Price,Proceeds,Comm/Fee,Basis,Realized P/L,MTM P/L,Code
+Trades,Data,Order,Stocks,USD,GLDM,"2025-01-10, 10:00:00",23,65,65,-1495,-1,1496,0,0,IA;O
+Trades,Data,Order,Stocks,USD,GLDM,"2025-01-11, 10:00:00",0.5,66,66,-33,-0.01,33.01,0,0,O;R
+'''
+
+
 ADJUSTED_OPTION_ROOT_IB_CSV = """Statement,Header,Field Name,Field Value
 Statement,Data,Period,"January 1, 2020 - December 31, 2020"
 Account Information,Header,Field Name,Field Value
@@ -671,6 +683,16 @@ class InteractiveBrokersParserTests(unittest.TestCase):
                 self.assertEqual(parsed.period_end, date(2025, 12, 31))
                 self.assertEqual(len(parsed.rows[ib_module.IB_SECTION_TRADES]), 1)
                 self.assertEqual(parsed.rows[ib_module.IB_SECTION_TRADES][0]["Symbol"], "AAPL")
+
+    def test_parse_comma_delimited_ib_csv_with_semicolons_in_trade_code(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "USEMICOLONCODE_2025_2025.csv"
+            path.write_text(COMMA_DELIMITED_IB_CSV_WITH_SEMICOLON_CODES, encoding="utf-8")
+
+            parsed = ib_module.parse_ib_csv_report(path)
+
+        trades = parsed.rows[ib_module.IB_SECTION_TRADES]
+        self.assertEqual([(trade["Symbol"], trade["Code"]) for trade in trades], [("GLDM", "IA;O"), ("GLDM", "O;R")])
 
     def test_notional_value_is_used_when_new_ib_trade_layout_omits_proceeds(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

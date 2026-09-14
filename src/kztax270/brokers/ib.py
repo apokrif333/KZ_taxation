@@ -208,12 +208,15 @@ def _read_ib_csv_rows(handle: Any) -> Iterable[list[str]]:
     pass after reading the outer delimiter.
     """
 
-    sample = handle.read(8192)
+    # Do not use ``csv.Sniffer`` here.  IB uses semicolons inside the ``Code``
+    # field (for example ``IA;O`` and ``O;R``), so the heuristic can select
+    # ``;`` for an otherwise normal comma-separated statement.  It then splits
+    # those records and silently leaves them outside the ``Trades`` section.
+    # The first non-empty IB header row has only its actual outer delimiter:
+    # comma in an original/padded CSV, semicolon in a semicolon re-save.
+    first_row = next((line.lstrip("\ufeff").strip() for line in handle if line.strip()), "")
     handle.seek(0)
-    try:
-        delimiter = csv.Sniffer().sniff(sample, delimiters=",;").delimiter
-    except csv.Error:
-        delimiter = ","
+    delimiter = ";" if ";" in first_row and "," not in first_row else ","
 
     for row in csv.reader(handle, delimiter=delimiter):
         while row and not row[-1].strip():
