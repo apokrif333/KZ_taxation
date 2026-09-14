@@ -16,6 +16,68 @@ from kztax270.transfers import TransferInFifoLot, TransferInRequest
 
 
 class FreedomParserTests(unittest.TestCase):
+    def test_normalizes_cross_currency_trade_commissions_before_fifo(self) -> None:
+        report = fe.ParsedFreedomReport(
+            path=Path("freedom-cross-currency-commissions.xlsx"),
+            rows={
+                fe.SECTION_TRADES: [
+                    {
+                        fe.COL_TICKER: "AAPL_KZ.KZ",
+                        fe.COL_ISIN: "US0378331005",
+                        fe.COL_MARKET: "KASE",
+                        fe.COL_OPERATION: "Buy",
+                        fe.COL_QTY: 1,
+                        fe.COL_PRICE: Decimal("210.16"),
+                        fe.COL_CURRENCY: "USD",
+                        fe.COL_AMOUNT: Decimal("210.16"),
+                        fe.COL_COMMISSION: Decimal("99"),
+                        fe.COL_COMMISSION_CURRENCY: "KZT",
+                        fe.COL_TRADE_DATE: "2025-07-08 13:54:31",
+                    },
+                    {
+                        fe.COL_TICKER: "IUSN.EU",
+                        fe.COL_ISIN: "IE00B4L5Y983",
+                        fe.COL_MARKET: "LSE",
+                        fe.COL_OPERATION: "Buy",
+                        fe.COL_QTY: 1,
+                        fe.COL_PRICE: Decimal("100"),
+                        fe.COL_CURRENCY: "EUR",
+                        fe.COL_AMOUNT: Decimal("100"),
+                        fe.COL_COMMISSION: Decimal("1.5"),
+                        fe.COL_COMMISSION_CURRENCY: "USD",
+                        fe.COL_TRADE_DATE: "2025-07-08 13:54:32",
+                    },
+                    {
+                        fe.COL_TICKER: "CCBN.KZ",
+                        fe.COL_ISIN: "KZ1C00001536",
+                        fe.COL_MARKET: "KASE",
+                        fe.COL_OPERATION: "Buy",
+                        fe.COL_QTY: 1,
+                        fe.COL_PRICE: Decimal("10000"),
+                        fe.COL_CURRENCY: "KZT",
+                        fe.COL_AMOUNT: Decimal("10000"),
+                        fe.COL_COMMISSION: Decimal("0.2"),
+                        fe.COL_COMMISSION_CURRENCY: "USD",
+                        fe.COL_TRADE_DATE: "2025-07-08 13:54:33",
+                    },
+                ]
+            },
+        )
+
+        dataset = fe.build_canonical_dataset(
+            [report],
+            "test-account",
+            AnnualFxRateProvider({(2025, "USD"): Decimal("500"), (2025, "EUR"): Decimal("600")}),
+        )
+
+        trades = {row["symbol"]: row for row in dataset.tables["Trades"]}
+        self.assertEqual(Decimal(trades["AAPL_KZ.KZ"]["commission"]), Decimal("0.198"))
+        self.assertEqual(Decimal(trades["AAPL_KZ.KZ"]["amount_with_commission"]), Decimal("210.358"))
+        self.assertEqual(Decimal(trades["IUSN.EU"]["commission"]), Decimal("1.25"))
+        self.assertEqual(Decimal(trades["IUSN.EU"]["amount_with_commission"]), Decimal("101.25"))
+        self.assertEqual(Decimal(trades["CCBN.KZ"]["commission"]), Decimal("100"))
+        self.assertEqual(Decimal(trades["CCBN.KZ"]["amount_with_commission"]), Decimal("10100"))
+
     def test_russian_conversion_description_parses_identities_and_ratio(self) -> None:
         description = (
             "Конвертация бумаг PARA.US (US92556H2067) -> PSKY.US (US69932A2042). "

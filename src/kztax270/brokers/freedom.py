@@ -67,6 +67,7 @@ COL_CURRENCY = "Валюта"
 COL_AMOUNT = "Сумма"
 COL_REALIZED_PL = "P/L по закрытым сделкам"
 COL_COMMISSION = "Комиссия"
+COL_COMMISSION_CURRENCY = "Валюта комиссии"
 COL_TRADE_DATE = "Дата сделки"
 COL_ORDER_ID = "Id/OrderId"
 COL_TYPE = "Тип"
@@ -94,6 +95,7 @@ COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
     COL_AMOUNT: ("Amount", "Sum"),
     COL_REALIZED_PL: ("Прибыль", "Realized P/L", "P/L", "P/L on closed trades", "P/L on Closed Trades"),
     COL_COMMISSION: ("Commission",),
+    COL_COMMISSION_CURRENCY: ("Commission Currency",),
     COL_TRADE_DATE: ("Дата", "Trade Date", "Date_Time", "Date Time"),
     COL_ORDER_ID: ("Номер сделки/Номер приказа", "Order ID", "OrderId", "Order Id", "Id/OrderId"),
     COL_TYPE: ("Type",),
@@ -211,7 +213,7 @@ def build_canonical_dataset(
     corporate_actions = _build_corporate_actions(reports, instrument_lookup, dataset.warnings)
     dataset.tables["CorporateActions"] = _canonical_corporate_actions(corporate_actions)
 
-    trades = _build_trades(reports, instrument_lookup)
+    trades = _build_trades(reports, instrument_lookup, fx_provider, dataset.warnings)
     trades = _apply_identity_changes_to_trades(trades, corporate_actions, instrument_lookup)
     synthetic_trades = _build_corporate_action_trades(corporate_actions, instrument_lookup)
     internal_trades = _sort_trades_by_datetime([*trades, *synthetic_trades])
@@ -547,13 +549,18 @@ def _lookup_instrument(
     return None
 
 
-def _build_trades(reports: Sequence[ParsedFreedomReport], instrument_lookup: Mapping[tuple[str, int | None], dict[str, Any]]) -> list[dict[str, Any]]:
+def _build_trades(
+    reports: Sequence[ParsedFreedomReport],
+    instrument_lookup: Mapping[tuple[str, int | None], dict[str, Any]],
+    fx_provider: AnnualFxRateProvider,
+    warnings: list[str],
+) -> list[dict[str, Any]]:
     trades: list[dict[str, Any]] = []
     for report in reports:
         for idx, row in enumerate(report.rows.get(SECTION_TRADES, []), start=1):
             if _is_financing_operation(str(_cell(row, COL_OPERATION) or "")):
                 continue
-            trade = _new_trade_row(report, idx, row, instrument_lookup)
+            trade = _new_trade_row(report, idx, row, instrument_lookup, fx_provider, warnings)
             if trade is not None:
                 trades.append(trade)
     return trades
@@ -564,6 +571,8 @@ def _new_trade_row(
     idx: int,
     row: Mapping[str, Any],
     instrument_lookup: Mapping[tuple[str, int | None], dict[str, Any]],
+    fx_provider: AnnualFxRateProvider,
+    warnings: list[str],
 ) -> dict[str, Any] | None:
     operation = str(_cell(row, COL_OPERATION) or "").strip()
     if not operation:
@@ -589,8 +598,15 @@ def _new_trade_row(
         else _effective_transaction_multiplier(instrument_multiplier, signed_quantity, price, broker_amount)
     )
     amount = broker_amount if broker_amount else abs(quantity_abs * price * multiplier)
-    commission = abs(_decimal(_cell(row, COL_COMMISSION)))
     currency = _normalize_currency(_cell(row, COL_CURRENCY)) or _normalize_currency(instrument.get("_currency")) or FREEDOM_BASE_CURRENCY
+    commission = _commission_in_trade_currency(
+        abs(_decimal(_cell(row, COL_COMMISSION))),
+        _normalize_currency(_cell(row, COL_COMMISSION_CURRENCY)) or currency,
+        currency,
+        year,
+        fx_provider,
+        warnings,
+    )
     identity_key = _instrument_identity_key_from_values(isin=isin, symbol=symbol)
     return {
         "date_time": trade_dt.isoformat(sep=" ") if trade_dt else None,
@@ -621,6 +637,37 @@ def _new_trade_row(
         # uses this marker to keep that remainder as a new lot.
         "_matched_remainder_opens_position": True,
     }
+
+
+def _commission_in_trade_currency(
+    commission: Decimal,
+    commission_currency: str,
+    trade_currency: str,
+    year: int | None,
+    fx_provider: AnnualFxRateProvider,
+    warnings: list[str],
+) -> Decimal:
+    """Normalize Freedom's separately-currency-denominated trade fee.
+
+    Freedom writes the execution and the commission currencies in adjacent
+    columns.  The shared Trades/FIFO contract stores both amount and
+    commission in the execution currency, so a cross-currency fee is first
+    translated via that year's average NBK rates.
+    """
+
+    if commission == 0 or commission_currency == trade_currency:
+        return commission
+    source_rate = _annual_rate(fx_provider, year, commission_currency, warnings)
+    target_rate = _annual_rate(fx_provider, year, trade_currency, warnings)
+    if source_rate is None or target_rate is None:
+        warning = (
+            f"Freedom commission {commission_currency}/{trade_currency} for {year} "
+            "was not converted because an annual NBK FX rate is unavailable; commission set to zero."
+        )
+        if warning not in warnings:
+            warnings.append(warning)
+        return Decimal("0")
+    return commission * source_rate / target_rate
 
 
 def _bond_transaction_multiplier(
