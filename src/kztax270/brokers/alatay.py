@@ -247,8 +247,8 @@ def build_canonical_dataset(
     dataset.tables["_BrokerTradeRealizedPL"] = _build_broker_trade_realized_pl(internal_trades)
 
     security_transfers = _build_security_transfers(reports, instruments)
-    fifo_transfers = [row for row in security_transfers if row.get("_changes_ownership")]
-    audit_only_transfers = [row for row in security_transfers if not row.get("_changes_ownership")]
+    fifo_transfers = [row for row in security_transfers if row.get("_include_in_fifo")]
+    audit_only_transfers = [row for row in security_transfers if not row.get("_include_in_fifo")]
     initial_lots, initial_lot_issues = _build_derived_initial_lots(
         reports,
         instruments,
@@ -549,8 +549,10 @@ def _build_security_transfers(
         for row in report.security_transfers:
             operation = _text(row.get("operation")) or ""
             operation_key = operation.casefold()
-            direction = "in" if "получатель" in operation_key else "out"
+            is_depository_transfer = _is_depository_transfer(operation)
+            direction = "in" if _is_depository_transfer_in(operation) or "получатель" in operation_key else "out"
             changes_ownership = "смена прав собственности" in operation_key and "без смены" not in operation_key
+            include_in_fifo = changes_ownership or is_depository_transfer
             isin = _text(row.get("isin"))
             instrument = instrument_lookup.get(isin or "", {})
             price = abs(_decimal(row.get("price")))
@@ -576,12 +578,13 @@ def _build_security_transfers(
                     "counterparty": (
                         "ownership-changing security transfer"
                         if changes_ownership
-                        else "internal depository transfer (no change of ownership)"
+                        else "depository transfer without change of ownership"
                     ),
                     "source_report": row.get("source_report"),
                     "_changes_ownership": changes_ownership,
+                    "_include_in_fifo": include_in_fifo,
                     "_transfer_cost_basis_status": (
-                        "broker_reported_cost_basis" if changes_ownership and price else None
+                        "broker_reported_cost_basis" if include_in_fifo and direction == "in" and price else None
                     ),
                 }
             )
@@ -1121,7 +1124,16 @@ def _date_from_datetime(value: Any) -> str | None:
 
 def _is_security_transfer(value: Any) -> bool:
     operation = _clean_text(value).casefold()
-    return "перевод" in operation
+    return "перевод" in operation or _is_depository_transfer(operation)
+
+
+def _is_depository_transfer(value: Any) -> bool:
+    operation = _clean_text(value).casefold()
+    return "ввод в нд" in operation or "вывод из нд" in operation
+
+
+def _is_depository_transfer_in(value: Any) -> bool:
+    return "ввод в нд" in _clean_text(value).casefold()
 
 
 def _is_redemption_operation(value: Any) -> bool:

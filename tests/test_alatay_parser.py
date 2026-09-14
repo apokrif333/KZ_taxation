@@ -13,6 +13,7 @@ from kztax270.brokers.account_detection import detect_report_account_id
 from kztax270.brokers.alatay import (
     AlatayParser,
     ParsedAlatayReport,
+    _is_security_transfer,
     _parse_trade_row,
     build_canonical_dataset,
     parse_alatay_csv,
@@ -93,6 +94,40 @@ CASH_REPORT = """ОТЧЕТ ДВИЖЕНИЯ ДЕНЕЖНЫХ СРЕДСТВ
 
 
 class AlatayParserTests(unittest.TestCase):
+    def test_depository_transfer_in_opens_fifo_lot_at_odcb_price(self) -> None:
+        operation = "Ввод в НД без смены прав собственности"
+        self.assertTrue(_is_security_transfer(operation))
+        report = ParsedAlatayReport(
+            path=Path("010101YD642 2025 ОДЦБ.xlsx"),
+            period_end=date(2025, 12, 31),
+            security_transfers=[
+                {
+                    "date_time": "2025-02-04 00:00:00",
+                    "operation": operation,
+                    "security_type": "Акции",
+                    "isin": "KZ1C00000959",
+                    "quantity": "25",
+                    "price": "1482",
+                    "currency": "KZT",
+                    "amount": "37050",
+                    "exchange": "KASE",
+                    "issuer_country": "KZ",
+                    "source_report": "010101YD642 2025 ОДЦБ.xlsx",
+                    "source_row": 30,
+                }
+            ],
+        )
+
+        dataset = build_canonical_dataset([report], "010101YD642", AnnualFxRateProvider({}))
+
+        self.assertEqual(dataset.tables["Unprocessed"], [])
+        transfer = dataset.tables["Transfers"][0]
+        self.assertEqual(transfer["direction"], "in")
+        self.assertEqual(transfer["price"], "1482")
+        self.assertEqual(transfer["_transfer_cost_basis_status"], "broker_reported_cost_basis")
+        self.assertEqual(dataset.tables["Positions"][0]["quantity"], "25")
+        self.assertEqual(dataset.tables["Positions"][0]["amount"], "37050")
+
     def test_csv_metadata_positions_and_trades_are_parsed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "ATEST alatay 2023.csv"
