@@ -16,6 +16,55 @@ from kztax270.transfers import TransferInFifoLot, TransferInRequest
 
 
 class FreedomParserTests(unittest.TestCase):
+    def test_identifies_freedom_option_ticker_and_us_market_country(self) -> None:
+        report = fe.ParsedFreedomReport(
+            path=Path("freedom-options.xlsx"),
+            period_end=date(2025, 12, 31),
+            rows={
+                fe.SECTION_TRADES: [
+                    {
+                        fe.COL_TICKER: "+UVXY.08AUG2025.C16.5",
+                        fe.COL_ISIN: "-",
+                        fe.COL_MARKET: "NYSE/NASDAQ",
+                        fe.COL_OPERATION: "Buy",
+                        fe.COL_QTY: 20,
+                        fe.COL_PRICE: Decimal("1.5"),
+                        fe.COL_CURRENCY: "USD",
+                        fe.COL_AMOUNT: Decimal("3000"),
+                        fe.COL_COMMISSION: Decimal("70"),
+                        fe.COL_COMMISSION_CURRENCY: "USD",
+                        fe.COL_TRADE_DATE: "2025-07-22 17:53:45",
+                    },
+                    {
+                        fe.COL_TICKER: "+UVXY.08AUG2025.C16.5",
+                        fe.COL_ISIN: "-",
+                        fe.COL_MARKET: "NYSE/NASDAQ",
+                        fe.COL_OPERATION: "Sell",
+                        fe.COL_QTY: 20,
+                        fe.COL_PRICE: Decimal("0"),
+                        fe.COL_CURRENCY: "USD",
+                        fe.COL_AMOUNT: Decimal("0"),
+                        fe.COL_COMMISSION: Decimal("0"),
+                        fe.COL_COMMISSION_CURRENCY: "USD",
+                        fe.COL_TRADE_DATE: "2025-08-08 21:59:59",
+                    }
+                ]
+            },
+        )
+
+        dataset = fe.build_canonical_dataset(
+            [report],
+            "test-account",
+            AnnualFxRateProvider({(2025, "USD"): Decimal("500")}),
+        )
+
+        instrument = dataset.tables["Instruments"][0]
+        trade = dataset.tables["Trades"][0]
+        fifo = dataset.tables["Fifo"][0]
+        self.assertEqual((instrument["asset_type"], instrument["country"]), ("Options", "US"))
+        self.assertEqual((trade["asset_type"], trade["country"]), ("Options", "US"))
+        self.assertEqual((fifo["asset_type"], fifo["country"]), ("Options", "US"))
+
     def test_normalizes_cross_currency_trade_commissions_before_fifo(self) -> None:
         report = fe.ParsedFreedomReport(
             path=Path("freedom-cross-currency-commissions.xlsx"),

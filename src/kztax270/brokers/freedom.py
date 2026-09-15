@@ -49,6 +49,12 @@ FREEDOM_BASE_CURRENCY = "USD"
 BROKER_CODE = "freedom"
 LOGGER = logging.getLogger(__name__)
 
+# Freedom identifies US options by their own ticker format instead of an ISIN:
+# +UNDERLYING.15AUG2025.C86.5 or +UNDERLYING.15AUG2025.P86.5.
+_FREEDOM_OPTION_SYMBOL_RE = re.compile(
+    r"^\+(?P<underlying>[A-Z0-9_.-]+)\.(?P<expiry>\d{2}[A-Z]{3}\d{4})\.(?P<right>[CP])(?P<strike>\d+(?:\.\d+)?)$"
+)
+
 SECTION_TRADES = "Trades"
 SECTION_COMMISSIONS = "Commissions"
 SECTION_CORPACTIONS = "Corpactions"
@@ -339,7 +345,11 @@ def _build_instruments(reports: Sequence[ParsedFreedomReport], account_id: str) 
         if key in seen:
             return
         seen.add(key)
-        country = _country_from_isin(isin_norm) or _country_from_symbol(symbol_norm)
+        country = (
+            _country_from_isin(isin_norm)
+            or _country_from_symbol(symbol_norm)
+            or _country_from_exchange(exchange)
+        )
         # A security sold in full may be absent from the report's final
         # Securities section.  Its Trades rows then have no asset type, but a
         # coupon event unambiguously identifies it as a bond.  This prevents
@@ -3018,6 +3028,8 @@ def _asset_type(value: Any, symbol: str | None = None) -> str:
     text = str(value or "").strip().lower()
     if _is_currency_pair_symbol(symbol):
         return "Forex"
+    if _is_freedom_option_symbol(symbol):
+        return "Options"
     if "bond" in text or "облиг" in text:
         return "Bonds"
     if "currency" in text or "валют" in text:
@@ -3047,6 +3059,16 @@ def _country_from_symbol(symbol: str | None) -> str | None:
     if symbol.endswith(".SPB") or symbol.endswith("_RUR.SPB"):
         return "RU"
     return None
+
+
+def _country_from_exchange(value: Any) -> str | None:
+    """Return the market country conveyed by Freedom's trade-market field."""
+
+    return "US" if _normalize_exchange(value) == "US" else None
+
+
+def _is_freedom_option_symbol(symbol: str | None) -> bool:
+    return bool(symbol and _FREEDOM_OPTION_SYMBOL_RE.fullmatch(symbol.upper()))
 
 
 def _date_key(value: datetime | None) -> str | None:
